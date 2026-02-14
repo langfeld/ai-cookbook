@@ -41,19 +41,44 @@
           </button>
         </div>
 
-        <!-- Foto-Upload -->
+        <!-- Foto-Upload (mehrere Seiten möglich) -->
         <div v-if="importMode === 'photo'">
           <label
-            class="flex flex-col justify-center items-center hover:bg-primary-50/50 dark:hover:bg-primary-950/30 border-2 border-stone-300 hover:border-primary-400 dark:border-stone-600 dark:hover:border-primary-600 border-dashed rounded-xl w-full h-48 transition-colors cursor-pointer"
+            class="flex flex-col justify-center items-center hover:bg-primary-50/50 dark:hover:bg-primary-950/30 border-2 border-stone-300 hover:border-primary-400 dark:border-stone-600 dark:hover:border-primary-600 border-dashed rounded-xl w-full min-h-48 transition-colors cursor-pointer"
           >
-            <div v-if="!previewUrl" class="text-center">
+            <div v-if="selectedFiles.length === 0" class="text-center">
               <Upload class="mx-auto mb-2 w-10 h-10 text-stone-400" />
-              <p class="text-stone-500 text-sm">Klicke oder ziehe ein Foto hierhin</p>
-              <p class="mt-1 text-stone-400 text-xs">JPG, PNG, WebP bis 10 MB</p>
+              <p class="text-stone-500 text-sm">Klicke oder ziehe Fotos hierhin</p>
+              <p class="mt-1 text-stone-400 text-xs">Mehrere Seiten möglich · JPG, PNG, WebP bis 10 MB</p>
             </div>
-            <img v-else :src="previewUrl" alt="Vorschau" class="rounded-lg max-w-full max-h-full object-contain" />
-            <input type="file" accept="image/*" @change="handleFileSelect" class="hidden" />
+            <div v-else class="flex flex-wrap justify-center gap-3 p-4 w-full">
+              <div
+                v-for="(preview, idx) in previewUrls"
+                :key="idx"
+                class="group relative"
+              >
+                <img :src="preview" :alt="`Seite ${idx + 1}`" class="rounded-lg h-28 object-cover" />
+                <span class="top-1 left-1 absolute bg-black/60 px-1.5 py-0.5 rounded font-medium text-white text-xs">
+                  {{ idx + 1 }}
+                </span>
+                <button
+                  @click.prevent="removeFile(idx)"
+                  class="top-1 right-1 absolute bg-red-500 opacity-0 group-hover:opacity-100 p-0.5 rounded-full text-white transition-opacity"
+                >
+                  <X class="w-3 h-3" />
+                </button>
+              </div>
+              <div class="flex flex-col justify-center items-center border-2 border-stone-300 dark:border-stone-600 border-dashed rounded-lg w-20 h-28 text-stone-400">
+                <Plus class="w-5 h-5" />
+                <span class="text-xs">Seite</span>
+              </div>
+            </div>
+            <input type="file" accept="image/*" multiple @change="handleFileSelect" class="hidden" />
           </label>
+          <p v-if="selectedFiles.length > 1" class="flex items-center gap-1 mt-2 text-primary-600 dark:text-primary-400 text-xs">
+            <ImageIcon class="w-3.5 h-3.5" />
+            {{ selectedFiles.length }} Seiten werden als ein Rezept zusammengeführt
+          </p>
         </div>
 
         <!-- Text-Import -->
@@ -85,7 +110,7 @@
         </button>
         <button
           @click="handleImport"
-          :disabled="importing || (!selectedFile && importMode === 'photo') || (!importText && importMode === 'text')"
+          :disabled="importing || (selectedFiles.length === 0 && importMode === 'photo') || (!importText && importMode === 'text')"
           class="flex items-center gap-2 bg-primary-600 hover:bg-primary-700 disabled:opacity-50 px-4 py-2 rounded-lg font-medium text-white text-sm transition-colors disabled:cursor-not-allowed"
         >
           <span v-if="importing" class="flex items-center gap-2">
@@ -107,7 +132,7 @@
 
 <script setup>
 import { ref } from 'vue';
-import { X, Camera, FileText, Upload, Sparkles } from 'lucide-vue-next';
+import { X, Camera, FileText, Upload, Sparkles, Plus, ImageIcon } from 'lucide-vue-next';
 import { useRecipesStore } from '@/stores/recipes.js';
 import { useNotification } from '@/composables/useNotification.js';
 
@@ -117,8 +142,8 @@ const recipesStore = useRecipesStore();
 const { showError } = useNotification();
 
 const importMode = ref('photo');
-const selectedFile = ref(null);
-const previewUrl = ref(null);
+const selectedFiles = ref([]);
+const previewUrls = ref([]);
 const importText = ref('');
 const importing = ref(false);
 
@@ -132,19 +157,29 @@ function tabClass(active) {
 }
 
 function handleFileSelect(event) {
-  const file = event.target.files[0];
-  if (!file) return;
+  const files = Array.from(event.target.files);
+  if (!files.length) return;
 
-  selectedFile.value = file;
-  previewUrl.value = URL.createObjectURL(file);
+  for (const file of files) {
+    selectedFiles.value.push(file);
+    previewUrls.value.push(URL.createObjectURL(file));
+  }
+  // Input zurücksetzen, damit gleiche Dateien nochmal gewählt werden können
+  event.target.value = '';
+}
+
+function removeFile(idx) {
+  URL.revokeObjectURL(previewUrls.value[idx]);
+  selectedFiles.value.splice(idx, 1);
+  previewUrls.value.splice(idx, 1);
 }
 
 async function handleImport() {
   importing.value = true;
   try {
     let result;
-    if (importMode.value === 'photo' && selectedFile.value) {
-      result = await recipesStore.importFromPhoto(selectedFile.value);
+    if (importMode.value === 'photo' && selectedFiles.value.length > 0) {
+      result = await recipesStore.importFromPhoto(selectedFiles.value);
     } else if (importMode.value === 'text' && importText.value) {
       result = await recipesStore.importFromText(importText.value);
     }

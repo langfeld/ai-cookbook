@@ -67,11 +67,11 @@ await app.register(jwt, {
   sign: { expiresIn: config.jwt.expiresIn },
 });
 
-// Multipart für Datei-Uploads (Fotos)
+// Multipart für Datei-Uploads (Fotos, bis zu 10 Seiten)
 await app.register(multipart, {
   limits: {
     fileSize: config.upload.maxSize,
-    files: 1,
+    files: 10,
   },
 });
 

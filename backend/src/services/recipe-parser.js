@@ -10,16 +10,20 @@
 import { getAIProvider } from './ai/provider.js';
 
 /**
- * Extrahiert ein komplettes Rezept aus einem Foto
- * @param {Buffer} imageBuffer - Das Bild als Buffer
+ * Extrahiert ein komplettes Rezept aus einem oder mehreren Fotos
+ * @param {Buffer|Buffer[]} imageBuffers - Ein Bild oder mehrere Bilder als Buffer(s)
  * @param {string[]} existingCategories - Vorhandene Kategorie-Namen des Users
  * @returns {Promise<object>} - Strukturiertes Rezept-Objekt
  */
-export async function parseRecipeFromImage(imageBuffer, existingCategories = []) {
+export async function parseRecipeFromImage(imageBuffers, existingCategories = []) {
   const ai = getAIProvider();
+  // Normalisieren: einzelner Buffer → Array
+  const images = Array.isArray(imageBuffers) ? imageBuffers : [imageBuffers];
+  const isMultiPage = images.length > 1;
 
   const prompt = `
-Analysiere dieses Bild eines Rezepts und extrahiere alle Informationen.
+Analysiere ${isMultiPage ? 'diese Bilder eines mehrseitigen Rezepts' : 'dieses Bild eines Rezepts'} und extrahiere alle Informationen.
+${isMultiPage ? 'Die Bilder gehören zum selben Rezept (z.B. Vorder-/Rückseite oder mehrere Seiten). Kombiniere alle Informationen zu EINEM vollständigen Rezept.' : ''}
 Falls das Bild kein Rezept enthält, versuche trotzdem ein passendes Rezept
 basierend auf dem erkannten Gericht zu erstellen.
 
@@ -64,7 +68,9 @@ Wichtig:
 - Kategorien aus den vorhandenen Kategorien wählen (mehrere möglich)
 `;
 
-  const result = await ai.chatWithImageJSON(prompt, imageBuffer, { maxTokens: 16384 });
+  const result = images.length > 1
+    ? await ai.chatWithImagesJSON(prompt, images, { maxTokens: 16384 })
+    : await ai.chatWithImageJSON(prompt, images[0], { maxTokens: 16384 });
   return result;
 }
 

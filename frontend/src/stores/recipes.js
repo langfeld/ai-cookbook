@@ -86,10 +86,14 @@ export const useRecipesStore = defineStore('recipes', () => {
     recipes.value = recipes.value.filter(r => r.id !== id);
   }
 
-  /** Rezept per Foto importieren */
-  async function importFromPhoto(file) {
+  /** Rezept per Foto(s) importieren – unterstützt mehrere Seiten */
+  async function importFromPhoto(files) {
     const formData = new FormData();
-    formData.append('file', file);
+    // Unterstützt einzelne Datei oder Array von Dateien
+    const fileList = Array.isArray(files) ? files : [files];
+    for (const file of fileList) {
+      formData.append('file', file);
+    }
     const data = await api.upload('/recipes/import-photo', formData);
     await fetchRecipes();
     return data;

@@ -33,10 +33,19 @@ export class BaseAIProvider {
   }
 
   /**
+   * Sendet eine Anfrage mit mehreren Bildern an die KI (Multi-Page)
+   * Fallback: Ruft chatWithImage für jedes Bild einzeln auf und kombiniert
+   */
+  async chatWithImages(prompt, images, options = {}) {
+    // Default-Implementierung: Einzelbild-Fallback
+    if (images.length === 1) {
+      return this.chatWithImage(prompt, images[0], options);
+    }
+    throw new Error(`chatWithImages() nicht implementiert für Provider: ${this.name}`);
+  }
+
+  /**
    * Sendet eine Anfrage und erwartet JSON zurück
-   * @param {string} prompt - Der Prompt/die Anfrage
-   * @param {object} options - Zusätzliche Optionen
-   * @returns {Promise<object>} - Geparste JSON-Antwort
    */
   async chatJSON(prompt, options = {}) {
     const response = await this.chat(
@@ -53,6 +62,18 @@ export class BaseAIProvider {
     const response = await this.chatWithImage(
       prompt + '\n\nAntworte ausschließlich mit validem JSON, ohne Markdown-Formatierung oder andere Zeichen.',
       image,
+      options
+    );
+    return this.parseJSON(response);
+  }
+
+  /**
+   * Sendet eine Anfrage mit mehreren Bildern und erwartet JSON zurück
+   */
+  async chatWithImagesJSON(prompt, images, options = {}) {
+    const response = await this.chatWithImages(
+      prompt + '\n\nAntworte ausschließlich mit validem JSON, ohne Markdown-Formatierung oder andere Zeichen.',
+      images,
       options
     );
     return this.parseJSON(response);

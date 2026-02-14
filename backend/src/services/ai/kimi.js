@@ -59,15 +59,18 @@ export class KimiProvider extends BaseAIProvider {
   }
 
   /**
-   * Sendet eine Chat-Anfrage mit Bild (Vision)
-   * Kimi 2.5 unterstützt multimodale Eingaben über die OpenAI-kompatible API
+   * Sendet eine Chat-Anfrage mit mehreren Bildern (Vision)
+   * Kimi K2.5 unterstützt mehrere Bilder in einer Nachricht
    */
-  async chatWithImage(prompt, imageBuffer, options = {}) {
-    // Bild zu Base64 konvertieren
-    const base64Image =
-      imageBuffer instanceof Buffer
-        ? imageBuffer.toString('base64')
-        : imageBuffer;
+  async chatWithImages(prompt, imageBuffers, options = {}) {
+    const contentParts = imageBuffers.map((buf) => {
+      const base64 = buf instanceof Buffer ? buf.toString('base64') : buf;
+      return {
+        type: 'image_url',
+        image_url: { url: `data:image/jpeg;base64,${base64}` },
+      };
+    });
+    contentParts.push({ type: 'text', text: prompt });
 
     const response = await fetch(`${this.baseUrl}/chat/completions`, {
       method: 'POST',
@@ -81,22 +84,11 @@ export class KimiProvider extends BaseAIProvider {
           {
             role: 'system',
             content:
-              'Du bist ein hilfreicher Kochassistent. Analysiere Bilder von Rezepten und extrahiere alle relevanten Informationen. Antworte immer auf Deutsch.',
+              'Du bist ein hilfreicher Kochassistent. Analysiere Bilder von Rezepten und extrahiere alle relevanten Informationen. Wenn mehrere Bilder gesendet werden, gehören sie zum selben Rezept (z.B. Vorder- und Rückseite einer Rezeptkarte). Kombiniere die Informationen zu einem einzigen vollständigen Rezept. Antworte immer auf Deutsch.',
           },
           {
             role: 'user',
-            content: [
-              {
-                type: 'image_url',
-                image_url: {
-                  url: `data:image/jpeg;base64,${base64Image}`,
-                },
-              },
-              {
-                type: 'text',
-                text: prompt,
-              },
-            ],
+            content: contentParts,
           },
         ],
         max_tokens: options.maxTokens ?? 4096,

@@ -215,31 +215,37 @@ export default async function recipesRoutes(fastify) {
    */
   fastify.post('/import-photo', {
     schema: {
-      description: 'Rezept aus Foto importieren (KI)',
+      description: 'Rezept aus Foto(s) importieren (KI) – unterstützt mehrseitige Rezeptkarten',
       tags: ['Rezepte'],
       security: [{ bearerAuth: [] }],
     },
   }, async (request, reply) => {
     const userId = request.user.id;
 
-    // Datei aus Multipart-Upload lesen
-    const data = await request.file();
-    if (!data) {
-      return reply.status(400).send({ error: 'Kein Bild hochgeladen' });
+    // Alle Dateien aus Multipart-Upload lesen
+    const parts = request.files();
+    const imageBuffers = [];
+    let firstImagePath = null;
+
+    for await (const part of parts) {
+      const buffer = await part.toBuffer();
+      imageBuffers.push(buffer);
+
+      // Erstes Bild als Vorschaubild speichern
+      if (!firstImagePath) {
+        const imageId = generateId();
+        firstImagePath = `recipes/${imageId}.webp`;
+        const fullPath = resolve(config.upload.path, firstImagePath);
+        await sharp(buffer)
+          .resize(1200, 1200, { fit: 'inside', withoutEnlargement: true })
+          .webp({ quality: 85 })
+          .toFile(fullPath);
+      }
     }
 
-    // Bild lesen und verarbeiten
-    const imageBuffer = await data.toBuffer();
-
-    // Bild optimieren und speichern
-    const imageId = generateId();
-    const imagePath = `recipes/${imageId}.webp`;
-    const fullPath = resolve(config.upload.path, imagePath);
-
-    await sharp(imageBuffer)
-      .resize(1200, 1200, { fit: 'inside', withoutEnlargement: true })
-      .webp({ quality: 85 })
-      .toFile(fullPath);
+    if (imageBuffers.length === 0) {
+      return reply.status(400).send({ error: 'Keine Bilder hochgeladen' });
+    }
 
     // Kategorien des Users laden
     const categories = db.prepare(
@@ -247,8 +253,8 @@ export default async function recipesRoutes(fastify) {
     ).all(userId);
     const categoryNames = categories.map(c => c.name);
 
-    // KI-Rezepterkennung starten
-    const parsedRecipe = await parseRecipeFromImage(imageBuffer, categoryNames);
+    // KI-Rezepterkennung starten (ein oder mehrere Bilder)
+    const parsedRecipe = await parseRecipeFromImage(imageBuffers, categoryNames);
 
     // Rezept in Datenbank speichern
     const transaction = db.transaction(() => {
@@ -264,7 +270,7 @@ export default async function recipesRoutes(fastify) {
         parsedRecipe.cook_time || 0,
         parsedRecipe.total_time || 0,
         parsedRecipe.difficulty || 'mittel',
-        `/api/uploads/${imagePath}`
+        `/api/uploads/${firstImagePath}`
       );
 
       const recipeId = recipeResult.lastInsertRowid;
