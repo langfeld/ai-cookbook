@@ -9,7 +9,10 @@
   <aside
     :class="[
       'flex flex-col bg-white dark:bg-stone-900 border-r border-stone-200 dark:border-stone-800 transition-all duration-300',
-      isCollapsed ? 'w-16' : 'w-64'
+      // Mobile: Fixed Overlay
+      'fixed inset-y-0 left-0 z-50 lg:static lg:z-auto',
+      isMobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0',
+      isCollapsed && !isMobileOpen ? 'lg:w-16' : 'w-64'
     ]"
   >
     <!-- Logo / App-Name -->
@@ -17,12 +20,20 @@
       <span class="text-2xl">🍳</span>
       <transition name="page">
         <span
-          v-if="!isCollapsed"
+          v-if="!isCollapsed || isMobileOpen"
           class="ml-3 font-display font-bold text-stone-800 dark:text-stone-100 text-lg"
         >
           AI Cookbook
         </span>
       </transition>
+      <!-- Mobile: Schließen-Button -->
+      <button
+        v-if="isMobileOpen"
+        @click="$emit('close-mobile')"
+        class="lg:hidden hover:bg-stone-100 dark:hover:bg-stone-800 ml-auto p-1.5 rounded-lg"
+      >
+        <X class="w-5 h-5 text-stone-500" />
+      </button>
     </div>
 
     <!-- Navigations-Links -->
@@ -35,16 +46,17 @@
           'flex items-center gap-3 mx-2 px-3 py-2.5 rounded-lg transition-colors',
           'hover:bg-primary-50 dark:hover:bg-primary-950/50',
           'text-stone-600 dark:text-stone-400',
-          isCollapsed ? 'justify-center' : '',
+          isCollapsed && !isMobileOpen ? 'justify-center' : '',
         ]"
         active-class="!bg-primary-100 dark:!bg-primary-900/50 !text-primary-700 dark:!text-primary-300 font-medium"
+        @click="onNavClick"
       >
         <component :is="item.icon" class="w-5 h-5 shrink-0" />
-        <span v-if="!isCollapsed" class="text-sm">{{ item.label }}</span>
+        <span v-if="!isCollapsed || isMobileOpen" class="text-sm">{{ item.label }}</span>
 
         <!-- Badge für Benachrichtigungen -->
         <span
-          v-if="item.badge && !isCollapsed"
+          v-if="item.badge && (!isCollapsed || isMobileOpen)"
           class="bg-red-100 dark:bg-red-900/50 ml-auto px-2 py-0.5 rounded-full text-red-700 dark:text-red-300 text-xs"
         >
           {{ item.badge }}
@@ -52,10 +64,10 @@
       </router-link>
     </nav>
 
-    <!-- Collapse-Button -->
+    <!-- Collapse-Button (nur Desktop) -->
     <button
       @click="$emit('toggle')"
-      class="flex justify-center items-center border-stone-200 dark:border-stone-800 border-t h-12 text-stone-400 hover:text-stone-600 dark:hover:text-stone-300 transition-colors"
+      class="hidden lg:flex justify-center items-center border-stone-200 dark:border-stone-800 border-t h-12 text-stone-400 hover:text-stone-600 dark:hover:text-stone-300 transition-colors"
     >
       <ChevronLeft v-if="!isCollapsed" class="w-5 h-5" />
       <ChevronRight v-else class="w-5 h-5" />
@@ -78,15 +90,24 @@ import {
   Warehouse,
   ChevronLeft,
   ChevronRight,
+  X,
 } from 'lucide-vue-next';
 import { usePantryStore } from '@/stores/pantry.js';
 import { useShoppingStore } from '@/stores/shopping.js';
 import { computed } from 'vue';
 
-defineProps({
+const props = defineProps({
   isCollapsed: { type: Boolean, default: false },
+  isMobileOpen: { type: Boolean, default: false },
 });
-defineEmits(['toggle']);
+const emit = defineEmits(['toggle', 'close-mobile']);
+
+// Auf Mobile: Nach Klick auf Nav-Link Sidebar schließen
+function onNavClick() {
+  if (window.innerWidth < 1024) {
+    emit('close-mobile');
+  }
+}
 
 const pantryStore = usePantryStore();
 const shoppingStore = useShoppingStore();

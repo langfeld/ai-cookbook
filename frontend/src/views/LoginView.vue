@@ -206,4 +206,16 @@ async function handleSubmit() {
 :is(.dark .input-field)::placeholder {
   color: var(--color-stone-500);
 }
+:is(.dark .input-field):focus {
+  border-color: var(--color-primary-500);
+  box-shadow: 0 0 0 1px var(--color-primary-500);
+}
+:is(.dark .input-field) {
+  background-color: var(--color-stone-800);
+  border-color: var(--color-stone-700);
+  color: var(--color-stone-100);
+}
+:is(.dark .input-field)::placeholder {
+  color: var(--color-stone-500);
+}
 </style>

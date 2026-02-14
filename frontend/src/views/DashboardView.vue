@@ -98,7 +98,7 @@
         <History class="w-5 h-5 text-indigo-500" />
         Zuletzt gekocht
       </h3>
-      <div v-if="recipesStore.recentRecipes.length" class="gap-4 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5">
+      <div v-if="recipesStore.recentRecipes.length" class="gap-4 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5">
         <router-link
           v-for="recipe in recipesStore.recentRecipes"
           :key="recipe.id"

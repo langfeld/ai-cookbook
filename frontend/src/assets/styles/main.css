@@ -201,6 +201,17 @@ html {
   transform: translateY(-10px);
 }
 
+/* Fade Transition (für Mobile-Backdrop) */
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.2s ease;
+}
+
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+}
+
 .list-enter-active,
 .list-leave-active {
   transition: all 0.3s ease;

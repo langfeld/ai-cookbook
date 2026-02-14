@@ -30,7 +30,7 @@
           <textarea v-model="form.description" class="form-input" rows="3" placeholder="Kurze Beschreibung des Rezepts..." />
         </div>
 
-        <div class="gap-4 grid grid-cols-3">
+        <div class="gap-4 grid grid-cols-1 sm:grid-cols-3">
           <div>
             <label class="form-label">Zubereitungszeit (Min.)</label>
             <input v-model.number="form.prep_time" type="number" min="0" class="form-input" />
@@ -116,15 +116,15 @@
           </div>
 
           <!-- Zutaten in der Gruppe -->
-          <div v-for="(ing, iIdx) in group.items" :key="iIdx" class="flex items-start gap-2">
-            <input v-model.number="ing.amount" type="number" step="0.01" min="0" class="w-20 form-input" placeholder="Menge" />
-            <input v-model="ing.unit" type="text" class="w-20 form-input" placeholder="Einheit" />
-            <input v-model="ing.name" type="text" class="flex-1 form-input" placeholder="Zutat" required />
-            <label class="flex items-center gap-1 mt-2 text-stone-400 text-xs cursor-pointer">
+          <div v-for="(ing, iIdx) in group.items" :key="iIdx" class="flex flex-wrap sm:flex-nowrap items-start gap-2">
+            <input v-model.number="ing.amount" type="number" step="0.01" min="0" class="w-full sm:w-20 form-input" placeholder="Menge" />
+            <input v-model="ing.unit" type="text" class="w-full sm:w-20 form-input" placeholder="Einheit" />
+            <input v-model="ing.name" type="text" class="flex-1 min-w-0 form-input" placeholder="Zutat" required />
+            <label class="flex items-center gap-1 mt-2 text-stone-400 text-xs cursor-pointer shrink-0">
               <input type="checkbox" v-model="ing.is_optional" class="rounded" />
               opt.
             </label>
-            <button type="button" @click="group.items.splice(iIdx, 1)" class="mt-2 text-red-400 hover:text-red-500">
+            <button type="button" @click="group.items.splice(iIdx, 1)" class="mt-2 text-red-400 hover:text-red-500 shrink-0">
               <Trash2 class="w-4 h-4" />
             </button>
           </div>
@@ -350,9 +350,14 @@ onMounted(async () => {
 <style scoped>
 .card {
   background-color: white;
-  padding: calc(var(--spacing) * 6);
+  padding: calc(var(--spacing) * 4);
   border: 1px solid var(--color-stone-200);
   border-radius: var(--radius-xl);
+}
+@media (min-width: 640px) {
+  .card {
+    padding: calc(var(--spacing) * 6);
+  }
 }
 :is(.dark .card) {
   background-color: var(--color-stone-900);

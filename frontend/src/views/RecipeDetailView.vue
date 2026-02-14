@@ -22,8 +22,8 @@
 
         <!-- Info -->
         <div class="flex-1">
-          <div class="flex justify-between items-start">
-            <h1 class="font-display font-bold text-stone-800 dark:text-stone-100 text-3xl">{{ recipe.title }}</h1>
+          <div class="flex justify-between items-start gap-2">
+            <h1 class="font-display font-bold text-stone-800 dark:text-stone-100 text-2xl sm:text-3xl">{{ recipe.title }}</h1>
             <button
               @click="recipesStore.toggleFavorite(recipe.id)"
               class="hover:bg-stone-100 dark:hover:bg-stone-800 p-2 rounded-lg"
@@ -68,21 +68,22 @@
           <div class="flex flex-wrap gap-2 mt-6">
             <button
               @click="markCooked"
-              class="flex items-center gap-2 px-4 py-2 rounded-lg font-medium text-white text-sm transition-colors bg-accent-600 hover:bg-accent-700"
+              class="flex sm:flex-initial flex-1 justify-center items-center gap-2 px-4 py-2 rounded-lg font-medium text-white text-sm transition-colors bg-accent-600 hover:bg-accent-700"
             >
               <ChefHat class="w-4 h-4" />
-              Als gekocht markieren
+              <span class="hidden sm:inline">Als gekocht markieren</span>
+              <span class="sm:hidden">Gekocht</span>
             </button>
             <router-link
               :to="'/recipes/new?edit=' + recipe.id"
-              class="flex items-center gap-2 hover:bg-stone-50 dark:hover:bg-stone-800 px-4 py-2 border border-stone-300 dark:border-stone-600 rounded-lg text-stone-700 dark:text-stone-300 text-sm transition-colors"
+              class="flex sm:flex-initial flex-1 justify-center items-center gap-2 hover:bg-stone-50 dark:hover:bg-stone-800 px-4 py-2 border border-stone-300 dark:border-stone-600 rounded-lg text-stone-700 dark:text-stone-300 text-sm transition-colors"
             >
               <Pencil class="w-4 h-4" />
               Bearbeiten
             </router-link>
             <button
               @click="showDeleteDialog = true"
-              class="flex items-center gap-2 hover:bg-red-50 dark:hover:bg-red-900/20 px-4 py-2 border border-red-300 dark:border-red-800 rounded-lg text-red-600 dark:text-red-400 text-sm transition-colors"
+              class="flex sm:flex-initial flex-1 justify-center items-center gap-2 hover:bg-red-50 dark:hover:bg-red-900/20 px-4 py-2 border border-red-300 dark:border-red-800 rounded-lg text-red-600 dark:text-red-400 text-sm transition-colors"
             >
               <Trash2 class="w-4 h-4" />
               Löschen
@@ -92,8 +93,8 @@
       </div>
 
       <!-- Portionsrechner + Zutaten -->
-      <div class="bg-white dark:bg-stone-900 p-6 border border-stone-200 dark:border-stone-800 rounded-xl">
-        <div class="flex justify-between items-center mb-4">
+      <div class="bg-white dark:bg-stone-900 p-4 sm:p-6 border border-stone-200 dark:border-stone-800 rounded-xl">
+        <div class="flex sm:flex-row flex-col sm:justify-between sm:items-center gap-3 mb-4">
           <h2 class="font-semibold text-stone-800 dark:text-stone-100 text-lg">
             🥕 Zutaten
           </h2>
@@ -145,7 +146,7 @@
       </div>
 
       <!-- Kochschritte -->
-      <div class="bg-white dark:bg-stone-900 p-6 border border-stone-200 dark:border-stone-800 rounded-xl">
+      <div class="bg-white dark:bg-stone-900 p-4 sm:p-6 border border-stone-200 dark:border-stone-800 rounded-xl">
         <h2 class="mb-6 font-semibold text-stone-800 dark:text-stone-100 text-lg">
           👨‍🍳 Zubereitung
         </h2>
@@ -172,7 +173,7 @@
       </div>
 
       <!-- Kochhistorie -->
-      <div v-if="recipe.history?.length" class="bg-white dark:bg-stone-900 p-6 border border-stone-200 dark:border-stone-800 rounded-xl">
+      <div v-if="recipe.history?.length" class="bg-white dark:bg-stone-900 p-4 sm:p-6 border border-stone-200 dark:border-stone-800 rounded-xl">
         <h2 class="mb-4 font-semibold text-stone-800 dark:text-stone-100 text-lg">
           📊 Kochhistorie
         </h2>

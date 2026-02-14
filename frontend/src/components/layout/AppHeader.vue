@@ -5,7 +5,7 @@
   Enthält Suche, Theme-Toggle und Benutzermenü.
 -->
 <template>
-  <header class="flex items-center bg-white dark:bg-stone-900 px-4 lg:px-6 border-stone-200 dark:border-stone-800 border-b h-16">
+  <header class="flex items-center gap-2 bg-white dark:bg-stone-900 px-3 sm:px-4 lg:px-6 border-stone-200 dark:border-stone-800 border-b h-16">
     <!-- Mobile Hamburger-Menü -->
     <button
       @click="$emit('toggle-sidebar')"
@@ -15,7 +15,7 @@
     </button>
 
     <!-- Seitentitel -->
-    <h1 class="ml-2 lg:ml-0 font-semibold text-stone-800 dark:text-stone-100 text-lg">
+    <h1 class="ml-1 lg:ml-0 font-semibold text-stone-800 dark:text-stone-100 text-base sm:text-lg truncate">
       {{ pageTitle }}
     </h1>
 

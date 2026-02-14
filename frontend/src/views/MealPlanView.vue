@@ -42,47 +42,49 @@
     </div>
 
     <!-- Wochen-Raster -->
-    <div v-if="currentPlan" class="gap-3 grid grid-cols-1 lg:grid-cols-7">
-      <div v-for="(day, dayIdx) in weekDays" :key="dayIdx" class="space-y-2">
-        <!-- Tag Header -->
-        <div :class="[
-          'text-center py-2 rounded-lg text-sm font-semibold',
-          isToday(dayIdx) ? 'bg-primary-100 dark:bg-primary-900/40 text-primary-700 dark:text-primary-300' : 'bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-400'
-        ]">
-          <div>{{ day.short }}</div>
-          <div class="font-normal text-xs">{{ day.date }}</div>
-        </div>
-
-        <!-- Mahlzeiten -->
-        <div v-for="mealType in mealTypes" :key="mealType.key" class="min-h-20">
-          <div class="mb-1 px-1 text-stone-400 text-xs">{{ mealType.icon }} {{ mealType.label }}</div>
-          <div
-            v-if="getMeal(dayIdx, mealType.key)"
-            class="meal-card"
-            :class="{ 'opacity-50 line-through': getMeal(dayIdx, mealType.key).is_cooked }"
-          >
-            <div class="font-medium text-stone-800 dark:text-stone-200 text-sm line-clamp-2">
-              {{ getMeal(dayIdx, mealType.key).recipe_title }}
-            </div>
-            <div class="flex items-center gap-1 mt-1">
-              <button
-                @click="markMealCooked(getMeal(dayIdx, mealType.key))"
-                class="text-xs text-accent-600 hover:text-accent-700"
-                title="Als gekocht markieren"
-              >
-                <Check class="w-3 h-3" />
-              </button>
-              <router-link
-                v-if="getMeal(dayIdx, mealType.key).recipe_id"
-                :to="`/recipes/${getMeal(dayIdx, mealType.key).recipe_id}`"
-                class="text-primary-600 hover:text-primary-700 text-xs"
-              >
-                <ExternalLink class="w-3 h-3" />
-              </router-link>
-            </div>
+    <div v-if="currentPlan" class="-mx-4 lg:mx-0 px-4 lg:px-0 overflow-x-auto">
+      <div class="gap-3 grid grid-cols-7 min-w-160 lg:min-w-0">
+        <div v-for="(day, dayIdx) in weekDays" :key="dayIdx" class="space-y-2">
+          <!-- Tag Header -->
+          <div :class="[
+            'text-center py-2 rounded-lg text-sm font-semibold',
+            isToday(dayIdx) ? 'bg-primary-100 dark:bg-primary-900/40 text-primary-700 dark:text-primary-300' : 'bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-400'
+          ]">
+            <div>{{ day.short }}</div>
+            <div class="font-normal text-xs">{{ day.date }}</div>
           </div>
-          <div v-else class="meal-card-empty">
-            <span class="text-stone-300 dark:text-stone-600 text-xs">Leer</span>
+
+          <!-- Mahlzeiten -->
+          <div v-for="mealType in mealTypes" :key="mealType.key" class="min-h-20">
+            <div class="mb-1 px-1 text-stone-400 text-xs">{{ mealType.icon }} {{ mealType.label }}</div>
+            <div
+              v-if="getMeal(dayIdx, mealType.key)"
+              class="meal-card"
+              :class="{ 'opacity-50 line-through': getMeal(dayIdx, mealType.key).is_cooked }"
+            >
+              <div class="font-medium text-stone-800 dark:text-stone-200 text-sm line-clamp-2">
+                {{ getMeal(dayIdx, mealType.key).recipe_title }}
+              </div>
+              <div class="flex items-center gap-1 mt-1">
+                <button
+                  @click="markMealCooked(getMeal(dayIdx, mealType.key))"
+                  class="text-xs text-accent-600 hover:text-accent-700"
+                  title="Als gekocht markieren"
+                >
+                  <Check class="w-3 h-3" />
+                </button>
+                <router-link
+                  v-if="getMeal(dayIdx, mealType.key).recipe_id"
+                  :to="`/recipes/${getMeal(dayIdx, mealType.key).recipe_id}`"
+                  class="text-primary-600 hover:text-primary-700 text-xs"
+                >
+                  <ExternalLink class="w-3 h-3" />
+                </router-link>
+              </div>
+            </div>
+            <div v-else class="meal-card-empty">
+              <span class="text-stone-300 dark:text-stone-600 text-xs">Leer</span>
+            </div>
           </div>
         </div>
       </div>

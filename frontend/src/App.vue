@@ -18,16 +18,28 @@
       <!-- App-Layout (nach Login) -->
       <template v-else>
         <div class="flex h-screen overflow-hidden">
+
+          <!-- Mobile Backdrop -->
+          <Transition name="fade">
+            <div
+              v-if="mobileMenuOpen"
+              class="lg:hidden z-40 fixed inset-0 bg-black/50 backdrop-blur-sm"
+              @click="mobileMenuOpen = false"
+            />
+          </Transition>
+
           <!-- Sidebar Navigation -->
           <AppSidebar
             :is-collapsed="sidebarCollapsed"
+            :is-mobile-open="mobileMenuOpen"
             @toggle="sidebarCollapsed = !sidebarCollapsed"
+            @close-mobile="mobileMenuOpen = false"
           />
 
           <!-- Hauptbereich -->
-          <div class="flex flex-col flex-1 overflow-hidden">
+          <div class="flex flex-col flex-1 w-0 overflow-hidden">
             <!-- Header mit Suche und Theme-Toggle -->
-            <AppHeader @toggle-sidebar="sidebarCollapsed = !sidebarCollapsed" />
+            <AppHeader @toggle-sidebar="toggleSidebar" />
 
             <!-- Seiteninhalt -->
             <main class="flex-1 p-4 lg:p-6 overflow-y-auto">
@@ -64,6 +76,16 @@ import NotificationToast from '@/components/layout/NotificationToast.vue';
 const authStore = useAuthStore();
 const { isDark } = useTheme();
 const sidebarCollapsed = ref(false);
+const mobileMenuOpen = ref(false);
+
+// Sidebar-Toggle: Auf Mobile → Overlay, auf Desktop → Collapse
+function toggleSidebar() {
+  if (window.innerWidth < 1024) {
+    mobileMenuOpen.value = !mobileMenuOpen.value;
+  } else {
+    sidebarCollapsed.value = !sidebarCollapsed.value;
+  }
+}
 
 // Auth-Status beim App-Start prüfen
 onMounted(() => {
