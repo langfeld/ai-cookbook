@@ -26,10 +26,13 @@ import shoppingRoutes from './routes/shopping.js';
 import pantryRoutes from './routes/pantry.js';
 import reweRoutes from './routes/rewe.js';
 
-// Upload-Verzeichnis sicherstellen
+// Upload-Verzeichnisse sicherstellen (inkl. Unterordner)
 const uploadPath = resolve(config.upload.path);
-if (!existsSync(uploadPath)) {
-  mkdirSync(uploadPath, { recursive: true });
+for (const sub of ['', 'recipes']) {
+  const dir = resolve(uploadPath, sub);
+  if (!existsSync(dir)) {
+    mkdirSync(dir, { recursive: true });
+  }
 }
 
 /**
