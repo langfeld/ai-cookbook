@@ -531,15 +531,35 @@ export default async function recipesRoutes(fastify) {
 
   /**
    * DELETE /api/recipes/:id
-   * Rezept löschen
+   * Rezept löschen (inkl. Bild-Datei)
    */
   fastify.delete('/:id', {
     schema: { description: 'Rezept löschen', tags: ['Rezepte'], security: [{ bearerAuth: [] }] },
   }, async (request, reply) => {
-    const result = db.prepare('DELETE FROM recipes WHERE id = ? AND user_id = ?').run(request.params.id, request.user.id);
-    if (result.changes === 0) {
+    const userId = request.user.id;
+    const recipeId = request.params.id;
+
+    // Rezept holen (für Bild-Pfad)
+    const recipe = db.prepare('SELECT id, image_url FROM recipes WHERE id = ? AND user_id = ?').get(recipeId, userId);
+    if (!recipe) {
       return reply.status(404).send({ error: 'Rezept nicht gefunden' });
     }
+
+    // Bild-Datei löschen (falls vorhanden)
+    if (recipe.image_url) {
+      try {
+        const relPath = recipe.image_url.replace('/api/uploads/', '');
+        const fullPath = resolve(config.upload.path, relPath);
+        const { unlinkSync } = await import('fs');
+        unlinkSync(fullPath);
+      } catch {
+        // Datei existiert nicht mehr – ignorieren
+      }
+    }
+
+    // Rezept löschen (CASCADE löscht Zutaten, Schritte, Kategorien, Historie)
+    db.prepare('DELETE FROM recipes WHERE id = ?').run(recipeId);
+
     return { message: 'Rezept gelöscht' };
   });
 

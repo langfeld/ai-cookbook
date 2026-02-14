@@ -63,7 +63,7 @@
         </div>
 
         <!-- Aktionen -->
-        <div class="flex gap-2 mt-6">
+        <div class="flex flex-wrap gap-2 mt-6">
           <button
             @click="markCooked"
             class="flex items-center gap-2 px-4 py-2 rounded-lg font-medium text-white text-sm transition-colors bg-accent-600 hover:bg-accent-700"
@@ -78,6 +78,13 @@
             <Pencil class="w-4 h-4" />
             Bearbeiten
           </router-link>
+          <button
+            @click="showDeleteDialog = true"
+            class="flex items-center gap-2 hover:bg-red-50 dark:hover:bg-red-900/20 px-4 py-2 border border-red-300 dark:border-red-800 rounded-lg text-red-600 dark:text-red-400 text-sm transition-colors"
+          >
+            <Trash2 class="w-4 h-4" />
+            Löschen
+          </button>
         </div>
       </div>
     </div>
@@ -192,21 +199,41 @@
   <div v-else class="flex justify-center py-16">
     <div class="border-2 border-primary-200 border-t-primary-600 rounded-full w-8 h-8 animate-spin" />
   </div>
+
+  <!-- Bestätigungs-Dialog zum Löschen -->
+  <ConfirmDialog
+    v-model="showDeleteDialog"
+    title="Rezept löschen?"
+    :message="deleteMessage"
+    confirm-text="Endgültig löschen"
+    cancel-text="Abbrechen"
+    variant="danger"
+    :loading="deleting"
+    @confirm="deleteRecipe"
+  />
 </template>
 
 <script setup>
 import { ref, computed, onMounted } from 'vue';
-import { useRoute } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import { useRecipesStore } from '@/stores/recipes.js';
 import { useNotification } from '@/composables/useNotification.js';
-import { Star, Clock, Users, ChefHat, Pencil, Plus, Minus } from 'lucide-vue-next';
+import { Star, Clock, Users, ChefHat, Pencil, Plus, Minus, Trash2 } from 'lucide-vue-next';
+import ConfirmDialog from '@/components/ui/ConfirmDialog.vue';
 
 const route = useRoute();
+const router = useRouter();
 const recipesStore = useRecipesStore();
-const { showSuccess } = useNotification();
+const { showSuccess, showError } = useNotification();
 
 const recipe = computed(() => recipesStore.currentRecipe);
 const adjustedServings = ref(4);
+const showDeleteDialog = ref(false);
+const deleting = ref(false);
+
+const deleteMessage = computed(() =>
+  `Möchtest du „${recipe.value?.title || 'dieses Rezept'}" wirklich unwiderruflich löschen? Alle Zutaten, Schritte und die Kochhistorie gehen verloren.`
+);
 
 // Schwierigkeitsgrad-Darstellung
 const difficultyEmoji = computed(() => ({ leicht: '🟢', mittel: '🟡', schwer: '🔴' })[recipe.value?.difficulty] || '🟡');
@@ -266,6 +293,20 @@ async function markCooked() {
   await recipesStore.markAsCooked(recipe.value.id, { servings: adjustedServings.value });
   showSuccess('Als gekocht markiert! 👨‍🍳');
   await recipesStore.fetchRecipe(recipe.value.id);
+}
+
+async function deleteRecipe() {
+  deleting.value = true;
+  try {
+    await recipesStore.deleteRecipe(recipe.value.id);
+    showDeleteDialog.value = false;
+    showSuccess('Rezept gelöscht! 🗑️');
+    router.push('/recipes');
+  } catch (err) {
+    showError('Fehler beim Löschen: ' + err.message);
+  } finally {
+    deleting.value = false;
+  }
 }
 
 onMounted(async () => {

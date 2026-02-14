@@ -8,7 +8,7 @@
 
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
-import { useApi } from '@/composables/useApi.js';
+import { apiRaw } from '@/composables/useApi.js';
 
 export const useAuthStore = defineStore('auth', () => {
   // --- State ---
@@ -20,17 +20,15 @@ export const useAuthStore = defineStore('auth', () => {
   const isLoggedIn = computed(() => !!token.value);
   const displayName = computed(() => user.value?.display_name || user.value?.username || 'Gast');
 
-  // --- Actions ---
-  const api = useApi();
-
   /**
    * Benutzer registrieren
    */
   async function register(username, email, password, displayName) {
     loading.value = true;
     try {
-      const data = await api.post('/auth/register', {
-        username, email, password, display_name: displayName,
+      const data = await apiRaw('/auth/register', {
+        method: 'POST',
+        body: { username, email, password, display_name: displayName },
       });
       setAuth(data.token, data.user);
       return data;
@@ -45,7 +43,10 @@ export const useAuthStore = defineStore('auth', () => {
   async function login(loginStr, password) {
     loading.value = true;
     try {
-      const data = await api.post('/auth/login', { login: loginStr, password });
+      const data = await apiRaw('/auth/login', {
+        method: 'POST',
+        body: { login: loginStr, password },
+      });
       setAuth(data.token, data.user);
       return data;
     } finally {
@@ -60,7 +61,7 @@ export const useAuthStore = defineStore('auth', () => {
     if (!token.value) return;
 
     try {
-      const data = await api.get('/auth/me');
+      const data = await apiRaw('/auth/me');
       user.value = data.user;
     } catch {
       // Token ungültig -> abmelden

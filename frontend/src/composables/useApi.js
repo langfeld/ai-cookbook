@@ -14,6 +14,26 @@ import { useNotification } from '@/composables/useNotification.js';
 const BASE_URL = '/api';
 
 /**
+ * Benutzerfreundliche deutsche Fehlermeldungen für HTTP-Statuscodes
+ */
+function friendlyErrorMessage(status) {
+  const messages = {
+    400: 'Ungültige Anfrage. Bitte überprüfe deine Eingaben.',
+    401: 'Ungültige Anmeldedaten.',
+    403: 'Zugriff verweigert.',
+    404: 'Nicht gefunden.',
+    409: 'Eintrag existiert bereits.',
+    413: 'Die Datei ist zu groß.',
+    422: 'Die Eingaben konnten nicht verarbeitet werden.',
+    429: 'Zu viele Anfragen. Bitte warte einen Moment.',
+    500: 'Serverfehler. Bitte versuche es später erneut.',
+    502: 'Server nicht erreichbar.',
+    503: 'Server vorübergehend nicht verfügbar.',
+  };
+  return messages[status] || `Unbekannter Fehler (${status})`;
+}
+
+/**
  * Fetch-Wrapper mit Auth-Header und Fehlerbehandlung
  */
 async function apiFetch(url, options = {}) {
@@ -33,30 +53,54 @@ async function apiFetch(url, options = {}) {
     headers['Content-Type'] = 'application/json';
   }
 
-  const response = await fetch(`${BASE_URL}${url}`, {
-    ...options,
-    headers,
-    body: options.body instanceof FormData
-      ? options.body
-      : options.body
-        ? JSON.stringify(options.body)
-        : undefined,
-  });
+  let response;
+  try {
+    response = await fetch(`${BASE_URL}${url}`, {
+      ...options,
+      headers,
+      body: options.body instanceof FormData
+        ? options.body
+        : options.body
+          ? JSON.stringify(options.body)
+          : undefined,
+    });
+  } catch {
+    throw new Error('Server nicht erreichbar. Bitte prüfe deine Internetverbindung.');
+  }
 
   // 401 -> Token abgelaufen, abmelden
-  if (response.status === 401) {
+  if (response.status === 401 && authStore.token) {
     authStore.logout();
     throw new Error('Sitzung abgelaufen. Bitte erneut anmelden.');
   }
 
-  const data = await response.json();
+  // Antwort-Body sicher parsen
+  let data;
+  try {
+    const text = await response.text();
+    data = text ? JSON.parse(text) : {};
+  } catch {
+    // Antwort ist kein valides JSON
+    if (!response.ok) {
+      throw new Error(friendlyErrorMessage(response.status));
+    }
+    return {};
+  }
 
   if (!response.ok) {
-    throw new Error(data.error || `Fehler ${response.status}`);
+    // Fastify liefert `error` (HTTP-Text) + `message` (Detail) bei Validierungsfehlern
+    const msg = data.message || data.error || friendlyErrorMessage(response.status);
+    throw new Error(msg);
   }
 
   return data;
 }
+
+/**
+ * Direkter Zugriff auf apiFetch ohne automatische Notification.
+ * Nützlich z.B. im Auth-Store, wo Fehler inline angezeigt werden.
+ */
+export { apiFetch as apiRaw };
 
 /**
  * useApi Composable
