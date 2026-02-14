@@ -223,11 +223,13 @@ export default async function recipesRoutes(fastify) {
     const userId = request.user.id;
 
     // Alle Dateien aus Multipart-Upload lesen
-    const parts = request.files();
+    const parts = request.parts();
     const imageBuffers = [];
     let firstImagePath = null;
 
     for await (const part of parts) {
+      // Nur Datei-Parts verarbeiten (keine Text-Felder)
+      if (part.type !== 'file') continue;
       const buffer = await part.toBuffer();
       imageBuffers.push(buffer);
 
