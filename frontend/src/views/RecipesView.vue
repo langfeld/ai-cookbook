@@ -15,13 +15,21 @@
         <p class="text-stone-500 text-sm">{{ recipesStore.totalRecipes }} Rezepte in deiner Sammlung</p>
       </div>
       <div class="flex gap-2">
+        <!-- Export/Import Button -->
+        <button
+          @click="showExportImport = true"
+          class="flex items-center gap-2 bg-stone-100 hover:bg-stone-200 dark:bg-stone-800 dark:hover:bg-stone-700 px-4 py-2 border border-stone-200 dark:border-stone-700 rounded-lg font-medium text-stone-700 dark:text-stone-300 text-sm transition-colors"
+        >
+          <ArrowDownUp class="w-4 h-4" />
+          <span class="hidden sm:inline">Export/Import</span>
+        </button>
         <!-- Foto-Import Button -->
         <button
           @click="showPhotoImport = true"
           class="flex items-center gap-2 px-4 py-2 rounded-lg font-medium text-white text-sm transition-colors bg-accent-600 hover:bg-accent-700"
         >
           <Camera class="w-4 h-4" />
-          Foto importieren
+          <span class="hidden sm:inline">Foto importieren</span>
         </button>
         <!-- Neues Rezept -->
         <router-link
@@ -119,20 +127,29 @@
       @close="showPhotoImport = false"
       @imported="handleImported"
     />
+
+    <!-- Export/Import Modal -->
+    <RecipeImportExportModal
+      v-if="showExportImport"
+      @close="showExportImport = false"
+      @imported="handleExportImportDone"
+    />
   </div>
 </template>
 
 <script setup>
 import { ref, onMounted } from 'vue';
 import { useRecipesStore } from '@/stores/recipes.js';
-import { Search, Camera, Plus, Star, BookOpen } from 'lucide-vue-next';
+import { Search, Camera, Plus, Star, BookOpen, ArrowDownUp } from 'lucide-vue-next';
 import RecipeCard from '@/components/recipes/RecipeCard.vue';
 import RecipeImportModal from '@/components/recipes/RecipeImportModal.vue';
+import RecipeImportExportModal from '@/components/recipes/RecipeImportExportModal.vue';
 import { useNotification } from '@/composables/useNotification.js';
 
 const recipesStore = useRecipesStore();
 const { showSuccess } = useNotification();
 const showPhotoImport = ref(false);
+const showExportImport = ref(false);
 
 // Debounced Suche (300ms Verzögerung)
 let searchTimeout;
@@ -151,6 +168,12 @@ function toggleFavoriteFilter() {
 function handleImported(data) {
   showPhotoImport.value = false;
   showSuccess('Rezept erfolgreich importiert!');
+}
+
+function handleExportImportDone(data) {
+  showExportImport.value = false;
+  recipesStore.fetchRecipes();
+  showSuccess(data?.message || 'Import abgeschlossen!');
 }
 
 onMounted(() => {

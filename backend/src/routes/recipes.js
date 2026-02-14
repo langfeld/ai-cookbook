@@ -18,7 +18,7 @@
 import db from '../config/database.js';
 import { parseRecipeFromImage, parseRecipeFromText, suggestCategories } from '../services/recipe-parser.js';
 import { config } from '../config/env.js';
-import { writeFileSync } from 'fs';
+import { writeFileSync, readFileSync, existsSync } from 'fs';
 import { resolve, join } from 'path';
 import sharp from 'sharp';
 import { generateId, safePath } from '../utils/helpers.js';
@@ -641,5 +641,260 @@ export default async function recipesRoutes(fastify) {
     ).run(recipeId);
 
     return { message: 'Als gekocht markiert!' };
+  });
+
+  // ============================================
+  // EXPORT / IMPORT
+  // ============================================
+
+  /**
+   * GET /api/recipes/export
+   * Alle eigenen Rezepte als JSON exportieren
+   * ?include_images=true  — Bilder als Base64 einbetten
+   */
+  fastify.get('/export', {
+    schema: {
+      description: 'Eigene Rezepte als JSON exportieren',
+      tags: ['Rezepte'],
+      security: [{ bearerAuth: [] }],
+      querystring: {
+        type: 'object',
+        properties: {
+          include_images: { type: 'boolean', default: false },
+        },
+      },
+    },
+  }, async (request, reply) => {
+    const userId = request.user.id;
+    const includeImages = request.query.include_images === true || request.query.include_images === 'true';
+
+    // Alle Rezepte des Users laden
+    const recipes = db.prepare('SELECT * FROM recipes WHERE user_id = ?').all(userId);
+
+    const exportData = {
+      version: '1.0',
+      exported_at: new Date().toISOString(),
+      source: 'AI Cookbook',
+      recipe_count: recipes.length,
+      recipes: [],
+    };
+
+    for (const recipe of recipes) {
+      // Kategorien
+      const categories = db.prepare(`
+        SELECT c.name, c.icon, c.color FROM categories c
+        JOIN recipe_categories rc ON c.id = rc.category_id
+        WHERE rc.recipe_id = ?
+      `).all(recipe.id);
+
+      // Zutaten
+      const ingredients = db.prepare(
+        'SELECT name, amount, unit, group_name, sort_order, is_optional, notes FROM ingredients WHERE recipe_id = ? ORDER BY group_name, sort_order'
+      ).all(recipe.id);
+
+      // Kochschritte
+      const steps = db.prepare(
+        'SELECT step_number, title, instruction, duration_minutes FROM cooking_steps WHERE recipe_id = ? ORDER BY step_number'
+      ).all(recipe.id);
+
+      const recipeExport = {
+        title: recipe.title,
+        description: recipe.description,
+        servings: recipe.servings,
+        prep_time: recipe.prep_time,
+        cook_time: recipe.cook_time,
+        total_time: recipe.total_time,
+        difficulty: recipe.difficulty,
+        source_url: recipe.source_url,
+        is_favorite: recipe.is_favorite,
+        notes: recipe.notes,
+        ai_generated: recipe.ai_generated,
+        created_at: recipe.created_at,
+        categories,
+        ingredients,
+        steps,
+      };
+
+      // Bild als Base64 einbetten (optional)
+      if (includeImages && recipe.image_url) {
+        try {
+          const relPath = recipe.image_url.replace('/api/uploads/', '');
+          const imgPath = safePath(config.upload.path, relPath);
+          if (imgPath && existsSync(imgPath)) {
+            const imgBuffer = readFileSync(imgPath);
+            recipeExport.image_base64 = imgBuffer.toString('base64');
+            recipeExport.image_mime = 'image/webp';
+          }
+        } catch { /* Bild nicht verfügbar – ignorieren */ }
+      }
+
+      exportData.recipes.push(recipeExport);
+    }
+
+    reply.header('Content-Type', 'application/json');
+    reply.header('Content-Disposition', `attachment; filename="rezepte-export-${new Date().toISOString().split('T')[0]}.json"`);
+    return exportData;
+  });
+
+  /**
+   * POST /api/recipes/import
+   * Rezepte aus JSON-Datei importieren
+   */
+  fastify.post('/import', {
+    schema: {
+      description: 'Rezepte aus JSON-Datei importieren',
+      tags: ['Rezepte'],
+      security: [{ bearerAuth: [] }],
+    },
+  }, async (request, reply) => {
+    const userId = request.user.id;
+
+    // JSON-Datei oder Body akzeptieren
+    let importData;
+
+    // Prüfen ob Multipart (Datei-Upload) oder JSON-Body
+    const contentType = request.headers['content-type'] || '';
+
+    if (contentType.includes('multipart')) {
+      const file = await request.file();
+      if (!file) {
+        return reply.status(400).send({ error: 'Keine Datei hochgeladen.' });
+      }
+      const buffer = await file.toBuffer();
+      try {
+        importData = JSON.parse(buffer.toString('utf-8'));
+      } catch {
+        return reply.status(400).send({ error: 'Ungültiges JSON-Format in der Datei.' });
+      }
+    } else {
+      importData = request.body;
+    }
+
+    // Validierung
+    if (!importData?.recipes || !Array.isArray(importData.recipes)) {
+      return reply.status(400).send({ error: 'Ungültiges Export-Format. Erwartet: { recipes: [...] }' });
+    }
+
+    if (importData.recipes.length === 0) {
+      return reply.status(400).send({ error: 'Keine Rezepte zum Importieren gefunden.' });
+    }
+
+    // Max. 100 Rezepte pro Import
+    if (importData.recipes.length > 100) {
+      return reply.status(400).send({ error: 'Maximal 100 Rezepte pro Import erlaubt.' });
+    }
+
+    // Kategorien des Users laden
+    const userCategories = db.prepare('SELECT id, name FROM categories WHERE user_id = ?').all(userId);
+    const catMap = new Map(userCategories.map(c => [c.name, c.id]));
+
+    let imported = 0;
+    let skipped = 0;
+    const errors = [];
+
+    const transaction = db.transaction(() => {
+      for (const recipe of importData.recipes) {
+        try {
+          if (!recipe.title) {
+            skipped++;
+            errors.push(`Übersprungen: Rezept ohne Titel`);
+            continue;
+          }
+
+          // Rezept einfügen
+          const recipeResult = db.prepare(`
+            INSERT INTO recipes (user_id, title, description, servings, prep_time, cook_time, total_time, difficulty, source_url, is_favorite, notes, ai_generated)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          `).run(
+            userId,
+            recipe.title,
+            recipe.description || null,
+            recipe.servings || 4,
+            recipe.prep_time || 0,
+            recipe.cook_time || 0,
+            recipe.total_time || (recipe.prep_time || 0) + (recipe.cook_time || 0),
+            recipe.difficulty || 'mittel',
+            recipe.source_url || null,
+            recipe.is_favorite ? 1 : 0,
+            recipe.notes || null,
+            recipe.ai_generated ? 1 : 0
+          );
+
+          const recipeId = recipeResult.lastInsertRowid;
+
+          // Bild aus Base64 wiederherstellen
+          if (recipe.image_base64) {
+            try {
+              const imgBuffer = Buffer.from(recipe.image_base64, 'base64');
+              const imageId = generateId();
+              const imagePath = `recipes/${imageId}.webp`;
+              const fullPath = resolve(config.upload.path, imagePath);
+
+              // Synchron schreiben (innerhalb Transaction)
+              writeFileSync(fullPath, imgBuffer);
+              db.prepare('UPDATE recipes SET image_url = ? WHERE id = ?').run(`/api/uploads/${imagePath}`, recipeId);
+            } catch { /* Bild-Import fehlgeschlagen – ignorieren */ }
+          }
+
+          // Kategorien zuordnen (nur existierende)
+          if (recipe.categories?.length) {
+            const insertCat = db.prepare(
+              'INSERT OR IGNORE INTO recipe_categories (recipe_id, category_id) VALUES (?, ?)'
+            );
+            for (const cat of recipe.categories) {
+              const catName = typeof cat === 'string' ? cat : cat.name;
+              let catId = catMap.get(catName);
+
+              // Kategorie erstellen falls nicht vorhanden
+              if (!catId && catName) {
+                const newCat = db.prepare(
+                  'INSERT INTO categories (user_id, name, icon, color) VALUES (?, ?, ?, ?)'
+                ).run(userId, catName, cat.icon || '🍽️', cat.color || '#6366f1');
+                catId = newCat.lastInsertRowid;
+                catMap.set(catName, catId);
+              }
+
+              if (catId) insertCat.run(recipeId, catId);
+            }
+          }
+
+          // Zutaten einfügen
+          if (recipe.ingredients?.length) {
+            const insertIng = db.prepare(`
+              INSERT INTO ingredients (recipe_id, name, amount, unit, group_name, sort_order, is_optional, notes)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            `);
+            recipe.ingredients.forEach((ing, idx) => {
+              insertIng.run(recipeId, ing.name, ing.amount || null, ing.unit || null, ing.group_name || null, ing.sort_order ?? idx, ing.is_optional ? 1 : 0, ing.notes || null);
+            });
+          }
+
+          // Kochschritte einfügen
+          if (recipe.steps?.length) {
+            const insertStep = db.prepare(`
+              INSERT INTO cooking_steps (recipe_id, step_number, title, instruction, duration_minutes)
+              VALUES (?, ?, ?, ?, ?)
+            `);
+            recipe.steps.forEach((step, idx) => {
+              insertStep.run(recipeId, step.step_number ?? idx + 1, step.title || null, step.instruction, step.duration_minutes || null);
+            });
+          }
+
+          imported++;
+        } catch (err) {
+          skipped++;
+          errors.push(`Fehler bei "${recipe.title || 'Unbenannt'}": ${err.message}`);
+        }
+      }
+    });
+
+    transaction();
+
+    return {
+      message: `${imported} Rezept(e) importiert, ${skipped} übersprungen.`,
+      imported,
+      skipped,
+      errors: errors.length ? errors : undefined,
+    };
   });
 }

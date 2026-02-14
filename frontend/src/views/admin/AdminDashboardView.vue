@@ -122,13 +122,41 @@
           </div>
         </div>
       </div>
+
+      <!-- Export / Import -->
+      <div class="bg-white dark:bg-stone-800 mt-4 sm:mt-6 p-4 sm:p-5 border border-stone-200 dark:border-stone-700 rounded-xl">
+        <h2 class="mb-4 font-display font-semibold text-stone-800 dark:text-stone-100 text-lg">
+          📦 Rezept Export / Import
+        </h2>
+        <p class="mb-4 text-stone-500 dark:text-stone-400 text-sm">
+          Exportiere alle Rezepte als JSON-Backup oder importiere Rezepte aus einer Export-Datei.
+        </p>
+        <button
+          @click="showExportImport = true"
+          class="flex items-center gap-2 bg-primary-600 hover:bg-primary-700 px-4 py-2.5 rounded-lg font-medium text-white text-sm transition-colors"
+        >
+          <ArrowDownUp class="w-4 h-4" />
+          Export / Import öffnen
+        </button>
+      </div>
     </template>
+
+    <!-- Export/Import Modal -->
+    <RecipeImportExportModal
+      v-if="showExportImport"
+      :is-admin="true"
+      :users="adminUsers"
+      @close="showExportImport = false"
+      @imported="handleImported"
+    />
   </div>
 </template>
 
 <script setup>
 import { ref, computed, onMounted } from 'vue';
 import { useApi } from '@/composables/useApi.js';
+import { useNotification } from '@/composables/useNotification.js';
+import RecipeImportExportModal from '@/components/recipes/RecipeImportExportModal.vue';
 import {
   Users,
   BookOpen,
@@ -138,12 +166,16 @@ import {
   Warehouse,
   ChefHat,
   HardDrive,
+  ArrowDownUp,
 } from 'lucide-vue-next';
 
 const api = useApi();
+const { showSuccess } = useNotification();
 const loading = ref(true);
 const stats = ref(null);
 const logs = ref([]);
+const showExportImport = ref(false);
+const adminUsers = ref([]);
 
 const statCards = computed(() => {
   if (!stats.value) return [];
@@ -179,14 +211,21 @@ function logDotColor(action) {
   return 'bg-blue-500';
 }
 
+function handleImported(data) {
+  showExportImport.value = false;
+  showSuccess(data?.message || 'Import abgeschlossen!');
+}
+
 onMounted(async () => {
   try {
-    const [statsData, logsData] = await Promise.all([
+    const [statsData, logsData, usersData] = await Promise.all([
       api.get('/admin/stats'),
       api.get('/admin/logs?limit=10'),
+      api.get('/admin/users'),
     ]);
     stats.value = statsData;
     logs.value = logsData.logs || [];
+    adminUsers.value = usersData.users || [];
   } catch {
     // Fehler wird von useApi gehandelt
   } finally {

@@ -8,6 +8,7 @@
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
 import { useApi } from '@/composables/useApi.js';
+import { useAuthStore } from '@/stores/auth.js';
 
 export const useRecipesStore = defineStore('recipes', () => {
   // --- State ---
@@ -133,11 +134,37 @@ export const useRecipesStore = defineStore('recipes', () => {
     return data;
   }
 
+  /** Rezepte als JSON exportieren */
+  async function exportRecipes(includeImages = false) {
+    const authStore = useAuthStore();
+    const params = includeImages ? '?include_images=true' : '';
+    const response = await fetch(`/api/recipes/export${params}`, {
+      headers: { Authorization: `Bearer ${authStore.token}` },
+    });
+    if (!response.ok) throw new Error('Export fehlgeschlagen');
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `rezepte-export-${new Date().toISOString().split('T')[0]}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  /** Rezepte aus JSON-Datei importieren */
+  async function importRecipes(file) {
+    const formData = new FormData();
+    formData.append('file', file);
+    const data = await api.upload('/recipes/import', formData);
+    await fetchRecipes();
+    return data;
+  }
+
   return {
     recipes, currentRecipe, categories, loading, filters,
     totalRecipes, favoriteRecipes, recentRecipes,
     fetchRecipes, fetchRecipe, createRecipe, updateRecipe, deleteRecipe,
     importFromPhoto, importFromText, toggleFavorite, markAsCooked,
-    fetchCategories, createCategory,
+    fetchCategories, createCategory, exportRecipes, importRecipes,
   };
 });
