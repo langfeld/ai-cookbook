@@ -68,6 +68,16 @@
             </div>
             <input ref="imageInput" type="file" accept="image/*" @change="onImageChange" class="hidden" />
           </div>
+          <!-- Zuschneiden-Button (nur wenn Bild vorhanden) -->
+          <button
+            v-if="imagePreview"
+            type="button"
+            @click="openCropper"
+            class="flex items-center gap-2 mt-2 text-primary-600 hover:text-primary-700 dark:hover:text-primary-300 dark:text-primary-400 text-sm transition-colors"
+          >
+            <CropIcon class="w-4 h-4" />
+            Bild zuschneiden
+          </button>
         </div>
       </section>
 
@@ -187,6 +197,15 @@
         </router-link>
       </div>
     </form>
+
+    <!-- Bild-Zuschnitt Modal -->
+    <ImageCropModal
+      v-if="showCropper"
+      :image-src="cropperImageSrc"
+      :file-name="cropperFileName"
+      @cropped="onCropped"
+      @cancel="showCropper = false"
+    />
   </div>
 </template>
 
@@ -196,7 +215,8 @@ import { useRoute, useRouter } from 'vue-router';
 import { useRecipesStore } from '@/stores/recipes.js';
 import { useNotification } from '@/composables/useNotification.js';
 import { useApi } from '@/composables/useApi.js';
-import { Plus, Trash2, Save, Image as ImageIcon } from 'lucide-vue-next';
+import { Plus, Trash2, Save, Image as ImageIcon, Crop as CropIcon } from 'lucide-vue-next';
+import ImageCropModal from '@/components/ui/ImageCropModal.vue';
 
 const route = useRoute();
 const router = useRouter();
@@ -207,6 +227,13 @@ const api = useApi();
 const saving = ref(false);
 const imageFile = ref(null);
 const imagePreview = ref(null);
+
+// Cropper State
+const showCropper = ref(false);
+const cropperImageSrc = ref('');
+const cropperFileName = ref('recipe.jpg');
+// Das originale unkomprimierte Bild für erneutes Zuschneiden
+const originalImageSrc = ref(null);
 
 const editId = computed(() => route.query.edit);
 const isEdit = computed(() => !!editId.value);
@@ -243,8 +270,30 @@ function addIngredientGroup() {
 function onImageChange(e) {
   const file = e.target.files[0];
   if (!file) return;
+  // Original-URL speichern für erneutes Zuschneiden
+  const objectUrl = URL.createObjectURL(file);
+  originalImageSrc.value = objectUrl;
+  cropperImageSrc.value = objectUrl;
+  cropperFileName.value = file.name;
+  showCropper.value = true;
+  // Input zurücksetzen (damit dasselbe Bild nochmal gewählt werden kann)
+  e.target.value = '';
+}
+
+function openCropper() {
+  // Cropper erneut öffnen (mit Original oder aktuellem Bild)
+  if (originalImageSrc.value) {
+    cropperImageSrc.value = originalImageSrc.value;
+  } else if (imagePreview.value) {
+    cropperImageSrc.value = imagePreview.value;
+  }
+  showCropper.value = true;
+}
+
+function onCropped(file, previewUrl) {
   imageFile.value = file;
-  imagePreview.value = URL.createObjectURL(file);
+  imagePreview.value = previewUrl;
+  showCropper.value = false;
 }
 
 async function saveRecipe() {

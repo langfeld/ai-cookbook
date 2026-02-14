@@ -2,57 +2,77 @@
 
 Eine KI-gestützte Rezeptverwaltung mit intelligentem Wochenplaner, Einkaufsliste und REWE-Integration.
 
-## Features
+![Vue 3](https://img.shields.io/badge/Vue-3.5-4FC08D?logo=vuedotjs&logoColor=white)
+![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-4-06B6D4?logo=tailwindcss&logoColor=white)
+![Fastify](https://img.shields.io/badge/Fastify-5-000000?logo=fastify&logoColor=white)
+![SQLite](https://img.shields.io/badge/SQLite-3-003B57?logo=sqlite&logoColor=white)
+![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)
+
+---
+
+## ✨ Features
 
 ### 🥘 Rezeptverwaltung
-- **Foto-Import**: Rezepte per Foto importieren – die KI erkennt Zutaten, Schritte und mehr
-- **Kategorien**: Frei anlegbare Kategorien (Frühstück, Mittag, Abendessen, Snack…)
-- **KI-Kategorisierung**: Automatische Kategorie-Vorschläge durch die KI
-- **Farbige Zutaten**: Zutaten werden in Kochschritten farblich hervorgehoben
-- **Kochschritte**: Übersichtlich unterteilt mit Zeitangaben
-- **Portionsrechner**: Zutatenmengen dynamisch anpassen
-- **Schwierigkeitsgrad & Kochzeit**: Automatisch von der KI geschätzt
+- **KI-Foto-Import** — Rezepte per Foto importieren (auch mehrseitige Rezeptkarten). Die KI erkennt Zutaten, Kochschritte, Schwierigkeitsgrad und schlägt Kategorien vor
+- **Text-Import** — Rezept als Freitext beschreiben, die KI strukturiert es
+- **Bildzuschnitt** — Integrierter Cropper mit Seitenverhältnissen (4:3, 1:1, 16:9, Frei) und Drehen
+- **Kategorien** — Frei anlegbare Kategorien mit Icons und Farben
+- **Farbige Zutatenerkennung** — Zutaten werden in Kochschritten farblich hervorgehoben (Fleisch 🔴, Gemüse 🟢, Milch 🔵, Gewürze 🟡)
+- **Portionsrechner** — Zutatenmengen dynamisch umrechnen
+- **Kochhistorie** — Protokoll, wann welches Rezept zuletzt gekocht wurde
+- **Favoriten** — Lieblingsrezepte markieren und filtern
 
 ### 📅 Wochenplaner
-- **Intelligente Planung**: KI wählt Rezepte aus, die länger nicht gekocht wurden
-- **Einkaufsoptimiert**: Rezepte werden so kombiniert, dass Zutaten zusammenpassen
-- **Drag & Drop**: Rezepte einfach in Tagesslots ziehen
+- **KI-optimierte Planung** — Berücksichtigt Kochhistorie, Rezeptvielfalt und Zutatensynergien
+- **4 Mahlzeiten/Tag** — Frühstück, Mittag, Abendessen, Snack
+- **Horizontal scrollbares 7-Tage-Raster** — Auch auf Mobile voll nutzbar
 
 ### 🛒 Einkaufsliste
-- **Automatisch generiert**: Aus dem Wochenplan
-- **REWE-Integration**: Direkte Anbindung an REWE Abhol- und Lieferservice
-- **Preisvergleich**: Aktuelle REWE-Preise zu jeder Zutat
-- **Vorratsschrank-Abgleich**: Vorhandene Zutaten werden automatisch abgezogen
+- **Automatisch generiert** — Aus dem Wochenplan, gruppiert nach Abteilungen
+- **Vorratsabgleich** — Vorhandene Vorräte werden abgezogen
+- **REWE-Integration** — Produktzuordnung und Preisanzeige
+- **Fortschrittsbalken** — Visueller Einkaufsfortschritt
+- **Einkauf abschließen** → Gekaufte Artikel landen im Vorratsschrank
 
 ### 🏪 Vorratsschrank
-- **Überschuss-Tracking**: Zu viel gekaufte Mengen werden automatisch erfasst
-- **Ablaufdatum**: Optionale Verfallsdaten mit Warnungen
-- **Nächster Einkauf**: Vorräte werden bei der nächsten Planung berücksichtigt
+- **Kategorie-Gruppierung** — Übersichtlich nach Lebensmittelgruppen
+- **Ablaufdaten** — MHD-Tracking mit Warnungen bei bald ablaufenden Artikeln
+- **Verbrauchsfunktion** — Teilmengen entnehmen
+- **Automatischer Nachschub** — Überschüsse aus Einkäufen werden erfasst
 
-### ⭐ Weitere Features
-- **Favoriten**: Lieblingsrezepte markieren
-- **Kochhistorie**: Wann wurde was zuletzt gekocht?
-- **Dark Mode**: Umschaltbar zwischen hellem und dunklem Design
-- **Responsive**: Optimiert für Desktop, Tablet und Smartphone
+### 🎨 Design & UX
+- **Dark Mode / Light Mode** — Umschaltbar, klassenbasiert
+- **Voll Responsiv** — Mobile-Sidebar als Overlay-Drawer, horizontaler Scroll für Wochenplaner, adaptive Grids
+- **Tailwind CSS 4** — Native CSS mit Custom Properties, kein `@apply`
+- **Animierte Übergänge** — Vue `<Transition>` für Seitenwechsel und Modals
+- **Deutsche Fehlermeldungen** — Nutzerfreundliche Hinweise bei Netzwerk-/API-Fehlern
 
-## Technologie-Stack
+---
 
-| Komponente | Technologie |
-|-----------|-------------|
-| Frontend  | Vue 3, Tailwind CSS 4, Vite |
-| Backend   | Node.js, Fastify |
-| Datenbank | SQLite (better-sqlite3) |
-| KI        | Kimi 2.5 (austauschbar: OpenAI, Anthropic, Ollama) |
-| Container | Docker, Docker Compose |
-| Proxy     | Nginx |
+## 🛠 Technologie-Stack
 
-## Schnellstart
+| Komponente | Technologie | Version |
+|-----------|-------------|---------|
+| **Frontend** | Vue 3 + Vite + Pinia + Vue Router | 3.5 / 6.x / 2.3 / 4.5 |
+| **Styling** | Tailwind CSS 4 (`@theme`, `@custom-variant`) | 4.x |
+| **Icons** | Lucide Vue Next | 0.468 |
+| **Bildzuschnitt** | vue-advanced-cropper | 2.8 |
+| **Backend** | Fastify + Node.js 22 | 5.2 / 22.x |
+| **Datenbank** | SQLite (better-sqlite3, WAL-Modus) | 11.7 |
+| **Bildverarbeitung** | Sharp (Resize, WebP-Konvertierung) | 0.33 |
+| **KI-Provider** | Kimi K2.5 (Moonshot AI) — austauschbar | — |
+| **Auth** | JWT (@fastify/jwt + bcryptjs) | — |
+| **Container** | Docker + Docker Compose + Nginx | — |
+
+---
+
+## 🚀 Schnellstart
 
 ### Voraussetzungen
-- Docker & Docker Compose
-- Ein API-Key für den gewünschten KI-Provider (z.B. Kimi/Moonshot)
+- **Node.js 22+** (für lokale Entwicklung) oder **Docker + Docker Compose**
+- Ein API-Key für Kimi/Moonshot AI (oder einen anderen KI-Provider)
 
-### Installation
+### Installation (Docker)
 
 ```bash
 # Repository klonen
@@ -61,98 +81,246 @@ cd ai-cookbook
 
 # Umgebungsvariablen konfigurieren
 cp .env.example .env
-# .env bearbeiten und API-Keys eintragen
+# .env bearbeiten: JWT_SECRET und KIMI_API_KEY eintragen
 
 # Container starten
 docker compose up -d
 ```
 
-Die Anwendung ist dann erreichbar unter:
-- **Frontend**: http://localhost:8080
-- **Backend API**: http://localhost:3001
-- **API Dokumentation**: http://localhost:3001/docs
+Erreichbar unter **http://localhost:8080**
 
-### Entwicklung (ohne Docker)
+### Lokale Entwicklung (ohne Docker)
 
 ```bash
-# Backend
+# Umgebungsvariablen konfigurieren
+cp .env.example .env
+# .env bearbeiten: JWT_SECRET und KIMI_API_KEY eintragen
+
+# Backend starten
 cd backend
 npm install
-npm run dev
+npm run dev          # → http://localhost:3001
 
-# Frontend (neues Terminal)
+# Frontend starten (neues Terminal)
 cd frontend
 npm install
-npm run dev
+npm run dev          # → http://localhost:5173
 ```
 
-## Projektstruktur
+> **Hinweis:** Das Backend lädt `.env` über `--env-file=../.env` (Node 22 nativ, kein dotenv nötig).
+
+---
+
+## 📁 Projektstruktur
 
 ```
 ai-cookbook/
-├── docker-compose.yml          # Container-Orchestrierung
 ├── .env.example                # Umgebungsvariablen-Vorlage
-├── README.md                   # Diese Datei
+├── docker-compose.yml          # 3-Service-Compose (Backend, Frontend, Nginx)
+├── README.md
 │
-├── backend/                    # Fastify Backend
+├── backend/
 │   ├── Dockerfile
 │   ├── package.json
 │   └── src/
-│       ├── server.js           # Server-Einstiegspunkt
-│       ├── config/             # Konfiguration
-│       ├── plugins/            # Fastify Plugins (Auth, CORS)
-│       ├── routes/             # API-Routen
-│       ├── services/           # Business-Logik
-│       │   └── ai/             # KI-Provider (austauschbar)
-│       ├── models/             # Datenbank-Modelle
-│       └── utils/              # Hilfsfunktionen
+│       ├── server.js           # Fastify Server + Plugin-Registrierung
+│       ├── config/
+│       │   ├── env.js          # Zentrale Config aus Umgebungsvariablen
+│       │   ├── database.js     # SQLite-Initialisierung (WAL, FK, CASCADE)
+│       │   └── migrate.js      # DB-Migrationen
+│       ├── plugins/            # Fastify-Plugins (Auth, CORS, Static)
+│       ├── routes/
+│       │   ├── auth.js         # Registrierung, Login, Token-Refresh
+│       │   ├── recipes.js      # CRUD + Foto-Import + Text-Import
+│       │   ├── categories.js   # Kategorien CRUD
+│       │   ├── mealplan.js     # Wochenplaner + KI-Generierung
+│       │   ├── shopping.js     # Einkaufsliste + REWE-Matching
+│       │   ├── pantry.js       # Vorratsschrank CRUD + Verbrauch
+│       │   └── rewe.js         # REWE Produktsuche
+│       ├── services/
+│       │   ├── ai/
+│       │   │   ├── base.js     # BaseAIProvider (Chat, JSON-Parse, Bildanalyse)
+│       │   │   ├── kimi.js     # Kimi K2.5 Provider (api.moonshot.ai)
+│       │   │   └── index.js    # Provider-Factory
+│       │   └── recipe-parser.js # Multi-Bild-Rezeptanalyse (max 16384 Tokens)
+│       └── utils/
 │
-├── frontend/                   # Vue 3 Frontend
+├── frontend/
 │   ├── Dockerfile
 │   ├── package.json
+│   ├── vite.config.js          # Vite 6 + @vitejs/plugin-vue + @tailwindcss/vite
 │   └── src/
-│       ├── components/         # Vue-Komponenten
-│       ├── views/              # Seiten
-│       ├── stores/             # Pinia Stores
-│       ├── composables/        # Vue Composables
-│       └── router/             # Vue Router
+│       ├── main.js             # App-Einstieg + Pinia + Router
+│       ├── App.vue             # Layout-Shell (Sidebar, Header, Transition)
+│       ├── assets/styles/
+│       │   └── main.css        # Tailwind 4 (@theme, @custom-variant dark)
+│       ├── components/
+│       │   ├── layout/
+│       │   │   ├── AppSidebar.vue     # Responsive: Desktop static, Mobile overlay
+│       │   │   ├── AppHeader.vue      # Suche, Theme-Toggle, Benutzermenü
+│       │   │   ├── ThemeToggle.vue    # Dark/Light Mode Umschalter
+│       │   │   └── NotificationToast.vue
+│       │   ├── ui/
+│       │   │   ├── ConfirmDialog.vue  # Wiederverwendbarer Bestätigungsdialog
+│       │   │   └── ImageCropModal.vue # Bildzuschnitt mit Seitenverhältnissen
+│       │   ├── recipes/
+│       │   │   ├── RecipeCard.vue     # Grid-Vorschaukarte
+│       │   │   └── RecipeImportModal.vue # KI-Import (Foto + Text)
+│       │   └── dashboard/
+│       │       └── StatCard.vue
+│       ├── views/
+│       │   ├── LoginView.vue          # Login + Registrierung
+│       │   ├── DashboardView.vue      # Statistiken, Tagesplan, Schnellaktionen
+│       │   ├── RecipesView.vue        # Übersicht mit Filtern + Suche
+│       │   ├── RecipeDetailView.vue   # Vollansicht mit Zutatenhighlighting
+│       │   ├── RecipeFormView.vue     # Erstellen/Bearbeiten + Bildzuschnitt
+│       │   ├── MealPlanView.vue       # 7-Tage-Wochenplaner
+│       │   ├── ShoppingView.vue       # Einkaufsliste + REWE
+│       │   └── PantryView.vue         # Vorratsschrank
+│       ├── stores/                    # Pinia Stores
+│       │   ├── auth.js
+│       │   ├── recipes.js
+│       │   ├── mealplan.js
+│       │   ├── shopping.js
+│       │   └── pantry.js
+│       ├── composables/
+│       │   ├── useApi.js              # Fetch-Wrapper mit Fehlerbehandlung
+│       │   ├── useTheme.js            # Dark-Mode-Verwaltung
+│       │   └── useNotification.js     # Toast-System
+│       └── router/
+│           └── index.js
 │
-└── nginx/                      # Reverse Proxy
-    └── default.conf
+└── nginx/
+    └── default.conf                   # Reverse Proxy (Frontend + /api → Backend)
 ```
 
-## KI-Provider wechseln
+---
 
-Die KI-Anbindung ist über ein Provider-Pattern abstrahiert. Um den Provider zu wechseln:
+## 🔌 API-Endpunkte
 
-1. In `.env` den `AI_PROVIDER` ändern (z.B. `openai`, `anthropic`, `ollama`)
-2. Den entsprechenden API-Key eintragen
-3. Container neu starten
-
-```env
-AI_PROVIDER=openai
-OPENAI_API_KEY=sk-...
-```
-
-Eigene Provider können einfach hinzugefügt werden – siehe `backend/src/services/ai/provider.js`.
-
-## API-Endpunkte
-
+### Auth (`/api/auth`)
 | Methode | Pfad | Beschreibung |
 |---------|------|-------------|
-| POST | `/api/auth/register` | Registrierung |
-| POST | `/api/auth/login` | Login |
-| GET | `/api/recipes` | Alle Rezepte |
-| POST | `/api/recipes` | Rezept erstellen |
-| POST | `/api/recipes/import-photo` | Rezept per Foto importieren |
-| GET | `/api/categories` | Kategorien auflisten |
-| POST | `/api/mealplan/generate` | Wochenplan generieren (KI) |
-| GET | `/api/shopping/list` | Einkaufsliste |
-| GET | `/api/pantry` | Vorratsschrank |
-| GET | `/api/rewe/search` | REWE Produktsuche |
+| `POST` | `/register` | Neuen Benutzer registrieren |
+| `POST` | `/login` | Anmelden, JWT erhalten |
+| `GET` | `/me` | Aktuellen Benutzer abrufen |
 
-Vollständige API-Dokumentation unter `/docs` (Swagger UI).
+### Rezepte (`/api/recipes`)
+| Methode | Pfad | Beschreibung |
+|---------|------|-------------|
+| `GET` | `/` | Alle Rezepte (mit Filtern, Suche, Pagination) |
+| `GET` | `/:id` | Rezeptdetails mit Zutaten, Schritten, Historie |
+| `POST` | `/` | Neues Rezept erstellen |
+| `PUT` | `/:id` | Rezept bearbeiten |
+| `DELETE` | `/:id` | Rezept löschen (inkl. Bild-Cleanup) |
+| `POST` | `/import-photo` | KI-Foto-Import (Multi-Bild) |
+| `POST` | `/import-text` | KI-Text-Import |
+| `POST` | `/:id/image` | Bild hochladen/ersetzen |
+| `POST` | `/:id/favorite` | Favorit togglen |
+| `POST` | `/:id/cooked` | Als gekocht markieren |
 
-## Lizenz
+### Kategorien (`/api/categories`)
+| Methode | Pfad | Beschreibung |
+|---------|------|-------------|
+| `GET` | `/` | Alle Kategorien |
+| `POST` | `/` | Kategorie erstellen |
+| `PUT` | `/:id` | Kategorie bearbeiten |
+| `DELETE` | `/:id` | Kategorie löschen |
+
+### Wochenplaner (`/api/mealplan`)
+| Methode | Pfad | Beschreibung |
+|---------|------|-------------|
+| `POST` | `/generate` | KI-Wochenplan generieren |
+| `GET` | `/` | Aktuellen Plan abrufen |
+| `GET` | `/history` | Vergangene Pläne |
+| `PUT` | `/:planId/entry/:entryId` | Eintrag bearbeiten |
+| `POST` | `/:planId/entry/:entryId/cooked` | Mahlzeit als gekocht |
+| `DELETE` | `/:id` | Plan löschen |
+
+### Einkaufsliste (`/api/shopping`)
+| Methode | Pfad | Beschreibung |
+|---------|------|-------------|
+| `POST` | `/generate` | Liste aus Wochenplan generieren |
+| `GET` | `/list` | Aktive Einkaufsliste |
+| `GET` | `/lists` | Alle Listen |
+| `PUT` | `/item/:id/check` | Artikel abhaken |
+| `PUT` | `/item/:id/rewe` | REWE-Produkt zuordnen |
+| `POST` | `/:listId/complete` | Einkauf abschließen → Vorratsschrank |
+
+### Vorratsschrank (`/api/pantry`)
+| Methode | Pfad | Beschreibung |
+|---------|------|-------------|
+| `GET` | `/` | Alle Vorräte |
+| `POST` | `/` | Vorrat hinzufügen |
+| `PUT` | `/:id` | Vorrat bearbeiten |
+| `DELETE` | `/:id` | Vorrat entfernen |
+| `POST` | `/:id/use` | Menge verbrauchen |
+
+### REWE (`/api/rewe`)
+| Methode | Pfad | Beschreibung |
+|---------|------|-------------|
+| `GET` | `/search` | Produktsuche |
+| `POST` | `/match-ingredient` | Einzelne Zutat matchen |
+| `POST` | `/match-shopping-list` | Gesamte Liste matchen |
+
+---
+
+## 🤖 KI-Provider wechseln
+
+Die KI-Anbindung ist über ein Provider-Pattern abstrahiert (`backend/src/services/ai/`).
+
+### Kimi K2.5 (Standard)
+```env
+AI_PROVIDER=kimi
+KIMI_API_KEY=sk-dein-key
+KIMI_BASE_URL=https://api.moonshot.ai/v1
+KIMI_MODEL=kimi-k2.5
+```
+> **Wichtig:** `api.moonshot.ai` (International), nicht `api.moonshot.cn`. Kimi K2.5 unterstützt keinen `temperature`-Parameter.
+
+### OpenAI
+```env
+AI_PROVIDER=openai
+OPENAI_API_KEY=sk-dein-key
+OPENAI_MODEL=gpt-4o
+```
+
+### Anthropic
+```env
+AI_PROVIDER=anthropic
+ANTHROPIC_API_KEY=sk-dein-key
+ANTHROPIC_MODEL=claude-sonnet-4-20250514
+```
+
+### Ollama (Lokal)
+```env
+AI_PROVIDER=ollama
+OLLAMA_BASE_URL=http://localhost:11434
+OLLAMA_MODEL=llava
+```
+
+---
+
+## 🎨 Tailwind CSS 4 Konventionen
+
+Dieses Projekt verwendet **Tailwind CSS 4** mit CSS-basierter Konfiguration:
+
+- **Theme:** `@theme { }` in `main.css` für Custom Tokens (`--color-primary-*`, `--color-accent-*`)
+- **Dark Mode:** `@custom-variant dark (&:where(.dark, .dark *));` (klassenbasiert)
+- **Kein `@apply`** — Alle Custom-Klassen verwenden native CSS mit `var(--color-*)`, `var(--spacing)`, `var(--radius-*)`
+- **Dark-Mode in Scoped Styles:** `:is(.dark .my-class) { ... }`
+
+---
+
+## ⚠️ Bekannte Einschränkungen
+
+- **Vue Transition:** Alle Views müssen **genau ein Root-Element** haben (wegen `<Transition mode="out-in">` in `App.vue`)
+- **REWE-API:** Inoffizielle API, kann sich ändern. Fehlende Market-ID deaktiviert die Funktion
+- **KI-Genauigkeit:** Foto-Import funktioniert am besten mit gut beleuchteten, scharfen Rezeptfotos
+- **SQLite:** Für Single-Server-Betrieb ausgelegt, nicht für horizontale Skalierung
+
+---
+
+## 📜 Lizenz
 
 MIT
