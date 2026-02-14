@@ -2,7 +2,16 @@
  * ============================================
  * Rezept-Routen (CRUD + AI-Import)
  * ============================================
- * Vollständige CRUD-Operationen für Rezepte inkl.
+ * Vollständige CRUD-Operationen für       if (category_ids?.length) {
+        const insertCat = db.prepare(
+          'INSERT OR IGNORE INTO recipe_categories (recipe_id, category_id) VALUES (?, ?)'
+        );
+        for (const catId of category_ids) {
+          insertCat.run(recipeId, catId);
+        }
+      }
+
+      // Zutaten einfügenkl.
  * Foto-Import, Favoriten und Kochhistorie.
  */
 
@@ -157,7 +166,7 @@ export default async function recipesRoutes(fastify) {
     },
   }, async (request, reply) => {
     const userId = request.user.id;
-    const { title, description, servings, prep_time, cook_time, difficulty, ingredients, steps, categoryIds, notes } = request.body;
+    const { title, description, servings, prep_time, cook_time, difficulty, ingredients, steps, category_ids, notes } = request.body;
 
     const totalTime = (prep_time || 0) + (cook_time || 0);
 
@@ -171,7 +180,7 @@ export default async function recipesRoutes(fastify) {
       const recipeId = recipeResult.lastInsertRowid;
 
       // Kategorien zuordnen
-      if (categoryIds?.length) {
+      if (category_ids?.length) {
         const insertCat = db.prepare(
           'INSERT OR IGNORE INTO recipe_categories (recipe_id, category_id) VALUES (?, ?)'
         );
@@ -410,7 +419,7 @@ export default async function recipesRoutes(fastify) {
   }, async (request, reply) => {
     const userId = request.user.id;
     const recipeId = request.params.id;
-    const { title, description, servings, prep_time, cook_time, difficulty, ingredients, steps, categoryIds, notes } = request.body;
+    const { title, description, servings, prep_time, cook_time, difficulty, ingredients, steps, category_ids, notes } = request.body;
 
     // Prüfen ob Rezept dem User gehört
     const existing = db.prepare('SELECT id FROM recipes WHERE id = ? AND user_id = ?').get(recipeId, userId);
@@ -428,10 +437,10 @@ export default async function recipesRoutes(fastify) {
       `).run(title, description, servings, prep_time, cook_time, totalTime, difficulty, notes, recipeId);
 
       // Kategorien aktualisieren
-      if (categoryIds) {
+      if (category_ids) {
         db.prepare('DELETE FROM recipe_categories WHERE recipe_id = ?').run(recipeId);
         const insertCat = db.prepare('INSERT OR IGNORE INTO recipe_categories (recipe_id, category_id) VALUES (?, ?)');
-        for (const catId of categoryIds) {
+        for (const catId of category_ids) {
           insertCat.run(recipeId, catId);
         }
       }
@@ -461,6 +470,63 @@ export default async function recipesRoutes(fastify) {
 
     transaction();
     return { message: 'Rezept aktualisiert!' };
+  });
+
+  /**
+   * POST /api/recipes/:id/image
+   * Rezept-Bild hochladen oder austauschen
+   */
+  fastify.post('/:id/image', {
+    schema: {
+      description: 'Rezept-Bild hochladen/ersetzen',
+      tags: ['Rezepte'],
+      security: [{ bearerAuth: [] }],
+    },
+  }, async (request, reply) => {
+    const userId = request.user.id;
+    const recipeId = request.params.id;
+
+    // Prüfen ob Rezept dem User gehört
+    const existing = db.prepare('SELECT id, image_url FROM recipes WHERE id = ? AND user_id = ?').get(recipeId, userId);
+    if (!existing) {
+      return reply.status(404).send({ error: 'Rezept nicht gefunden' });
+    }
+
+    // Datei aus Multipart auslesen
+    const data = await request.file();
+    if (!data) {
+      return reply.status(400).send({ error: 'Keine Bilddatei hochgeladen' });
+    }
+
+    const buffer = await data.toBuffer();
+
+    // Mit sharp verarbeiten und als WebP speichern
+    const imageId = generateId();
+    const imagePath = `recipes/${imageId}.webp`;
+    const fullPath = resolve(config.upload.path, imagePath);
+
+    await sharp(buffer)
+      .resize(1200, 1200, { fit: 'inside', withoutEnlargement: true })
+      .webp({ quality: 85 })
+      .toFile(fullPath);
+
+    // Altes Bild löschen (optional, Fehler ignorieren)
+    if (existing.image_url) {
+      try {
+        const oldRelative = existing.image_url.replace('/api/uploads/', '');
+        const oldPath = resolve(config.upload.path, oldRelative);
+        const { unlinkSync } = await import('fs');
+        unlinkSync(oldPath);
+      } catch {
+        // Altes Bild existierte nicht mehr — kein Problem
+      }
+    }
+
+    // DB aktualisieren
+    const imageUrl = `/api/uploads/${imagePath}`;
+    db.prepare('UPDATE recipes SET image_url = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(imageUrl, recipeId);
+
+    return { image_url: imageUrl };
   });
 
   /**
