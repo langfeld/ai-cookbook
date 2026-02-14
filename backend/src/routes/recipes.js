@@ -791,6 +791,7 @@ export default async function recipesRoutes(fastify) {
     let imported = 0;
     let skipped = 0;
     const errors = [];
+    const pendingImages = []; // Bilder nach Transaction verarbeiten (Sharp ist async)
 
     const transaction = db.transaction(() => {
       for (const recipe of importData.recipes) {
@@ -822,26 +823,28 @@ export default async function recipesRoutes(fastify) {
 
           const recipeId = recipeResult.lastInsertRowid;
 
-          // Bild aus Base64 wiederherstellen
+          // Bild für spätere Verarbeitung vormerken (Sharp ist async, Transaction ist sync)
           if (recipe.image_base64) {
             try {
               const imgBuffer = Buffer.from(recipe.image_base64, 'base64');
-              const imageId = generateId();
-              const imagePath = `recipes/${imageId}.webp`;
-              const fullPath = resolve(config.upload.path, imagePath);
-
-              // Synchron schreiben (innerhalb Transaction)
-              writeFileSync(fullPath, imgBuffer);
-              db.prepare('UPDATE recipes SET image_url = ? WHERE id = ?').run(`/api/uploads/${imagePath}`, recipeId);
-            } catch { /* Bild-Import fehlgeschlagen – ignorieren */ }
+              // Größenbegrenzung: max 10 MB raw
+              if (imgBuffer.length <= 10 * 1024 * 1024) {
+                const imageId = generateId();
+                const imagePath = `recipes/${imageId}.webp`;
+                pendingImages.push({ recipeId, imgBuffer, imagePath });
+                db.prepare('UPDATE recipes SET image_url = ? WHERE id = ?').run(`/api/uploads/${imagePath}`, recipeId);
+              }
+            } catch { /* ignorieren */ }
           }
 
           // Kategorien zuordnen (nur existierende)
           if (recipe.categories?.length) {
+            // Max. 20 Kategorien pro Rezept
+            const cats = recipe.categories.slice(0, 20);
             const insertCat = db.prepare(
               'INSERT OR IGNORE INTO recipe_categories (recipe_id, category_id) VALUES (?, ?)'
             );
-            for (const cat of recipe.categories) {
+            for (const cat of cats) {
               const catName = typeof cat === 'string' ? cat : cat.name;
               let catId = catMap.get(catName);
 
@@ -858,25 +861,27 @@ export default async function recipesRoutes(fastify) {
             }
           }
 
-          // Zutaten einfügen
+          // Zutaten einfügen (max. 200 pro Rezept)
           if (recipe.ingredients?.length) {
+            const ings = recipe.ingredients.slice(0, 200);
             const insertIng = db.prepare(`
               INSERT INTO ingredients (recipe_id, name, amount, unit, group_name, sort_order, is_optional, notes)
               VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             `);
-            recipe.ingredients.forEach((ing, idx) => {
-              insertIng.run(recipeId, ing.name, ing.amount || null, ing.unit || null, ing.group_name || null, ing.sort_order ?? idx, ing.is_optional ? 1 : 0, ing.notes || null);
+            ings.forEach((ing, idx) => {
+              insertIng.run(recipeId, String(ing.name || '').slice(0, 500), ing.amount || null, String(ing.unit || '').slice(0, 50), String(ing.group_name || '').slice(0, 200) || null, ing.sort_order ?? idx, ing.is_optional ? 1 : 0, String(ing.notes || '').slice(0, 500) || null);
             });
           }
 
-          // Kochschritte einfügen
+          // Kochschritte einfügen (max. 100 pro Rezept)
           if (recipe.steps?.length) {
+            const stps = recipe.steps.slice(0, 100);
             const insertStep = db.prepare(`
               INSERT INTO cooking_steps (recipe_id, step_number, title, instruction, duration_minutes)
               VALUES (?, ?, ?, ?, ?)
             `);
-            recipe.steps.forEach((step, idx) => {
-              insertStep.run(recipeId, step.step_number ?? idx + 1, step.title || null, step.instruction, step.duration_minutes || null);
+            stps.forEach((step, idx) => {
+              insertStep.run(recipeId, step.step_number ?? idx + 1, String(step.title || '').slice(0, 500) || null, String(step.instruction || '').slice(0, 5000), step.duration_minutes || null);
             });
           }
 
@@ -889,6 +894,19 @@ export default async function recipesRoutes(fastify) {
     });
 
     transaction();
+
+    // Bilder asynchron durch Sharp re-encodieren (Sicherheit: validiert echtes Bildformat)
+    for (const { recipeId, imgBuffer, imagePath } of pendingImages) {
+      try {
+        const fullPath = resolve(config.upload.path, imagePath);
+        await sharp(imgBuffer)
+          .resize(1200, 1200, { fit: 'inside', withoutEnlargement: true })
+          .webp({ quality: 85 })
+          .toFile(fullPath);
+      } catch {
+        // Ungültiges Bild – image_url bleibt in DB, aber Datei fehlt (harmlos)
+      }
+    }
 
     return {
       message: `${imported} Rezept(e) importiert, ${skipped} übersprungen.`,

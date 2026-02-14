@@ -15,6 +15,7 @@ Eine KI-gestützte Rezeptverwaltung mit intelligentem Wochenplaner, Einkaufslist
 ### 🥘 Rezeptverwaltung
 - **KI-Foto-Import** — Rezepte per Foto importieren (auch mehrseitige Rezeptkarten). Die KI erkennt Zutaten, Kochschritte, Schwierigkeitsgrad und schlägt Kategorien vor
 - **Text-Import** — Rezept als Freitext beschreiben, die KI strukturiert es
+- **Export/Import** — Rezepte als JSON exportieren und importieren (inkl. optionaler Bildeinbettung als Base64). Ideal für Backups, Migration oder zum Teilen
 - **Bildzuschnitt** — Integrierter Cropper mit Seitenverhältnissen (4:3, 1:1, 16:9, Frei) und Drehen
 - **Kategorien** — Frei anlegbare Kategorien mit Icons und Farben
 - **Farbige Zutatenerkennung** — Zutaten werden in Kochschritten farblich hervorgehoben (Fleisch 🔴, Gemüse 🟢, Milch 🔵, Gewürze 🟡)
@@ -52,6 +53,7 @@ Eine KI-gestützte Rezeptverwaltung mit intelligentem Wochenplaner, Einkaufslist
 - **Benutzerverwaltung** — Alle Benutzer anzeigen/suchen, Rollen ändern (Admin/User), Konten sperren/entsperren, Passwort zurücksetzen, Benutzer löschen
 - **Systemeinstellungen** — Registrierung aktivieren/deaktivieren, Wartungsmodus, KI-Anbieter wählen, Upload-Größe konfigurieren
 - **Datei-Bereinigung** — Verwaiste Upload-Dateien automatisch erkennen und entfernen
+- **Admin Export/Import** — Alle Rezepte (oder pro Benutzer) als JSON exportieren/importieren, mit Benutzer-Zuweisung beim Import
 - **Aktivitätslog** — Alle Admin-Aktionen werden protokolliert (Wer hat was wann gemacht?)
 
 ---
@@ -204,7 +206,8 @@ ai-cookbook/
 │       │   │   └── ImageCropModal.vue # Bildzuschnitt mit Seitenverhältnissen
 │       │   ├── recipes/
 │       │   │   ├── RecipeCard.vue     # Grid-Vorschaukarte
-│       │   │   └── RecipeImportModal.vue # KI-Import (Foto + Text)
+│       │   │   ├── RecipeImportModal.vue # KI-Import (Foto + Text)
+│       │   │   └── RecipeImportExportModal.vue # JSON Export/Import (User + Admin)
 │       │   └── dashboard/
 │       │       └── StatCard.vue
 │       ├── views/
@@ -261,6 +264,8 @@ ai-cookbook/
 | `POST` | `/:id/image` | Bild hochladen/ersetzen |
 | `POST` | `/:id/favorite` | Favorit togglen |
 | `POST` | `/:id/cooked` | Als gekocht markieren |
+| `GET` | `/export` | Eigene Rezepte als JSON exportieren (`?include_images=true` für Bilder) |
+| `POST` | `/import` | Rezepte aus JSON-Datei importieren (max. 100 pro Import) |
 
 ### Kategorien (`/api/categories`)
 | Methode | Pfad | Beschreibung |
@@ -321,6 +326,60 @@ ai-cookbook/
 | `PUT` | `/settings` | Einstellungen aktualisieren |
 | `GET` | `/logs` | Admin-Aktivitätslog (paginiert) |
 | `POST` | `/cleanup` | Verwaiste Upload-Dateien entfernen |
+| `GET` | `/export` | Alle Rezepte als JSON exportieren (`?user_id=X`, `?include_images=true`) |
+| `POST` | `/import` | Rezepte importieren und Benutzer zuweisen (max. 500 pro Import) |
+
+---
+
+## 📦 Rezept Export/Import
+
+### Export-Format (JSON)
+
+```json
+{
+  "version": "1.0",
+  "exported_at": "2026-02-14T12:00:00.000Z",
+  "source": "AI Cookbook",
+  "recipe_count": 3,
+  "recipes": [
+    {
+      "title": "Spaghetti Carbonara",
+      "description": "Klassische italienische Pasta",
+      "servings": 4,
+      "prep_time": 10,
+      "cook_time": 20,
+      "total_time": 30,
+      "difficulty": "mittel",
+      "is_favorite": 1,
+      "notes": "Persönliche Notizen...",
+      "categories": [
+        { "name": "Abendessen", "icon": "🌙", "color": "#6366f1" }
+      ],
+      "ingredients": [
+        { "name": "Spaghetti", "amount": 400, "unit": "g", "group_name": null, "sort_order": 0 }
+      ],
+      "steps": [
+        { "step_number": 1, "title": "Pasta kochen", "instruction": "Spaghetti al dente kochen", "duration_minutes": 10 }
+      ],
+      "image_base64": "...(optional, nur mit ?include_images=true)...",
+      "image_mime": "image/webp"
+    }
+  ]
+}
+```
+
+### Funktionen
+
+| Feature | Benutzer | Admin |
+|---------|----------|-------|
+| Eigene Rezepte exportieren | ✅ | ✅ (nach Benutzer filterbar) |
+| Bilder als Base64 einbetten | ✅ | ✅ |
+| Rezepte importieren | ✅ (eigene) | ✅ (beliebigem User zuweisbar) |
+| Max. Rezepte pro Import | 100 | 500 |
+| Fehlende Kategorien erstellen | ✅ automatisch | ✅ automatisch |
+| Bilder aus Base64 wiederherstellen | ✅ | ✅ |
+| Drag & Drop Upload | ✅ | ✅ |
+| Datei-Vorschau | ✅ | ✅ |
 
 ---
 
