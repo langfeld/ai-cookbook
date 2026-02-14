@@ -37,6 +37,8 @@ export function initializeDatabase() {
       email TEXT UNIQUE NOT NULL,
       password_hash TEXT NOT NULL,
       display_name TEXT,
+      role TEXT DEFAULT 'user',            -- 'user' oder 'admin'
+      is_active INTEGER DEFAULT 1,         -- Gesperrt?
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
@@ -225,9 +227,55 @@ export function initializeDatabase() {
     CREATE INDEX IF NOT EXISTS idx_shopping_items_list ON shopping_list_items(shopping_list_id);
     CREATE INDEX IF NOT EXISTS idx_pantry_user ON pantry(user_id);
     CREATE INDEX IF NOT EXISTS idx_cooking_history_user ON cooking_history(user_id, cooked_at);
+
+    -- ============================================
+    -- Systemeinstellungen (Key-Value)
+    -- ============================================
+    CREATE TABLE IF NOT EXISTS settings (
+      key TEXT PRIMARY KEY,
+      value TEXT,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
   `);
 
+  // ============================================
+  // Migrationen für bestehende Datenbanken
+  // ============================================
+  migrateDatabase();
+
   console.log('✅ Datenbank-Schema initialisiert');
+}
+
+/**
+ * Inkrementelle Migrationen für bestehende DBs
+ */
+function migrateDatabase() {
+  // Spalte 'role' in users hinzufügen (falls nicht vorhanden)
+  const userColumns = db.prepare("PRAGMA table_info(users)").all().map(c => c.name);
+  if (!userColumns.includes('role')) {
+    db.exec("ALTER TABLE users ADD COLUMN role TEXT DEFAULT 'user'");
+    console.log('  ↳ Migration: users.role hinzugefügt');
+  }
+  if (!userColumns.includes('is_active')) {
+    db.exec("ALTER TABLE users ADD COLUMN is_active INTEGER DEFAULT 1");
+    console.log('  ↳ Migration: users.is_active hinzugefügt');
+  }
+
+  // Standard-Einstellungen setzen (falls leer)
+  const settingsCount = db.prepare("SELECT COUNT(*) as count FROM settings").get().count;
+  if (settingsCount === 0) {
+    const defaults = {
+      registration_enabled: 'true',
+      ai_provider: 'kimi',
+      max_upload_size_mb: '10',
+      maintenance_mode: 'false',
+    };
+    const stmt = db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)");
+    for (const [key, value] of Object.entries(defaults)) {
+      stmt.run(key, value);
+    }
+    console.log('  ↳ Migration: Standard-Einstellungen erstellt');
+  }
 }
 
 /**

@@ -25,6 +25,7 @@ import mealplanRoutes from './routes/mealplan.js';
 import shoppingRoutes from './routes/shopping.js';
 import pantryRoutes from './routes/pantry.js';
 import reweRoutes from './routes/rewe.js';
+import adminRoutes from './routes/admin.js';
 
 // Upload-Verzeichnisse sicherstellen (inkl. Unterordner)
 const uploadPath = resolve(config.upload.path);
@@ -121,6 +122,18 @@ app.decorate('authenticate', async function (request, reply) {
   }
 });
 
+// Admin-Decorator: Authentifizierung + Admin-Rolle prüfen
+app.decorate('requireAdmin', async function (request, reply) {
+  try {
+    await request.jwtVerify();
+    if (request.user.role !== 'admin') {
+      return reply.status(403).send({ error: 'Nur Administratoren haben Zugriff.' });
+    }
+  } catch (err) {
+    reply.status(401).send({ error: 'Nicht autorisiert. Bitte anmelden.' });
+  }
+});
+
 // ============================================
 // Routen registrieren
 // ============================================
@@ -131,6 +144,7 @@ await app.register(mealplanRoutes, { prefix: '/api/mealplan' });
 await app.register(shoppingRoutes, { prefix: '/api/shopping' });
 await app.register(pantryRoutes, { prefix: '/api/pantry' });
 await app.register(reweRoutes, { prefix: '/api/rewe' });
+await app.register(adminRoutes, { prefix: '/api/admin' });
 
 // ============================================
 // Health Check Endpoint

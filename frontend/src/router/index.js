@@ -58,6 +58,25 @@ const routes = [
     component: () => import('@/views/PantryView.vue'),
     meta: { requiresAuth: true, title: 'Vorratsschrank' },
   },
+  // --- Admin-Routen ---
+  {
+    path: '/admin',
+    name: 'admin-dashboard',
+    component: () => import('@/views/admin/AdminDashboardView.vue'),
+    meta: { requiresAuth: true, requiresAdmin: true, title: 'Admin Dashboard' },
+  },
+  {
+    path: '/admin/users',
+    name: 'admin-users',
+    component: () => import('@/views/admin/AdminUsersView.vue'),
+    meta: { requiresAuth: true, requiresAdmin: true, title: 'Benutzerverwaltung' },
+  },
+  {
+    path: '/admin/settings',
+    name: 'admin-settings',
+    component: () => import('@/views/admin/AdminSettingsView.vue'),
+    meta: { requiresAuth: true, requiresAdmin: true, title: 'Systemeinstellungen' },
+  },
   // Fallback: 404
   {
     path: '/:pathMatch(.*)*',
@@ -77,6 +96,11 @@ router.beforeEach((to) => {
   // Geschützte Route ohne Login -> Login-Seite
   if (to.meta.requiresAuth && !authStore.isLoggedIn) {
     return { name: 'login', query: { redirect: to.fullPath } };
+  }
+
+  // Admin-Route ohne Admin-Rolle -> Dashboard
+  if (to.meta.requiresAdmin && !authStore.isAdmin) {
+    return { name: 'dashboard' };
   }
 
   // Bereits eingeloggt -> Dashboard statt Login

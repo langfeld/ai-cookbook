@@ -18,6 +18,7 @@ export const useAuthStore = defineStore('auth', () => {
 
   // --- Getters ---
   const isLoggedIn = computed(() => !!token.value);
+  const isAdmin = computed(() => user.value?.role === 'admin');
   const displayName = computed(() => user.value?.display_name || user.value?.username || 'Gast');
 
   /**
@@ -92,6 +93,7 @@ export const useAuthStore = defineStore('auth', () => {
     token,
     loading,
     isLoggedIn,
+    isAdmin,
     displayName,
     register,
     login,

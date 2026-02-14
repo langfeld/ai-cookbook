@@ -62,6 +62,30 @@
           {{ item.badge }}
         </span>
       </router-link>
+
+      <!-- Admin-Bereich (nur für Admins) -->
+      <template v-if="authStore.isAdmin">
+        <div class="mx-4 my-3 border-stone-200 dark:border-stone-700 border-t"></div>
+        <div v-if="!isCollapsed || isMobileOpen" class="mx-4 mb-1 font-semibold text-stone-400 dark:text-stone-500 text-xs uppercase tracking-wider">
+          Admin
+        </div>
+        <router-link
+          v-for="item in adminNavItems"
+          :key="item.to"
+          :to="item.to"
+          :class="[
+            'flex items-center gap-3 mx-2 px-3 py-2.5 rounded-lg transition-colors',
+            'hover:bg-amber-50 dark:hover:bg-amber-950/50',
+            'text-stone-600 dark:text-stone-400',
+            isCollapsed && !isMobileOpen ? 'justify-center' : '',
+          ]"
+          active-class="!bg-amber-100 dark:!bg-amber-900/50 !text-amber-700 dark:!text-amber-300 font-medium"
+          @click="onNavClick"
+        >
+          <component :is="item.icon" class="w-5 h-5 shrink-0" />
+          <span v-if="!isCollapsed || isMobileOpen" class="text-sm">{{ item.label }}</span>
+        </router-link>
+      </template>
     </nav>
 
     <!-- Collapse-Button (nur Desktop) -->
@@ -91,9 +115,13 @@ import {
   ChevronLeft,
   ChevronRight,
   X,
+  Shield,
+  Users,
+  Settings,
 } from 'lucide-vue-next';
 import { usePantryStore } from '@/stores/pantry.js';
 import { useShoppingStore } from '@/stores/shopping.js';
+import { useAuthStore } from '@/stores/auth.js';
 import { computed } from 'vue';
 
 const props = defineProps({
@@ -111,6 +139,7 @@ function onNavClick() {
 
 const pantryStore = usePantryStore();
 const shoppingStore = useShoppingStore();
+const authStore = useAuthStore();
 
 // Navigations-Einträge mit Icons und optionalen Badges
 const navItems = computed(() => [
@@ -130,4 +159,11 @@ const navItems = computed(() => [
     badge: pantryStore.expiringCount || null,
   },
 ]);
+
+// Admin-Navigations-Einträge
+const adminNavItems = [
+  { to: '/admin', label: 'Dashboard', icon: Shield },
+  { to: '/admin/users', label: 'Benutzer', icon: Users },
+  { to: '/admin/settings', label: 'Einstellungen', icon: Settings },
+];
 </script>

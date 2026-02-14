@@ -47,6 +47,13 @@ Eine KI-gestützte Rezeptverwaltung mit intelligentem Wochenplaner, Einkaufslist
 - **Animierte Übergänge** — Vue `<Transition>` für Seitenwechsel und Modals
 - **Deutsche Fehlermeldungen** — Nutzerfreundliche Hinweise bei Netzwerk-/API-Fehlern
 
+### 🛡️ Admin-Bereich
+- **Dashboard** — Systemstatistiken (Benutzer, Rezepte, KI-Imports, Speicherverbrauch), beliebteste Rezepte, Admin-Aktivitätslog
+- **Benutzerverwaltung** — Alle Benutzer anzeigen/suchen, Rollen ändern (Admin/User), Konten sperren/entsperren, Passwort zurücksetzen, Benutzer löschen
+- **Systemeinstellungen** — Registrierung aktivieren/deaktivieren, Wartungsmodus, KI-Anbieter wählen, Upload-Größe konfigurieren
+- **Datei-Bereinigung** — Verwaiste Upload-Dateien automatisch erkennen und entfernen
+- **Aktivitätslog** — Alle Admin-Aktionen werden protokolliert (Wer hat was wann gemacht?)
+
 ---
 
 ## 🛠 Technologie-Stack
@@ -109,6 +116,37 @@ npm run dev          # → http://localhost:5173
 
 > **Hinweis:** Das Backend lädt `.env` über `--env-file=../.env` (Node 22 nativ, kein dotenv nötig).
 
+### 🛡️ Admin-Account einrichten
+
+Beim **ersten Start** existiert kein Administrator. So wird der initiale Admin-Account erstellt:
+
+```bash
+# 1. Backend muss laufen, dann:
+curl -X POST http://localhost:3001/api/admin/seed
+```
+
+**Antwort:**
+```json
+{
+  "message": "Admin-Account erstellt!",
+  "credentials": {
+    "username": "admin",
+    "password": "admin123",
+    "hint": "Bitte Passwort nach dem ersten Login ändern!"
+  }
+}
+```
+
+**Ablauf bei frischem Start:**
+1. App starten (Backend + Frontend)
+2. `POST /api/admin/seed` aufrufen → Erstellt Admin-Account (`admin` / `admin123`)
+3. Im Browser anmelden unter `http://localhost:5173/login`
+4. In der Sidebar erscheint der **Admin-Bereich** (Shield-Icon)
+5. Unter **Admin → Benutzer** das eigene Passwort über „Passwort zurücksetzen" ändern
+6. Optional: Registrierung und andere Einstellungen unter **Admin → Einstellungen** konfigurieren
+
+> **Sicherheit:** Die Seed-Route funktioniert **nur**, wenn noch kein Admin existiert. Bei einem erneuten Aufruf wird `400 Es existiert bereits ein Administrator` zurückgegeben.
+
 ---
 
 ## 📁 Projektstruktur
@@ -136,7 +174,8 @@ ai-cookbook/
 │       │   ├── mealplan.js     # Wochenplaner + KI-Generierung
 │       │   ├── shopping.js     # Einkaufsliste + REWE-Matching
 │       │   ├── pantry.js       # Vorratsschrank CRUD + Verbrauch
-│       │   └── rewe.js         # REWE Produktsuche
+│       │   ├── rewe.js         # REWE Produktsuche
+│       │   └── admin.js        # Admin: Stats, Benutzerverwaltung, Settings, Logs
 │       ├── services/
 │       │   ├── ai/
 │       │   │   ├── base.js     # BaseAIProvider (Chat, JSON-Parse, Bildanalyse)
@@ -176,7 +215,11 @@ ai-cookbook/
 │       │   ├── RecipeFormView.vue     # Erstellen/Bearbeiten + Bildzuschnitt
 │       │   ├── MealPlanView.vue       # 7-Tage-Wochenplaner
 │       │   ├── ShoppingView.vue       # Einkaufsliste + REWE
-│       │   └── PantryView.vue         # Vorratsschrank
+│       │   ├── PantryView.vue         # Vorratsschrank
+│       │   └── admin/
+│       │       ├── AdminDashboardView.vue  # System-Statistiken + Logs
+│       │       ├── AdminUsersView.vue      # Benutzerverwaltung
+│       │       └── AdminSettingsView.vue   # Systemeinstellungen + Cleanup
 │       ├── stores/                    # Pinia Stores
 │       │   ├── auth.js
 │       │   ├── recipes.js
@@ -263,6 +306,22 @@ ai-cookbook/
 | `POST` | `/match-ingredient` | Einzelne Zutat matchen |
 | `POST` | `/match-shopping-list` | Gesamte Liste matchen |
 
+### Admin (`/api/admin`) 🔒
+> Alle Routen (außer `/seed`) erfordern `role=admin`.
+
+| Methode | Pfad | Beschreibung |
+|---------|------|-------------|
+| `POST` | `/seed` | Ersten Admin-Account erstellen (nur wenn kein Admin existiert) |
+| `GET` | `/stats` | Dashboard-Statistiken (User, Rezepte, Speicher, beliebte Rezepte) |
+| `GET` | `/users` | Alle Benutzer mit Rezeptanzahl und letzter Aktivität |
+| `PUT` | `/users/:id` | Benutzer-Rolle oder Status ändern |
+| `DELETE` | `/users/:id` | Benutzer mit allen Daten löschen |
+| `POST` | `/users/:id/reset-password` | Passwort zurücksetzen |
+| `GET` | `/settings` | Systemeinstellungen abrufen |
+| `PUT` | `/settings` | Einstellungen aktualisieren |
+| `GET` | `/logs` | Admin-Aktivitätslog (paginiert) |
+| `POST` | `/cleanup` | Verwaiste Upload-Dateien entfernen |
+
 ---
 
 ## 🤖 KI-Provider wechseln
@@ -318,6 +377,8 @@ Dieses Projekt verwendet **Tailwind CSS 4** mit CSS-basierter Konfiguration:
 - **REWE-API:** Inoffizielle API, kann sich ändern. Fehlende Market-ID deaktiviert die Funktion
 - **KI-Genauigkeit:** Foto-Import funktioniert am besten mit gut beleuchteten, scharfen Rezeptfotos
 - **SQLite:** Für Single-Server-Betrieb ausgelegt, nicht für horizontale Skalierung
+- **Admin-Seed:** Der erste Admin kann nur via API-Call (`POST /api/admin/seed`) erstellt werden, nicht über die UI
+- **Passwort ändern:** Es gibt aktuell keine Self-Service-Funktion zum Passwort-Ändern. Admins können Passwörter über die Benutzerverwaltung zurücksetzen
 
 ---
 

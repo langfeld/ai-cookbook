@@ -61,6 +61,7 @@ export default async function authRoutes(fastify) {
     const token = fastify.jwt.sign({
       id: userId,
       username,
+      role: 'user',
     });
 
     return reply.status(201).send({
@@ -71,6 +72,7 @@ export default async function authRoutes(fastify) {
         username,
         email,
         display_name: display_name || username,
+        role: 'user',
       },
     });
   });
@@ -106,6 +108,13 @@ export default async function authRoutes(fastify) {
       });
     }
 
+    // Gesperrten Benutzer blockieren
+    if (!user.is_active) {
+      return reply.status(403).send({
+        error: 'Dein Konto wurde gesperrt. Bitte wende dich an einen Administrator.',
+      });
+    }
+
     // Passwort prüfen
     const valid = await bcrypt.compare(password, user.password_hash);
     if (!valid) {
@@ -118,6 +127,7 @@ export default async function authRoutes(fastify) {
     const token = fastify.jwt.sign({
       id: user.id,
       username: user.username,
+      role: user.role || 'user',
     });
 
     return {
@@ -127,6 +137,7 @@ export default async function authRoutes(fastify) {
         username: user.username,
         email: user.email,
         display_name: user.display_name,
+        role: user.role || 'user',
       },
     };
   });
@@ -144,7 +155,7 @@ export default async function authRoutes(fastify) {
     },
   }, async (request) => {
     const user = db.prepare(
-      'SELECT id, username, email, display_name, created_at FROM users WHERE id = ?'
+      'SELECT id, username, email, display_name, role, created_at FROM users WHERE id = ?'
     ).get(request.user.id);
 
     if (!user) {
