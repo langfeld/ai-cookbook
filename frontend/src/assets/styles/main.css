@@ -10,6 +10,12 @@
 @import "tailwindcss";
 
 /* ============================================
+ * Dark Mode: Klassen-basiert statt Media Query
+ * Ermöglicht manuelles Umschalten via .dark Klasse auf <html>
+ * ============================================ */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* ============================================
  * Custom Theme Tokens
  * Definiert Farben, Fonts und andere Design-Tokens
  * ============================================ */
