@@ -1,0 +1,166 @@
+/**
+ * ============================================
+ * Haupt-CSS mit Tailwind CSS 4
+ * ============================================
+ * Tailwind 4 verwendet CSS-basierte Konfiguration statt JS config.
+ * Der @import lädt Tailwind, @theme definiert Custom Tokens.
+ */
+
+/* Tailwind CSS 4 importieren */
+@import "tailwindcss";
+
+/* ============================================
+ * Custom Theme Tokens
+ * Definiert Farben, Fonts und andere Design-Tokens
+ * ============================================ */
+@theme {
+  /* Primärfarbe: Warm Orange/Amber für Koch-Thema */
+  --color-primary-50: #fffbeb;
+  --color-primary-100: #fef3c7;
+  --color-primary-200: #fde68a;
+  --color-primary-300: #fcd34d;
+  --color-primary-400: #fbbf24;
+  --color-primary-500: #f59e0b;
+  --color-primary-600: #d97706;
+  --color-primary-700: #b45309;
+  --color-primary-800: #92400e;
+  --color-primary-900: #78350f;
+  --color-primary-950: #451a03;
+
+  /* Akzentfarbe: Grün für frische Zutaten */
+  --color-accent-50: #f0fdf4;
+  --color-accent-100: #dcfce7;
+  --color-accent-200: #bbf7d0;
+  --color-accent-300: #86efac;
+  --color-accent-400: #4ade80;
+  --color-accent-500: #22c55e;
+  --color-accent-600: #16a34a;
+  --color-accent-700: #15803d;
+  --color-accent-800: #166534;
+  --color-accent-900: #14532d;
+
+  /* Schriftarten */
+  --font-sans: 'Inter', 'system-ui', '-apple-system', 'Segoe UI', sans-serif;
+  --font-display: 'Playfair Display', 'Georgia', serif;
+
+  /* Animationen */
+  --animate-fade-in: fade-in 0.3s ease-out;
+  --animate-slide-up: slide-up 0.3s ease-out;
+  --animate-slide-in-right: slide-in-right 0.3s ease-out;
+}
+
+/* ============================================
+ * Keyframe Animationen
+ * ============================================ */
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slide-up {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slide-in-right {
+  from { opacity: 0; transform: translateX(20px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+/* ============================================
+ * Basis-Styles
+ * ============================================ */
+
+/* Smooth Scrolling */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Scrollbar Styling (Webkit) */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #d6d3d1;
+  border-radius: 4px;
+}
+
+.dark ::-webkit-scrollbar-thumb {
+  background: #57534e;
+}
+
+/* ============================================
+ * Zutat-Hervorhebung in Kochschritten
+ * Farbige Tags für Zutaten im Text
+ * ============================================ */
+.ingredient-highlight {
+  @apply inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md
+         bg-primary-100 text-primary-800 font-medium text-sm
+         dark:bg-primary-900/40 dark:text-primary-300
+         border border-primary-200 dark:border-primary-800;
+}
+
+/* Verschiedene Zutat-Kategorien mit unterschiedlichen Farben */
+.ingredient-highlight--gemüse {
+  @apply bg-green-100 text-green-800 border-green-200
+         dark:bg-green-900/40 dark:text-green-300 dark:border-green-800;
+}
+
+.ingredient-highlight--fleisch {
+  @apply bg-red-100 text-red-800 border-red-200
+         dark:bg-red-900/40 dark:text-red-300 dark:border-red-800;
+}
+
+.ingredient-highlight--milchprodukt {
+  @apply bg-blue-100 text-blue-800 border-blue-200
+         dark:bg-blue-900/40 dark:text-blue-300 dark:border-blue-800;
+}
+
+.ingredient-highlight--gewürz {
+  @apply bg-amber-100 text-amber-800 border-amber-200
+         dark:bg-amber-900/40 dark:text-amber-300 dark:border-amber-800;
+}
+
+.ingredient-highlight--getreide {
+  @apply bg-yellow-100 text-yellow-800 border-yellow-200
+         dark:bg-yellow-900/40 dark:text-yellow-300 dark:border-yellow-800;
+}
+
+/* ============================================
+ * Vue Transitionen
+ * ============================================ */
+.page-enter-active,
+.page-leave-active {
+  transition: all 0.2s ease;
+}
+
+.page-enter-from {
+  opacity: 0;
+  transform: translateY(10px);
+}
+
+.page-leave-to {
+  opacity: 0;
+  transform: translateY(-10px);
+}
+
+.list-enter-active,
+.list-leave-active {
+  transition: all 0.3s ease;
+}
+
+.list-enter-from,
+.list-leave-to {
+  opacity: 0;
+  transform: translateX(-20px);
+}
+
+.list-move {
+  transition: transform 0.3s ease;
+}

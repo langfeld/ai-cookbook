@@ -1,0 +1,61 @@
+# ============================================
+# AI Cookbook - Docker Compose Konfiguration
+# ============================================
+# Startet Backend, Frontend und Nginx Reverse Proxy
+
+services:
+  # --- Backend (Fastify API) ---
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: cookbook-backend
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      # Persistente Daten (DB + Uploads)
+      - backend-data:/app/data
+    ports:
+      - "3001:3001"
+    networks:
+      - cookbook-net
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3001/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # --- Frontend (Vue 3 + Vite, gebaut als statische Dateien) ---
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: cookbook-frontend
+    restart: unless-stopped
+    networks:
+      - cookbook-net
+
+  # --- Nginx Reverse Proxy ---
+  nginx:
+    image: nginx:alpine
+    container_name: cookbook-nginx
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    volumes:
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      backend:
+        condition: service_healthy
+      frontend:
+        condition: service_started
+    networks:
+      - cookbook-net
+
+volumes:
+  backend-data:
+    driver: local
+
+networks:
+  cookbook-net:
+    driver: bridge

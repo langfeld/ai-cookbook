@@ -1,0 +1,112 @@
+<!--
+  ============================================
+  AppSidebar - Hauptnavigation
+  ============================================
+  Responsive Sidebar mit Icons und Labels.
+  Kann auf mobilen Geräten eingeklappt werden.
+-->
+<template>
+  <aside
+    :class="[
+      'flex flex-col bg-white dark:bg-stone-900 border-r border-stone-200 dark:border-stone-800 transition-all duration-300',
+      isCollapsed ? 'w-16' : 'w-64'
+    ]"
+  >
+    <!-- Logo / App-Name -->
+    <div class="flex items-center px-4 border-stone-200 dark:border-stone-800 border-b h-16">
+      <span class="text-2xl">🍳</span>
+      <transition name="page">
+        <span
+          v-if="!isCollapsed"
+          class="ml-3 font-display font-bold text-stone-800 dark:text-stone-100 text-lg"
+        >
+          AI Cookbook
+        </span>
+      </transition>
+    </div>
+
+    <!-- Navigations-Links -->
+    <nav class="flex-1 space-y-1 py-4 overflow-y-auto">
+      <router-link
+        v-for="item in navItems"
+        :key="item.to"
+        :to="item.to"
+        :class="[
+          'flex items-center gap-3 mx-2 px-3 py-2.5 rounded-lg transition-colors',
+          'hover:bg-primary-50 dark:hover:bg-primary-950/50',
+          'text-stone-600 dark:text-stone-400',
+          isCollapsed ? 'justify-center' : '',
+        ]"
+        active-class="!bg-primary-100 dark:!bg-primary-900/50 !text-primary-700 dark:!text-primary-300 font-medium"
+      >
+        <component :is="item.icon" class="w-5 h-5 shrink-0" />
+        <span v-if="!isCollapsed" class="text-sm">{{ item.label }}</span>
+
+        <!-- Badge für Benachrichtigungen -->
+        <span
+          v-if="item.badge && !isCollapsed"
+          class="bg-red-100 dark:bg-red-900/50 ml-auto px-2 py-0.5 rounded-full text-red-700 dark:text-red-300 text-xs"
+        >
+          {{ item.badge }}
+        </span>
+      </router-link>
+    </nav>
+
+    <!-- Collapse-Button -->
+    <button
+      @click="$emit('toggle')"
+      class="flex justify-center items-center border-stone-200 dark:border-stone-800 border-t h-12 text-stone-400 hover:text-stone-600 dark:hover:text-stone-300 transition-colors"
+    >
+      <ChevronLeft v-if="!isCollapsed" class="w-5 h-5" />
+      <ChevronRight v-else class="w-5 h-5" />
+    </button>
+  </aside>
+</template>
+
+<script setup>
+/**
+ * Props:
+ * - isCollapsed: Ob die Sidebar eingeklappt ist
+ * Emits:
+ * - toggle: Sidebar ein-/ausklappen
+ */
+import {
+  LayoutDashboard,
+  BookOpen,
+  Calendar,
+  ShoppingCart,
+  Warehouse,
+  ChevronLeft,
+  ChevronRight,
+} from 'lucide-vue-next';
+import { usePantryStore } from '@/stores/pantry.js';
+import { useShoppingStore } from '@/stores/shopping.js';
+import { computed } from 'vue';
+
+defineProps({
+  isCollapsed: { type: Boolean, default: false },
+});
+defineEmits(['toggle']);
+
+const pantryStore = usePantryStore();
+const shoppingStore = useShoppingStore();
+
+// Navigations-Einträge mit Icons und optionalen Badges
+const navItems = computed(() => [
+  { to: '/', label: 'Dashboard', icon: LayoutDashboard },
+  { to: '/recipes', label: 'Rezepte', icon: BookOpen },
+  { to: '/mealplan', label: 'Wochenplan', icon: Calendar },
+  {
+    to: '/shopping',
+    label: 'Einkaufsliste',
+    icon: ShoppingCart,
+    badge: shoppingStore.openItemsCount || null,
+  },
+  {
+    to: '/pantry',
+    label: 'Vorratsschrank',
+    icon: Warehouse,
+    badge: pantryStore.expiringCount || null,
+  },
+]);
+</script>

@@ -1,0 +1,106 @@
+<!--
+  ============================================
+  RecipeCard - Rezept-Vorschaukarte
+  ============================================
+  Kompakte Darstellung eines Rezepts im Grid.
+-->
+<template>
+  <router-link
+    :to="`/recipes/${recipe.id}`"
+    class="group bg-white dark:bg-stone-900 hover:shadow-lg border border-stone-200 hover:border-primary-300 dark:border-stone-800 dark:hover:border-primary-700 rounded-xl overflow-hidden transition-all"
+  >
+    <!-- Bild -->
+    <div class="relative bg-stone-100 dark:bg-stone-800 aspect-[4/3] overflow-hidden">
+      <img
+        v-if="recipe.image_url"
+        :src="recipe.image_url"
+        :alt="recipe.title"
+        class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+      />
+      <div v-else class="flex justify-center items-center opacity-50 w-full h-full text-5xl">
+        🍽️
+      </div>
+
+      <!-- Favorit-Button -->
+      <button
+        @click.prevent="$emit('toggle-favorite')"
+        class="top-2 right-2 absolute bg-white/80 hover:bg-white dark:bg-stone-900/80 dark:hover:bg-stone-900 backdrop-blur-sm p-1.5 rounded-full transition-colors"
+      >
+        <Star
+          class="w-4 h-4"
+          :class="recipe.is_favorite ? 'fill-amber-400 text-amber-400' : 'text-stone-400'"
+        />
+      </button>
+
+      <!-- Schwierigkeitsgrad-Badge -->
+      <span
+        :class="[
+          'absolute bottom-2 left-2 px-2 py-0.5 text-xs font-medium rounded-full',
+          difficultyClasses[recipe.difficulty] || difficultyClasses.mittel,
+        ]"
+      >
+        {{ recipe.difficulty }}
+      </span>
+
+      <!-- KI-Badge -->
+      <span
+        v-if="recipe.ai_generated"
+        class="right-2 bottom-2 absolute bg-indigo-100 dark:bg-indigo-900/60 px-2 py-0.5 rounded-full font-medium text-indigo-700 dark:text-indigo-300 text-xs"
+      >
+        🤖 KI
+      </span>
+    </div>
+
+    <!-- Info -->
+    <div class="p-4">
+      <h3 class="font-semibold text-stone-800 dark:group-hover:text-primary-400 dark:text-stone-100 group-hover:text-primary-600 truncate transition-colors">
+        {{ recipe.title }}
+      </h3>
+      <p v-if="recipe.description" class="mt-1 text-stone-500 dark:text-stone-400 text-sm line-clamp-2">
+        {{ recipe.description }}
+      </p>
+
+      <!-- Meta-Infos -->
+      <div class="flex items-center gap-3 mt-3 text-stone-500 dark:text-stone-400 text-xs">
+        <span class="flex items-center gap-1" v-if="recipe.total_time">
+          <Clock class="w-3.5 h-3.5" />
+          {{ recipe.total_time }} Min.
+        </span>
+        <span class="flex items-center gap-1" v-if="recipe.servings">
+          <Users class="w-3.5 h-3.5" />
+          {{ recipe.servings }} Port.
+        </span>
+        <span class="flex items-center gap-1" v-if="recipe.times_cooked">
+          <ChefHat class="w-3.5 h-3.5" />
+          {{ recipe.times_cooked }}x
+        </span>
+      </div>
+
+      <!-- Kategorien -->
+      <div v-if="recipe.category_names" class="flex flex-wrap gap-1 mt-3">
+        <span
+          v-for="cat in recipe.category_names.split(',')"
+          :key="cat"
+          class="bg-stone-100 dark:bg-stone-800 px-2 py-0.5 rounded-full text-stone-600 dark:text-stone-400 text-xs"
+        >
+          {{ cat.trim() }}
+        </span>
+      </div>
+    </div>
+  </router-link>
+</template>
+
+<script setup>
+import { Star, Clock, Users, ChefHat } from 'lucide-vue-next';
+
+defineProps({
+  recipe: { type: Object, required: true },
+});
+defineEmits(['toggle-favorite']);
+
+const difficultyClasses = {
+  leicht: 'bg-green-100 dark:bg-green-900/60 text-green-700 dark:text-green-300',
+  mittel: 'bg-amber-100 dark:bg-amber-900/60 text-amber-700 dark:text-amber-300',
+  schwer: 'bg-red-100 dark:bg-red-900/60 text-red-700 dark:text-red-300',
+};
+</script>
