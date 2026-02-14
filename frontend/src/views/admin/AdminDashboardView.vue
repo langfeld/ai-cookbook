@@ -62,10 +62,10 @@
               <span class="w-5 font-bold text-stone-400 dark:text-stone-500 text-sm text-right">{{ i + 1 }}.</span>
               <div class="flex-1 min-w-0">
                 <p class="font-medium text-stone-700 dark:text-stone-200 text-sm truncate">{{ recipe.title }}</p>
-                <p class="text-stone-400 dark:text-stone-500 text-xs">von {{ recipe.username }}</p>
+                <p class="text-stone-400 dark:text-stone-500 text-xs">von {{ recipe.author }}</p>
               </div>
               <span class="bg-primary-50 dark:bg-primary-900/30 px-2 py-0.5 rounded-full font-medium text-primary-600 dark:text-primary-400 text-xs">
-                {{ recipe.cook_count }}× gekocht
+                {{ recipe.times_cooked }}× gekocht
               </span>
             </div>
           </div>

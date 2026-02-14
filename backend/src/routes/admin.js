@@ -29,6 +29,15 @@ const ALLOWED_SETTINGS = new Set([
 export default async function adminRoutes(fastify) {
 
   // ============================================
+  // Helper: Admin-Aktion loggen
+  // ============================================
+  function logAdminAction(userId, action, details = null) {
+    try {
+      db.prepare('INSERT INTO admin_logs (user_id, action, details) VALUES (?, ?, ?)').run(userId, action, details);
+    } catch { /* Logging-Fehler ignorieren */ }
+  }
+
+  // ============================================
   // Alle Admin-Routen erfordern Admin-Rolle
   // /seed ist ausgenommen (prüft selbst)
   // ============================================
@@ -86,18 +95,68 @@ export default async function adminRoutes(fastify) {
     // DB-Größe
     const dbSize = db.prepare("SELECT page_count * page_size as size FROM pragma_page_count(), pragma_page_size()").get();
 
+    // Upload-Speicher berechnen
+    let storageSize = 0;
+    try {
+      const uploadsDir = resolve(config.upload.path);
+      const calcDirSize = (dir) => {
+        const entries = readdirSync(dir, { withFileTypes: true });
+        for (const entry of entries) {
+          const fullPath = join(dir, entry.name);
+          if (entry.isDirectory()) {
+            calcDirSize(fullPath);
+          } else {
+            try { storageSize += statSync(fullPath).size; } catch { /* ignorieren */ }
+          }
+        }
+      };
+      calcDirSize(uploadsDir);
+    } catch { /* Verzeichnis existiert nicht */ }
+
     return {
-      users: { total: userCount, active: activeUserCount },
-      recipes: { total: recipeCount, ai_generated: aiRecipeCount },
-      meal_plans: mealPlanCount,
-      shopping_lists: shoppingListCount,
-      pantry_items: pantryItemCount,
-      cooking_sessions: cookingCount,
+      total_users: userCount,
+      active_users: activeUserCount,
+      total_recipes: recipeCount,
+      ai_recipes: aiRecipeCount,
+      total_meal_plans: mealPlanCount,
+      total_shopping_lists: shoppingListCount,
+      total_pantry_items: pantryItemCount,
+      total_cook_count: cookingCount,
+      storage_size: storageSize,
+      db_size: dbSize?.size || 0,
       popular_recipes: popularRecipes,
       recent_users: recentUsers,
       week_activity: weekActivity,
-      database_size_bytes: dbSize?.size || 0,
     };
+  });
+
+  // ============================================
+  // GET /api/admin/logs - Aktivitätslog
+  // ============================================
+  fastify.get('/logs', {
+    schema: {
+      description: 'Admin-Aktivitätslog abrufen',
+      tags: ['Admin'],
+      security: [{ bearerAuth: [] }],
+      querystring: {
+        type: 'object',
+        properties: {
+          limit: { type: 'integer', minimum: 1, maximum: 100, default: 20 },
+        },
+      },
+    },
+  }, async (request) => {
+    const limit = request.query.limit || 20;
+    const logs = db.prepare(`
+      SELECT al.id, al.action, al.details, al.created_at,
+             u.username
+      FROM admin_logs al
+      LEFT JOIN users u ON al.user_id = u.id
+      ORDER BY al.created_at DESC
+      LIMIT ?
+    `).all(limit);
+
+    return { logs };
   });
 
   // ============================================
@@ -180,6 +239,8 @@ export default async function adminRoutes(fastify) {
 
     db.prepare(`UPDATE users SET ${updates.join(', ')} WHERE id = ?`).run(...params);
 
+    logAdminAction(request.user.id, 'Benutzer bearbeitet', `${user.username} (ID ${id})`);
+
     return { message: 'Benutzer aktualisiert.' };
   });
 
@@ -211,6 +272,9 @@ export default async function adminRoutes(fastify) {
     const passwordHash = await bcrypt.hash(new_password, 12);
     db.prepare('UPDATE users SET password_hash = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
       .run(passwordHash, id);
+
+    const targetUser = db.prepare('SELECT username FROM users WHERE id = ?').get(id);
+    logAdminAction(request.user.id, 'Passwort zurückgesetzt', `${targetUser?.username || 'Unbekannt'} (ID ${id})`);
 
     return { message: 'Passwort zurückgesetzt.' };
   });
@@ -249,6 +313,8 @@ export default async function adminRoutes(fastify) {
 
     // CASCADE löscht alle verknüpften Daten
     db.prepare('DELETE FROM users WHERE id = ?').run(id);
+
+    logAdminAction(request.user.id, 'Benutzer gelöscht', `${user.username} (ID ${id})`);
 
     return { message: `Benutzer "${user.username}" und alle Daten gelöscht.` };
   });
@@ -329,6 +395,8 @@ export default async function adminRoutes(fastify) {
 
     transaction();
 
+    logAdminAction(request.user.id, 'Einstellungen geändert', Object.keys(settings).join(', '));
+
     return { message: 'Einstellungen gespeichert.' };
   });
 
@@ -364,6 +432,8 @@ export default async function adminRoutes(fastify) {
       }
     }
 
+    logAdminAction(request.user.id, 'Aufräumen durchgeführt', `${cleaned} verwaiste Bilder entfernt`);
+
     return { cleaned, message: `${cleaned} verwaiste Bilder entfernt.` };
   });
 
@@ -393,6 +463,8 @@ export default async function adminRoutes(fastify) {
     ).run('admin', 'admin@cookbook.local', passwordHash, 'Administrator', 'admin');
 
     createDefaultCategories(result.lastInsertRowid);
+
+    logAdminAction(result.lastInsertRowid, 'Admin-Account erstellt', 'Initialer Seed');
 
     return {
       message: 'Admin-Account erstellt!',
@@ -685,6 +757,8 @@ export default async function adminRoutes(fastify) {
         // Ungültiges Bild – ignorieren
       }
     }
+
+    logAdminAction(request.user.id, 'Rezepte importiert', `${imported} Rezept(e) für ${targetUser.username}`);
 
     return {
       message: `${imported} Rezept(e) für "${targetUser.username}" importiert, ${skipped} übersprungen.`,
