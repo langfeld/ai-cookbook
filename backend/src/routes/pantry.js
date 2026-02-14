@@ -42,7 +42,7 @@ export default async function pantryRoutes(fastify) {
 
     if (expiring) {
       // Items die in den nächsten 7 Tagen ablaufen
-      query += ' AND expiry_date IS NOT NULL AND expiry_date <= date("now", "+7 days")';
+      query += ` AND expiry_date IS NOT NULL AND expiry_date <= date('now', '+7 days')`;
     }
 
     query += ' ORDER BY category, ingredient_name';
@@ -56,7 +56,7 @@ export default async function pantryRoutes(fastify) {
 
     // Bald ablaufende Items zählen
     const expiringCount = db.prepare(
-      'SELECT COUNT(*) as count FROM pantry WHERE user_id = ? AND amount > 0 AND expiry_date IS NOT NULL AND expiry_date <= date("now", "+7 days")'
+      `SELECT COUNT(*) as count FROM pantry WHERE user_id = ? AND amount > 0 AND expiry_date IS NOT NULL AND expiry_date <= date('now', '+7 days')`
     ).get(userId);
 
     return {

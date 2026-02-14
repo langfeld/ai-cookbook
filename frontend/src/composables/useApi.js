@@ -91,11 +91,11 @@ export function useApi() {
     error,
     execute,
 
-    // Convenience-Methoden
-    get: (url) => apiFetch(url),
-    post: (url, body) => apiFetch(url, { method: 'POST', body }),
-    put: (url, body) => apiFetch(url, { method: 'PUT', body }),
-    del: (url) => apiFetch(url, { method: 'DELETE' }),
-    upload: (url, formData) => apiFetch(url, { method: 'POST', body: formData }),
+    // Convenience-Methoden – Fehler werden per Notification angezeigt und als catch-bar weitergereicht
+    get: (url) => apiFetch(url).catch(err => { showError(err.message); throw err; }),
+    post: (url, body) => apiFetch(url, { method: 'POST', body }).catch(err => { showError(err.message); throw err; }),
+    put: (url, body) => apiFetch(url, { method: 'PUT', body }).catch(err => { showError(err.message); throw err; }),
+    del: (url) => apiFetch(url, { method: 'DELETE' }).catch(err => { showError(err.message); throw err; }),
+    upload: (url, formData) => apiFetch(url, { method: 'POST', body: formData }).catch(err => { showError(err.message); throw err; }),
   };
 }

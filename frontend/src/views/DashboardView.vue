@@ -183,7 +183,8 @@ const quickActions = [
 
 // Daten beim Laden der Seite abrufen
 onMounted(async () => {
-  await Promise.all([
+  // allSettled statt all: Dashboard lädt auch wenn einzelne APIs fehlschlagen
+  await Promise.allSettled([
     recipesStore.fetchRecipes(),
     recipesStore.fetchCategories(),
     mealPlanStore.fetchCurrentPlan(),
