@@ -348,14 +348,49 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-@reference "../assets/styles/main.css";
 .card {
-  @apply bg-white dark:bg-stone-900 p-6 border border-stone-200 dark:border-stone-800 rounded-xl;
+  background-color: white;
+  padding: calc(var(--spacing) * 6);
+  border: 1px solid var(--color-stone-200);
+  border-radius: var(--radius-xl);
 }
+:is(.dark .card) {
+  background-color: var(--color-stone-900);
+  border-color: var(--color-stone-800);
+}
+
 .form-label {
-  @apply block mb-1 font-medium text-stone-700 dark:text-stone-300 text-sm;
+  display: block;
+  margin-bottom: calc(var(--spacing) * 1);
+  font-weight: 500;
+  color: var(--color-stone-700);
+  font-size: var(--text-sm);
+  line-height: var(--text-sm--line-height);
 }
+:is(.dark .form-label) {
+  color: var(--color-stone-300);
+}
+
 .form-input {
-  @apply w-full px-3 py-2 rounded-lg border border-stone-200 dark:border-stone-700 bg-white dark:bg-stone-800 text-stone-800 dark:text-stone-200 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/30 focus:border-primary-400;
+  width: 100%;
+  padding-inline: calc(var(--spacing) * 3);
+  padding-block: calc(var(--spacing) * 2);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--color-stone-200);
+  background-color: white;
+  color: var(--color-stone-800);
+  font-size: var(--text-sm);
+  line-height: var(--text-sm--line-height);
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.form-input:focus {
+  border-color: var(--color-primary-400);
+  box-shadow: 0 0 0 2px color-mix(in oklab, var(--color-primary-500) 30%, transparent);
+}
+:is(.dark .form-input) {
+  border-color: var(--color-stone-700);
+  background-color: var(--color-stone-800);
+  color: var(--color-stone-200);
 }
 </style>

@@ -180,15 +180,30 @@ async function handleSubmit() {
 </script>
 
 <style scoped>
-@reference "../assets/styles/main.css";
-/* Input-Feld Styling als lokaler Utility-Style */
 .input-field {
-  @apply w-full px-4 py-2.5 rounded-lg
-         bg-stone-50 dark:bg-stone-800
-         border border-stone-200 dark:border-stone-700
-         text-stone-900 dark:text-stone-100
-         placeholder-stone-400 dark:placeholder-stone-500
-         focus:border-primary-400 focus:ring-1 focus:ring-primary-400
-         outline-none transition-colors;
+  width: 100%;
+  padding-inline: calc(var(--spacing) * 4);
+  padding-block: calc(var(--spacing) * 2.5);
+  border-radius: var(--radius-lg);
+  background-color: var(--color-stone-50);
+  border: 1px solid var(--color-stone-200);
+  color: var(--color-stone-900);
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.input-field::placeholder {
+  color: var(--color-stone-400);
+}
+.input-field:focus {
+  border-color: var(--color-primary-400);
+  box-shadow: 0 0 0 1px var(--color-primary-400);
+}
+:is(.dark .input-field) {
+  background-color: var(--color-stone-800);
+  border-color: var(--color-stone-700);
+  color: var(--color-stone-100);
+}
+:is(.dark .input-field)::placeholder {
+  color: var(--color-stone-500);
 }
 </style>

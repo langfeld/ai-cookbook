@@ -277,8 +277,20 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-@reference "../assets/styles/main.css";
 .meta-badge {
-  @apply flex items-center gap-1.5 bg-stone-100 dark:bg-stone-800 px-3 py-1 rounded-full text-stone-600 dark:text-stone-400 text-sm;
+  display: flex;
+  align-items: center;
+  gap: calc(var(--spacing) * 1.5);
+  background-color: var(--color-stone-100);
+  padding-inline: calc(var(--spacing) * 3);
+  padding-block: calc(var(--spacing) * 1);
+  border-radius: var(--radius-full);
+  color: var(--color-stone-600);
+  font-size: var(--text-sm);
+  line-height: var(--text-sm--line-height);
+}
+:is(.dark .meta-badge) {
+  background-color: var(--color-stone-800);
+  color: var(--color-stone-400);
 }
 </style>

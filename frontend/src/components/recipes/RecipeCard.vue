@@ -10,7 +10,7 @@
     class="group bg-white dark:bg-stone-900 hover:shadow-lg border border-stone-200 hover:border-primary-300 dark:border-stone-800 dark:hover:border-primary-700 rounded-xl overflow-hidden transition-all"
   >
     <!-- Bild -->
-    <div class="relative bg-stone-100 dark:bg-stone-800 aspect-[4/3] overflow-hidden">
+    <div class="relative bg-stone-100 dark:bg-stone-800 aspect-4/3 overflow-hidden">
       <img
         v-if="recipe.image_url"
         :src="recipe.image_url"

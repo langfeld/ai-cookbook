@@ -213,11 +213,35 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-@reference "../assets/styles/main.css";
 .meal-card {
-  @apply bg-white dark:bg-stone-900 p-2 border border-stone-200 hover:border-primary-300 dark:border-stone-800 dark:hover:border-primary-700 rounded-lg transition-colors cursor-pointer;
+  background-color: white;
+  padding: calc(var(--spacing) * 2);
+  border: 1px solid var(--color-stone-200);
+  border-radius: var(--radius-lg);
+  transition: border-color 0.15s ease;
+  cursor: pointer;
 }
+.meal-card:hover {
+  border-color: var(--color-primary-300);
+}
+:is(.dark .meal-card) {
+  background-color: var(--color-stone-900);
+  border-color: var(--color-stone-800);
+}
+:is(.dark .meal-card:hover) {
+  border-color: var(--color-primary-700);
+}
+
 .meal-card-empty {
-  @apply flex justify-center items-center p-2 border border-stone-200 dark:border-stone-800 border-dashed rounded-lg min-h-10;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: calc(var(--spacing) * 2);
+  border: 1px dashed var(--color-stone-200);
+  border-radius: var(--radius-lg);
+  min-height: calc(var(--spacing) * 10);
+}
+:is(.dark .meal-card-empty) {
+  border-color: var(--color-stone-800);
 }
 </style>
