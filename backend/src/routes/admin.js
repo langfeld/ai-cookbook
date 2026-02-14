@@ -15,6 +15,15 @@ import { createDefaultCategories } from '../config/database.js';
 import { readdirSync, statSync, unlinkSync } from 'fs';
 import { resolve, join } from 'path';
 import { config } from '../config/env.js';
+import { safePath } from '../utils/helpers.js';
+
+// Erlaubte Einstellungs-Keys (verhindert Injection beliebiger Keys)
+const ALLOWED_SETTINGS = new Set([
+  'registration_enabled',
+  'ai_provider',
+  'max_upload_size',
+  'maintenance_mode',
+]);
 
 export default async function adminRoutes(fastify) {
 
@@ -231,8 +240,9 @@ export default async function adminRoutes(fastify) {
     const recipes = db.prepare('SELECT image_url FROM recipes WHERE user_id = ? AND image_url IS NOT NULL').all(id);
     for (const recipe of recipes) {
       try {
-        const imgPath = resolve(config.upload.path, recipe.image_url.replace('/api/uploads/', ''));
-        unlinkSync(imgPath);
+        const imgRelative = recipe.image_url.replace('/api/uploads/', '');
+        const imgPath = safePath(config.upload.path, imgRelative);
+        if (imgPath) unlinkSync(imgPath);
       } catch { /* Bild existiert nicht mehr */ }
     }
 
@@ -297,8 +307,14 @@ export default async function adminRoutes(fastify) {
         required: ['settings'],
       },
     },
-  }, async (request) => {
+  }, async (request, reply) => {
     const settings = request.body.settings;
+
+    // Nur erlaubte Keys akzeptieren
+    const invalidKeys = Object.keys(settings).filter(k => !ALLOWED_SETTINGS.has(k));
+    if (invalidKeys.length) {
+      return reply.status(400).send({ error: `Unbekannte Einstellungen: ${invalidKeys.join(', ')}` });
+    }
 
     const stmt = db.prepare(
       "INSERT INTO settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP"
@@ -354,7 +370,10 @@ export default async function adminRoutes(fastify) {
   // POST /api/admin/seed - Ersten Admin erstellen
   // ============================================
   fastify.post('/seed', {
-    config: { allowUnauthenticated: true },
+    config: {
+      rateLimit: { max: 3, timeWindow: '1 hour' },
+      allowUnauthenticated: true,
+    },
     schema: {
       description: 'Erstellt den ersten Admin-Account (nur wenn keine Admins existieren)',
       tags: ['Admin'],

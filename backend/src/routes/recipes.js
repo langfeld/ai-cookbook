@@ -21,7 +21,9 @@ import { config } from '../config/env.js';
 import { writeFileSync } from 'fs';
 import { resolve, join } from 'path';
 import sharp from 'sharp';
-import { generateId } from '../utils/helpers.js';
+import { generateId, safePath } from '../utils/helpers.js';
+
+const ALLOWED_MIMES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/heic', 'image/heif']);
 
 export default async function recipesRoutes(fastify) {
   // Alle Rezept-Routen erfordern Authentifizierung
@@ -90,7 +92,19 @@ export default async function recipesRoutes(fastify) {
     }
 
     query += ' GROUP BY r.id';
-    query += ` ORDER BY r.${sort} ${order}`;
+
+    // Sichere Whitelist für ORDER BY (kein String-Interpolation in SQL)
+    const sortColumns = {
+      title: 'r.title',
+      created_at: 'r.created_at',
+      last_cooked_at: 'r.last_cooked_at',
+      total_time: 'r.total_time',
+      times_cooked: 'r.times_cooked',
+    };
+    const safeSort = sortColumns[sort] || 'r.created_at';
+    const safeOrder = order === 'asc' ? 'ASC' : 'DESC';
+    query += ` ORDER BY ${safeSort} ${safeOrder}`;
+
     query += ' LIMIT ? OFFSET ?';
     params.push(limit, offset);
 
@@ -239,6 +253,12 @@ export default async function recipesRoutes(fastify) {
     for await (const part of parts) {
       // Nur Datei-Parts verarbeiten (keine Text-Felder)
       if (part.type !== 'file') continue;
+
+      // MIME-Type prüfen
+      if (!ALLOWED_MIMES.has(part.mimetype)) {
+        return reply.status(400).send({ error: `Ungültiger Dateityp: ${part.mimetype}. Erlaubt: JPEG, PNG, WebP, GIF, HEIC` });
+      }
+
       const buffer = await part.toBuffer();
       imageBuffers.push(buffer);
 
@@ -498,6 +518,11 @@ export default async function recipesRoutes(fastify) {
       return reply.status(400).send({ error: 'Keine Bilddatei hochgeladen' });
     }
 
+    // MIME-Type prüfen
+    if (!ALLOWED_MIMES.has(data.mimetype)) {
+      return reply.status(400).send({ error: `Ungültiger Dateityp: ${data.mimetype}. Erlaubt: JPEG, PNG, WebP, GIF, HEIC` });
+    }
+
     const buffer = await data.toBuffer();
 
     // Mit sharp verarbeiten und als WebP speichern
@@ -514,9 +539,11 @@ export default async function recipesRoutes(fastify) {
     if (existing.image_url) {
       try {
         const oldRelative = existing.image_url.replace('/api/uploads/', '');
-        const oldPath = resolve(config.upload.path, oldRelative);
-        const { unlinkSync } = await import('fs');
-        unlinkSync(oldPath);
+        const oldPath = safePath(config.upload.path, oldRelative);
+        if (oldPath) {
+          const { unlinkSync } = await import('fs');
+          unlinkSync(oldPath);
+        }
       } catch {
         // Altes Bild existierte nicht mehr — kein Problem
       }
@@ -549,9 +576,11 @@ export default async function recipesRoutes(fastify) {
     if (recipe.image_url) {
       try {
         const relPath = recipe.image_url.replace('/api/uploads/', '');
-        const fullPath = resolve(config.upload.path, relPath);
-        const { unlinkSync } = await import('fs');
-        unlinkSync(fullPath);
+        const fullPath = safePath(config.upload.path, relPath);
+        if (fullPath) {
+          const { unlinkSync } = await import('fs');
+          unlinkSync(fullPath);
+        }
       } catch {
         // Datei existiert nicht mehr – ignorieren
       }

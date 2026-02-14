@@ -272,14 +272,22 @@ function ingredientColor(name) {
 
 // Zutaten im Kochschritt-Text hervorheben
 function highlightIngredients(text) {
-  if (!text || !recipe.value?.ingredients) return text;
+  if (!text || !recipe.value?.ingredients) return escapeHtml(text || '');
 
-  let result = text;
+  // Zuerst HTML escapen, dann Highlights einfügen
+  let result = escapeHtml(text);
   for (const ing of recipe.value.ingredients) {
-    const regex = new RegExp('(' + ing.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')', 'gi');
+    const escapedName = escapeHtml(ing.name);
+    const regex = new RegExp('(' + escapedName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')', 'gi');
     result = result.replace(regex, '<span class="ingredient-highlight">$1</span>');
   }
   return result;
+}
+
+// HTML-Entities escapen um XSS über v-html zu verhindern
+function escapeHtml(str) {
+  const map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;' };
+  return str.replace(/[&<>"']/g, c => map[c]);
 }
 
 function formatDate(dateStr) {

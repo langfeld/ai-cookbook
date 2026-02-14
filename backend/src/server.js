@@ -10,6 +10,8 @@ import cors from '@fastify/cors';
 import jwt from '@fastify/jwt';
 import multipart from '@fastify/multipart';
 import fastifyStatic from '@fastify/static';
+import rateLimit from '@fastify/rate-limit';
+import helmet from '@fastify/helmet';
 import swagger from '@fastify/swagger';
 import swaggerUi from '@fastify/swagger-ui';
 import { config } from './config/env.js';
@@ -62,6 +64,19 @@ await app.register(cors, {
   credentials: true,
 });
 
+// Security Headers (CSP, HSTS, X-Frame-Options etc.)
+await app.register(helmet, {
+  contentSecurityPolicy: false, // Wird vom Frontend/Nginx gehandhabt
+  crossOriginResourcePolicy: { policy: 'cross-origin' }, // Für Bild-Uploads
+});
+
+// Globales Rate Limiting (100 Requests/Minute pro IP)
+await app.register(rateLimit, {
+  max: 100,
+  timeWindow: '1 minute',
+  keyGenerator: (request) => request.ip,
+});
+
 // JWT für Authentifizierung
 await app.register(jwt, {
   secret: config.jwt.secret,
@@ -83,33 +98,35 @@ await app.register(fastifyStatic, {
   decorateReply: false,
 });
 
-// Swagger API-Dokumentation
-await app.register(swagger, {
-  openapi: {
-    info: {
-      title: 'AI Cookbook API',
-      description: 'KI-gestützte Rezeptverwaltung mit Wochenplaner und Einkaufsliste',
-      version: '1.0.0',
-    },
-    components: {
-      securitySchemes: {
-        bearerAuth: {
-          type: 'http',
-          scheme: 'bearer',
-          bearerFormat: 'JWT',
+// Swagger API-Dokumentation (nur in Entwicklung)
+if (config.isDev) {
+  await app.register(swagger, {
+    openapi: {
+      info: {
+        title: 'AI Cookbook API',
+        description: 'KI-gestützte Rezeptverwaltung mit Wochenplaner und Einkaufsliste',
+        version: '1.0.0',
+      },
+      components: {
+        securitySchemes: {
+          bearerAuth: {
+            type: 'http',
+            scheme: 'bearer',
+            bearerFormat: 'JWT',
+          },
         },
       },
     },
-  },
-});
+  });
 
-await app.register(swaggerUi, {
-  routePrefix: '/docs',
-  uiConfig: {
-    docExpansion: 'list',
-    deepLinking: true,
-  },
-});
+  await app.register(swaggerUi, {
+    routePrefix: '/docs',
+    uiConfig: {
+      docExpansion: 'list',
+      deepLinking: true,
+    },
+  });
+}
 
 // ============================================
 // Auth-Decorator: Authentifizierung prüfen
@@ -163,6 +180,12 @@ const start = async () => {
     // Datenbank initialisieren
     initializeDatabase();
     console.log('🗄️  Datenbank bereit');
+
+    // Sicherheitswarnung: JWT-Secret prüfen
+    if (!config.isDev && config.jwt.secret === 'dev-secret-bitte-in-prod-aendern') {
+      console.error('⚠️  WARNUNG: Standard-JWT-Secret in Produktion! Bitte JWT_SECRET in .env setzen.');
+      process.exit(1);
+    }
 
     // Server starten
     await app.listen({ port: config.port, host: '0.0.0.0' });

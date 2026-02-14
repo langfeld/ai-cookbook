@@ -4,6 +4,8 @@
  * ============================================
  */
 
+import { resolve, relative } from 'path';
+
 /**
  * Generiert einen zufälligen String als ID
  */
@@ -14,6 +16,20 @@ export function generateId(length = 12) {
     result += chars.charAt(Math.floor(Math.random() * chars.length));
   }
   return result;
+}
+
+/**
+ * Sicher einen Dateipfad innerhalb eines Basisverzeichnisses auflösen.
+ * Verhindert Path Traversal (../ Angriffe).
+ * @param {string} basePath - Erlaubtes Basisverzeichnis
+ * @param {string} userPath - Vom Benutzer/DB stammender Pfad
+ * @returns {string|null} - Aufgelöster Pfad oder null bei Traversal-Versuch
+ */
+export function safePath(basePath, userPath) {
+  const resolvedBase = resolve(basePath);
+  const resolvedFull = resolve(basePath, userPath);
+  if (!resolvedFull.startsWith(resolvedBase)) return null;
+  return resolvedFull;
 }
 
 /**

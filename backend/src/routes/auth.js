@@ -16,6 +16,9 @@ export default async function authRoutes(fastify) {
    * Neuen Benutzer registrieren
    */
   fastify.post('/register', {
+    config: {
+      rateLimit: { max: 5, timeWindow: '15 minutes' },
+    },
     schema: {
       description: 'Neuen Benutzer registrieren',
       tags: ['Auth'],
@@ -82,6 +85,9 @@ export default async function authRoutes(fastify) {
    * Benutzer anmelden
    */
   fastify.post('/login', {
+    config: {
+      rateLimit: { max: 10, timeWindow: '15 minutes' },
+    },
     schema: {
       description: 'Benutzer anmelden',
       tags: ['Auth'],
