@@ -267,7 +267,7 @@ function migrateDatabase() {
     const defaults = {
       registration_enabled: 'true',
       ai_provider: 'kimi',
-      max_upload_size_mb: '10',
+      max_upload_size: '10',
       maintenance_mode: 'false',
     };
     const stmt = db.prepare("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)");
@@ -275,6 +275,14 @@ function migrateDatabase() {
       stmt.run(key, value);
     }
     console.log('  ↳ Migration: Standard-Einstellungen erstellt');
+  }
+
+  // Migration: max_upload_size_mb → max_upload_size umbenennen
+  const oldKey = db.prepare("SELECT value FROM settings WHERE key = 'max_upload_size_mb'").get();
+  if (oldKey) {
+    db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('max_upload_size', ?)").run(oldKey.value);
+    db.prepare("DELETE FROM settings WHERE key = 'max_upload_size_mb'").run();
+    console.log('  ↳ Migration: max_upload_size_mb → max_upload_size umbenannt');
   }
 }
 

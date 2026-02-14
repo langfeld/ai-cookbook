@@ -291,11 +291,14 @@ export default async function adminRoutes(fastify) {
       security: [{ bearerAuth: [] }],
       body: {
         type: 'object',
-        additionalProperties: { type: 'string' },
+        properties: {
+          settings: { type: 'object', additionalProperties: { type: 'string' } },
+        },
+        required: ['settings'],
       },
     },
   }, async (request) => {
-    const settings = request.body;
+    const settings = request.body.settings;
 
     const stmt = db.prepare(
       "INSERT INTO settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP"
