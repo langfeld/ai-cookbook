@@ -26,8 +26,8 @@ export const config = {
     provider: getEnv('AI_PROVIDER', 'kimi'),
     kimi: {
       apiKey: getEnv('KIMI_API_KEY'),
-      baseUrl: getEnv('KIMI_BASE_URL', 'https://api.moonshot.cn/v1'),
-      model: getEnv('KIMI_MODEL', 'kimi-2.5'),
+      baseUrl: getEnv('KIMI_BASE_URL', 'https://api.moonshot.ai/v1'),
+      model: getEnv('KIMI_MODEL', 'kimi-k2.5'),
     },
     openai: {
       apiKey: getEnv('OPENAI_API_KEY'),

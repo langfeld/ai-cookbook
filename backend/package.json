@@ -5,9 +5,9 @@
   "main": "src/server.js",
   "type": "module",
   "scripts": {
-    "start": "node src/server.js",
-    "dev": "node --watch src/server.js",
-    "migrate": "node src/config/migrate.js"
+    "start": "node --env-file=../.env src/server.js",
+    "dev": "node --watch --env-file=../.env src/server.js",
+    "migrate": "node --env-file=../.env src/config/migrate.js"
   },
   "dependencies": {
     "fastify": "^5.2.1",
