@@ -60,25 +60,73 @@ export class BaseAIProvider {
 
   /**
    * Extrahiert JSON aus einer KI-Antwort
-   * Unterstützt auch JSON in Markdown-Code-Blöcken
+   * Unterstützt Markdown-Code-Blöcke und repariert abgeschnittenes JSON
    */
   parseJSON(text) {
+    // 1. Direkt versuchen
     try {
       return JSON.parse(text);
-    } catch (e) {
-      const jsonMatch = text.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
-      if (jsonMatch) {
+    } catch {}
+
+    // 2. Markdown-Codeblock entfernen
+    const jsonMatch = text.match(/```(?:json)?\s*\n?([\s\S]*?)\n?```/);
+    if (jsonMatch) {
+      try {
         return JSON.parse(jsonMatch[1].trim());
-      }
-      const braceMatch = text.match(/\{[\s\S]*\}/);
-      if (braceMatch) {
-        return JSON.parse(braceMatch[0]);
-      }
-      const bracketMatch = text.match(/\[[\s\S]*\]/);
-      if (bracketMatch) {
-        return JSON.parse(bracketMatch[0]);
-      }
-      throw new Error(`Konnte kein JSON aus KI-Antwort extrahieren: ${text.substring(0, 200)}...`);
+      } catch {}
     }
+
+    // 3. Äußerstes JSON-Objekt oder -Array extrahieren
+    const braceMatch = text.match(/\{[\s\S]*\}/);
+    if (braceMatch) {
+      try {
+        return JSON.parse(braceMatch[0]);
+      } catch {}
+    }
+
+    const bracketMatch = text.match(/\[[\s\S]*\]/);
+    if (bracketMatch) {
+      try {
+        return JSON.parse(bracketMatch[0]);
+      } catch {}
+    }
+
+    // 4. Abgeschnittenes JSON reparieren (wenn max_tokens erreicht wurde)
+    let candidate = text;
+    // Markdown-Prefix entfernen
+    candidate = candidate.replace(/^```(?:json)?\s*\n?/, '').replace(/\n?```\s*$/, '');
+    // Versuche ab { oder [ zu starten
+    const startBrace = candidate.indexOf('{');
+    const startBracket = candidate.indexOf('[');
+    const startIdx = startBrace >= 0 && (startBracket < 0 || startBrace < startBracket)
+      ? startBrace : startBracket;
+    if (startIdx >= 0) {
+      candidate = candidate.substring(startIdx);
+    }
+    // Trailing-Komma und unvollständige Werte entfernen
+    candidate = candidate
+      .replace(/,\s*"[^"]*":\s*"?[^"}\]]*$/, '')  // unvollständiges Key-Value am Ende
+      .replace(/,\s*\{[^}]*$/, '')                  // unvollständiges Objekt in Array
+      .replace(/,\s*"[^"]*$/, '')                    // unvollständiger String in Array
+      .replace(/,\s*$/, '');                          // trailing Komma
+    // Fehlende schließende Klammern ergänzen
+    const opens = (candidate.match(/[\[{]/g) || []).length;
+    const closes = (candidate.match(/[\]}]/g) || []).length;
+    const missing = opens - closes;
+    if (missing > 0) {
+      // Klammern in umgekehrter Öffnungsreihenfolge schließen
+      const stack = [];
+      for (const ch of candidate) {
+        if (ch === '{') stack.push('}');
+        else if (ch === '[') stack.push(']');
+        else if (ch === '}' || ch === ']') stack.pop();
+      }
+      candidate += stack.reverse().join('');
+    }
+    try {
+      return JSON.parse(candidate);
+    } catch {}
+
+    throw new Error(`Konnte kein JSON aus KI-Antwort extrahieren: ${text.substring(0, 300)}...`);
   }
 }

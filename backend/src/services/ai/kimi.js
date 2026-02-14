@@ -45,7 +45,6 @@ export class KimiProvider extends BaseAIProvider {
             content: prompt,
           },
         ],
-        temperature: options.temperature ?? 0.7,
         max_tokens: options.maxTokens ?? 4096,
       }),
     });
@@ -100,7 +99,6 @@ export class KimiProvider extends BaseAIProvider {
             ],
           },
         ],
-        temperature: options.temperature ?? 0.3,
         max_tokens: options.maxTokens ?? 4096,
       }),
     });

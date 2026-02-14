@@ -64,7 +64,7 @@ Wichtig:
 - Kategorien aus den vorhandenen Kategorien wählen (mehrere möglich)
 `;
 
-  const result = await ai.chatWithImageJSON(prompt, imageBuffer);
+  const result = await ai.chatWithImageJSON(prompt, imageBuffer, { maxTokens: 16384 });
   return result;
 }
 
@@ -120,7 +120,7 @@ Wichtig:
 - Kochschritte klar und nachvollziehbar
 `;
 
-  const result = await ai.chatJSON(prompt);
+  const result = await ai.chatJSON(prompt, { maxTokens: 16384 });
   return result;
 }
 
