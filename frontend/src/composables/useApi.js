@@ -65,7 +65,14 @@ async function apiFetch(url, options = {}) {
           : undefined,
     });
   } catch {
-    throw new Error('Server nicht erreichbar. Bitte prüfe deine Internetverbindung.');
+    // Bei Upload/POST-Requests kann der Server die Anfrage verarbeitet haben,
+    // bevor die Verbindung abbrach (z.B. lange KI-Verarbeitung)
+    const isWrite = options.method && options.method !== 'GET';
+    throw new Error(
+      isWrite
+        ? 'Verbindung unterbrochen. Die Aktion wurde möglicherweise trotzdem ausgeführt.'
+        : 'Server nicht erreichbar. Bitte prüfe deine Internetverbindung.'
+    );
   }
 
   // 401 -> Token abgelaufen, abmelden

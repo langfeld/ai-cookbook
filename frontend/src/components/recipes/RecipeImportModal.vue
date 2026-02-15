@@ -159,12 +159,10 @@
 import { ref, computed } from 'vue';
 import { X, Camera, FileText, Globe, Upload, Sparkles, Plus, ImageIcon } from 'lucide-vue-next';
 import { useRecipesStore } from '@/stores/recipes.js';
-import { useNotification } from '@/composables/useNotification.js';
 
 const emit = defineEmits(['close', 'imported']);
 
 const recipesStore = useRecipesStore();
-const { showError } = useNotification();
 
 const importMode = ref('photo');
 const selectedFiles = ref([]);
@@ -219,8 +217,11 @@ async function handleImport() {
       result = await recipesStore.importFromText(importText.value);
     }
     emit('imported', result);
-  } catch (err) {
-    showError('Import fehlgeschlagen: ' + err.message);
+  } catch {
+    // Fehler wird bereits von der API-Schicht (useApi) als Notification angezeigt.
+    // Rezeptliste wurde im Store-catch trotzdem aktualisiert,
+    // daher Modal schließen — das Rezept ist sehr wahrscheinlich bereits importiert.
+    emit('imported', null);
   } finally {
     importing.value = false;
   }

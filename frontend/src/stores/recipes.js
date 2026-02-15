@@ -95,23 +95,40 @@ export const useRecipesStore = defineStore('recipes', () => {
     for (const file of fileList) {
       formData.append('file', file);
     }
-    const data = await api.upload('/recipes/import-photo', formData);
-    await fetchRecipes();
-    return data;
+    try {
+      const data = await api.upload('/recipes/import-photo', formData);
+      await fetchRecipes();
+      return data;
+    } catch (err) {
+      // Rezeptliste trotzdem aktualisieren — der Server hat das Rezept
+      // möglicherweise gespeichert, obwohl die Antwort nicht ankam
+      await fetchRecipes().catch(() => {});
+      throw err;
+    }
   }
 
   /** Rezept per Text importieren */
   async function importFromText(text) {
-    const data = await api.post('/recipes/import-text', { text });
-    await fetchRecipes();
-    return data;
+    try {
+      const data = await api.post('/recipes/import-text', { text });
+      await fetchRecipes();
+      return data;
+    } catch (err) {
+      await fetchRecipes().catch(() => {});
+      throw err;
+    }
   }
 
   /** Rezept per URL importieren */
   async function importFromUrl(url) {
-    const data = await api.post('/recipes/import-url', { url });
-    await fetchRecipes();
-    return data;
+    try {
+      const data = await api.post('/recipes/import-url', { url });
+      await fetchRecipes();
+      return data;
+    } catch (err) {
+      await fetchRecipes().catch(() => {});
+      throw err;
+    }
   }
 
   /** Favorit umschalten */
