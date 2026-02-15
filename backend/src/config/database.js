@@ -27,6 +27,15 @@ db.pragma('foreign_keys = ON');
  * Erstellt alle Tabellen, falls sie nicht existieren.
  */
 export function initializeDatabase() {
+  // Pre-Migration: Alte ingredient_icons-Tabelle (aus rollback) durch neue ersetzen
+  try {
+    const iconColumns = db.prepare("PRAGMA table_info(ingredient_icons)").all().map(c => c.name);
+    if (iconColumns.length > 0 && !iconColumns.includes('keyword')) {
+      db.exec("DROP TABLE IF EXISTS ingredient_icons");
+      console.log('  ↳ Pre-Migration: Alte ingredient_icons-Tabelle entfernt');
+    }
+  } catch { /* Tabelle existiert noch nicht — OK */ }
+
   db.exec(`
     -- ============================================
     -- Benutzer-Tabelle
@@ -249,6 +258,17 @@ export function initializeDatabase() {
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
     );
     CREATE INDEX IF NOT EXISTS idx_admin_logs_created ON admin_logs(created_at DESC);
+
+    -- ============================================
+    -- Zutaten-Icons (Emoji-Mapping)
+    -- ============================================
+    CREATE TABLE IF NOT EXISTS ingredient_icons (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      keyword TEXT NOT NULL UNIQUE COLLATE NOCASE,
+      emoji TEXT NOT NULL,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE INDEX IF NOT EXISTS idx_ingredient_icons_keyword ON ingredient_icons(keyword);
   `);
 
   // ============================================
@@ -296,6 +316,66 @@ function migrateDatabase() {
     db.prepare("INSERT OR REPLACE INTO settings (key, value) VALUES ('max_upload_size', ?)").run(oldKey.value);
     db.prepare("DELETE FROM settings WHERE key = 'max_upload_size_mb'").run();
     console.log('  ↳ Migration: max_upload_size_mb → max_upload_size umbenannt');
+  }
+
+  // Standard-Zutaten-Icons seeden (nur wenn Tabelle leer)
+  const iconsCount = db.prepare("SELECT COUNT(*) as count FROM ingredient_icons").get().count;
+  if (iconsCount === 0) {
+    const defaultIcons = [
+      // Gemüse
+      ['tomate', '🍅'], ['kartoffel', '🥔'], ['karotte', '🥕'], ['möhre', '🥕'],
+      ['zwiebel', '🧅'], ['knoblauch', '🧄'], ['paprika', '🫑'], ['gurke', '🥒'],
+      ['brokkoli', '🥦'], ['mais', '🌽'], ['pilz', '🍄'], ['champignon', '🍄'],
+      ['salat', '🥬'], ['spinat', '🥬'], ['aubergine', '🍆'], ['avocado', '🥑'],
+      ['erbse', '🫛'], ['bohne', '🫘'], ['chili', '🌶️'], ['ingwer', '🫚'],
+      ['olive', '🫒'], ['zucchini', '🥒'], ['kürbis', '🎃'], ['sellerie', '🥬'],
+      ['lauch', '🧅'], ['fenchel', '🌿'], ['radieschen', '🔴'], ['rote bete', '🟣'],
+      // Obst
+      ['apfel', '🍎'], ['birne', '🍐'], ['orange', '🍊'], ['zitrone', '🍋'],
+      ['limette', '🍋'], ['banane', '🍌'], ['erdbeere', '🍓'], ['kirsche', '🍒'],
+      ['traube', '🍇'], ['weintraube', '🍇'], ['wassermelone', '🍉'], ['pfirsich', '🍑'],
+      ['ananas', '🍍'], ['mango', '🥭'], ['kiwi', '🥝'], ['blaubeere', '🫐'],
+      ['heidelbeere', '🫐'], ['himbeere', '🍓'], ['kokosnuss', '🥥'], ['pflaume', '🟣'],
+      // Fleisch & Fisch
+      ['fleisch', '🥩'], ['rindfleisch', '🥩'], ['schweinefleisch', '🥩'],
+      ['hähnchen', '🍗'], ['huhn', '🍗'], ['hühnchen', '🍗'], ['pute', '🍗'],
+      ['speck', '🥓'], ['schinken', '🥓'], ['wurst', '🌭'], ['hackfleisch', '🥩'],
+      ['fisch', '🐟'], ['lachs', '🐟'], ['thunfisch', '🐟'], ['garnele', '🦐'],
+      ['shrimp', '🦐'], ['muschel', '🦪'], ['tintenfisch', '🦑'],
+      // Milchprodukte & Eier
+      ['ei', '🥚'], ['eier', '🥚'], ['butter', '🧈'], ['käse', '🧀'],
+      ['milch', '🥛'], ['sahne', '🥛'], ['joghurt', '🥛'], ['quark', '🥛'],
+      ['schmand', '🥛'], ['frischkäse', '🧀'], ['parmesan', '🧀'], ['mozzarella', '🧀'],
+      // Getreide & Backwaren
+      ['brot', '🍞'], ['brötchen', '🍞'], ['toast', '🍞'], ['reis', '🍚'],
+      ['nudel', '🍝'], ['pasta', '🍝'], ['spaghetti', '🍝'], ['mehl', '🌾'],
+      ['haferflocken', '🌾'], ['couscous', '🌾'], ['semmel', '🍞'], ['tortilla', '🫓'],
+      ['croissant', '🥐'], ['brezel', '🥨'], ['pfannkuchen', '🥞'],
+      // Gewürze & Saucen
+      ['salz', '🧂'], ['pfeffer', '🧂'], ['zucker', '🍬'], ['honig', '🍯'],
+      ['senf', '🟡'], ['ketchup', '🍅'], ['sojasauce', '🥫'], ['essig', '🫙'],
+      ['basilikum', '🌿'], ['petersilie', '🌿'], ['oregano', '🌿'], ['thymian', '🌿'],
+      ['rosmarin', '🌿'], ['dill', '🌿'], ['koriander', '🌿'], ['zimt', '🟤'],
+      ['curry', '🟡'], ['paprikapulver', '🟠'], ['muskat', '🟤'], ['vanille', '🟡'],
+      // Nüsse & Öle
+      ['nuss', '🥜'], ['walnuss', '🥜'], ['mandel', '🥜'], ['erdnuss', '🥜'],
+      ['haselnuss', '🥜'], ['cashew', '🥜'], ['pistazie', '🥜'],
+      ['olivenöl', '🫒'], ['öl', '🫒'], ['sonnenblumenöl', '🌻'],
+      // Getränke
+      ['wasser', '💧'], ['wein', '🍷'], ['weißwein', '🍷'], ['rotwein', '🍷'],
+      ['bier', '🍺'], ['kaffee', '☕'], ['tee', '🍵'], ['saft', '🧃'],
+      // Sonstiges
+      ['schokolade', '🍫'], ['kakao', '🍫'], ['tofu', '🟨'], ['hefe', '🟡'],
+      ['gelatine', '🟡'], ['tomatenmark', '🍅'], ['kokosmilch', '🥥'],
+    ];
+    const stmt = db.prepare("INSERT OR IGNORE INTO ingredient_icons (keyword, emoji) VALUES (?, ?)");
+    const insertMany = db.transaction((icons) => {
+      for (const [keyword, emoji] of icons) {
+        stmt.run(keyword, emoji);
+      }
+    });
+    insertMany(defaultIcons);
+    console.log(`  ↳ Migration: ${defaultIcons.length} Standard-Zutaten-Icons erstellt`);
   }
 }
 

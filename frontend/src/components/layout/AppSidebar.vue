@@ -118,6 +118,7 @@ import {
   Shield,
   Users,
   Settings,
+  SmilePlus,
 } from 'lucide-vue-next';
 import { usePantryStore } from '@/stores/pantry.js';
 import { useShoppingStore } from '@/stores/shopping.js';
@@ -165,5 +166,6 @@ const adminNavItems = [
   { to: '/admin', label: 'Dashboard', icon: Shield },
   { to: '/admin/users', label: 'Benutzer', icon: Users },
   { to: '/admin/settings', label: 'Einstellungen', icon: Settings },
+  { to: '/admin/ingredient-icons', label: 'Zutaten-Icons', icon: SmilePlus },
 ];
 </script>

@@ -156,7 +156,7 @@
             :key="ing.id"
             class="flex items-center gap-3 hover:bg-stone-50 dark:hover:bg-stone-800/50 px-3 py-1.5 rounded-lg transition-colors"
           >
-            <span :class="['w-2 h-2 rounded-full shrink-0', ingredientColor(ing.name)]" />
+            <span class="w-5 text-base text-center shrink-0" :title="ing.name">{{ getEmoji(ing.name) || '•' }}</span>
             <span class="w-20 font-medium text-stone-800 dark:text-stone-200 text-sm text-right">
               {{ scaleAmount(ing.amount) }} {{ ing.unit }}
             </span>
@@ -180,7 +180,7 @@
                 :key="ing.id"
                 class="flex items-center gap-3 hover:bg-stone-50 dark:hover:bg-stone-800/50 px-3 py-1.5 rounded-lg transition-colors"
               >
-                <span :class="['w-2 h-2 rounded-full shrink-0', ingredientColor(ing.name)]" />
+                <span class="w-5 text-base text-center shrink-0" :title="ing.name">{{ getEmoji(ing.name) || '•' }}</span>
                 <span class="w-20 font-medium text-stone-800 dark:text-stone-200 text-sm text-right">
                   {{ scaleAmount(ing.amount) }} {{ ing.unit }}
                 </span>
@@ -267,11 +267,13 @@ import { useRecipesStore } from '@/stores/recipes.js';
 import { useNotification } from '@/composables/useNotification.js';
 import { Star, Clock, Users, ChefHat, Pencil, Plus, Minus, Trash2, List, Layers } from 'lucide-vue-next';
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue';
+import { useIngredientIcons } from '@/composables/useIngredientIcons.js';
 
 const route = useRoute();
 const router = useRouter();
 const recipesStore = useRecipesStore();
 const { showSuccess, showError } = useNotification();
+const { loadIcons, getEmoji } = useIngredientIcons();
 
 const recipe = computed(() => recipesStore.currentRecipe);
 const adjustedServings = ref(4);
@@ -336,18 +338,10 @@ function scaleAmount(amount) {
   return Math.round(scaled * 100) / 100;
 }
 
-// Zutat-Farbe bestimmen (anhand des Namens)
-function ingredientColor(name) {
-  const lower = name.toLowerCase();
-  if (/fleisch|schinken|speck|huhn|rind|schwein|hack|wurst/i.test(lower)) return 'bg-red-400';
-  if (/milch|sahne|käse|joghurt|butter|quark|ei/i.test(lower)) return 'bg-blue-400';
-  if (/salat|tomate|paprika|zwiebel|knoblauch|kartoffel|möhre|gurke|zucchini|spinat|pilz/i.test(lower)) return 'bg-green-400';
-  if (/salz|pfeffer|gewürz|oregano|basilikum|thymian|paprikapulver|zimt|curry/i.test(lower)) return 'bg-amber-400';
-  if (/mehl|nudel|reis|brot|haferflocken|pasta|spaghetti/i.test(lower)) return 'bg-yellow-400';
-  return 'bg-stone-400';
-}
+// Zutat-Farbe bestimmen (anhand des Namens) – nur Fallback für "•"
+// Wird nicht mehr benötigt, da jetzt Emojis verwendet werden.
 
-// Zutaten im Kochschritt-Text hervorheben
+// Zutaten im Kochschritt-Text hervorheben (mit Emoji-Prefix)
 function highlightIngredients(text) {
   if (!text || !recipe.value?.ingredients) return escapeHtml(text || '');
 
@@ -365,8 +359,16 @@ function highlightIngredients(text) {
   );
   if (!escapedNames.length) return result;
 
+  // Map für schnelles Emoji-Lookup (escaped name → original name)
+  const nameMap = new Map();
+  uniqueNames.forEach((n, i) => nameMap.set(escapedNames[i].toLowerCase(), n));
+
   const combined = new RegExp('\\b(' + escapedNames.join('|') + ')\\b', 'gi');
-  result = result.replace(combined, '<span class="ingredient-highlight">$1</span>');
+  result = result.replace(combined, (match) => {
+    const emoji = getEmoji(nameMap.get(match.toLowerCase()) || match);
+    const prefix = emoji ? emoji + ' ' : '';
+    return '<span class="ingredient-highlight">' + prefix + match + '</span>';
+  });
 
   return result;
 }
@@ -402,6 +404,7 @@ async function deleteRecipe() {
 }
 
 onMounted(async () => {
+  await loadIcons();
   await recipesStore.fetchRecipe(route.params.id);
   if (recipe.value) {
     adjustedServings.value = recipe.value.servings;
