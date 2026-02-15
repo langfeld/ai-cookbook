@@ -48,8 +48,8 @@ async function apiFetch(url, options = {}) {
     headers['Authorization'] = `Bearer ${authStore.token}`;
   }
 
-  // Content-Type nur für JSON setzen (nicht für FormData/Multipart)
-  if (!(options.body instanceof FormData)) {
+  // Content-Type nur für JSON setzen (nicht für FormData/Multipart und nicht ohne Body)
+  if (options.body && !(options.body instanceof FormData)) {
     headers['Content-Type'] = 'application/json';
   }
 
