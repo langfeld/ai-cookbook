@@ -16,7 +16,7 @@ services:
     ports:
       - "8080:3001"
     volumes:
-      - cookbook-data:/app/data       # Datenbank + Uploads (persistent)
+      - /mnt/tank/apps/ai-cookbook:/app/data   # ← Pfad an dein NAS anpassen!
     environment:
       # --- Pflicht ---
       - JWT_SECRET=CHANGE_ME         # openssl rand -base64 48
@@ -29,6 +29,3 @@ services:
       # - KIMI_API_KEY=              # Besser: Im Admin-Panel unter Einstellungen setzen
       # - AI_PROVIDER=kimi           # kimi, openai, anthropic, ollama
       # - MAX_UPLOAD_SIZE=10         # MB pro Bild
-
-volumes:
-  cookbook-data:
