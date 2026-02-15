@@ -17,7 +17,7 @@
  * hinzugefügt werden.
  */
 
-import { config } from '../config/env.js';
+import { getReweConfig } from '../config/settings.js';
 
 const REWE_BASE_URL = 'https://mobile-api.rewe.de/api/v3';
 const REWE_SEARCH_URL = 'https://mobile-api.rewe.de/products/search';
@@ -29,7 +29,7 @@ const REWE_SEARCH_URL = 'https://mobile-api.rewe.de/products/search';
  * @returns {Promise<object[]>} - Liste gefundener Produkte
  */
 export async function searchProducts(query, options = {}) {
-  const { marketId, zipCode } = config.rewe;
+  const { marketId, zipCode } = getReweConfig();
 
   if (!marketId && !zipCode) {
     return { products: [], error: 'REWE Market-ID oder PLZ nicht konfiguriert' };

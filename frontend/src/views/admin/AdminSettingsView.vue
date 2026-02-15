@@ -105,8 +105,78 @@
               <option value="kimi">Kimi K2.5</option>
               <option value="openai">OpenAI</option>
               <option value="anthropic">Anthropic</option>
+              <option value="ollama">Ollama (Lokal)</option>
             </select>
           </div>
+        </div>
+      </section>
+
+      <!-- KI-Konfiguration -->
+      <section class="bg-white dark:bg-stone-800 mb-4 sm:mb-6 p-5 sm:p-6 border border-stone-200 dark:border-stone-700 rounded-xl">
+        <h2 class="flex items-center gap-2 mb-2 font-display font-semibold text-stone-800 dark:text-stone-100 text-lg">
+          <BotIcon class="w-5 h-5 text-stone-400" />
+          KI-Konfiguration
+        </h2>
+        <p class="mb-5 text-stone-400 dark:text-stone-500 text-xs">
+          API-Schlüssel und Modelle. Änderungen wirken sofort — kein Neustart nötig.
+        </p>
+
+        <div class="space-y-5">
+          <!-- Kimi -->
+          <div v-if="settingsMap.ai_provider === 'kimi'" class="space-y-3">
+            <h3 class="font-medium text-primary-600 dark:text-primary-400 text-sm">Kimi / Moonshot AI</h3>
+            <SettingsInput label="API-Key" v-model="settingsMap.kimi_api_key" type="password"
+              placeholder="sk-..." @save="saveSetting('kimi_api_key', settingsMap.kimi_api_key)" />
+            <SettingsInput label="Base-URL" v-model="settingsMap.kimi_base_url"
+              placeholder="https://api.moonshot.ai/v1" @save="saveSetting('kimi_base_url', settingsMap.kimi_base_url)" />
+            <SettingsInput label="Modell" v-model="settingsMap.kimi_model"
+              placeholder="kimi-k2.5" @save="saveSetting('kimi_model', settingsMap.kimi_model)" />
+          </div>
+
+          <!-- OpenAI -->
+          <div v-if="settingsMap.ai_provider === 'openai'" class="space-y-3">
+            <h3 class="font-medium text-primary-600 dark:text-primary-400 text-sm">OpenAI</h3>
+            <SettingsInput label="API-Key" v-model="settingsMap.openai_api_key" type="password"
+              placeholder="sk-..." @save="saveSetting('openai_api_key', settingsMap.openai_api_key)" />
+            <SettingsInput label="Modell" v-model="settingsMap.openai_model"
+              placeholder="gpt-4o" @save="saveSetting('openai_model', settingsMap.openai_model)" />
+          </div>
+
+          <!-- Anthropic -->
+          <div v-if="settingsMap.ai_provider === 'anthropic'" class="space-y-3">
+            <h3 class="font-medium text-primary-600 dark:text-primary-400 text-sm">Anthropic</h3>
+            <SettingsInput label="API-Key" v-model="settingsMap.anthropic_api_key" type="password"
+              placeholder="sk-ant-..." @save="saveSetting('anthropic_api_key', settingsMap.anthropic_api_key)" />
+            <SettingsInput label="Modell" v-model="settingsMap.anthropic_model"
+              placeholder="claude-sonnet-4-20250514" @save="saveSetting('anthropic_model', settingsMap.anthropic_model)" />
+          </div>
+
+          <!-- Ollama -->
+          <div v-if="settingsMap.ai_provider === 'ollama'" class="space-y-3">
+            <h3 class="font-medium text-primary-600 dark:text-primary-400 text-sm">Ollama (Lokal)</h3>
+            <SettingsInput label="Base-URL" v-model="settingsMap.ollama_base_url"
+              placeholder="http://localhost:11434" @save="saveSetting('ollama_base_url', settingsMap.ollama_base_url)" />
+            <SettingsInput label="Modell" v-model="settingsMap.ollama_model"
+              placeholder="llava" @save="saveSetting('ollama_model', settingsMap.ollama_model)" />
+          </div>
+        </div>
+      </section>
+
+      <!-- REWE-Integration -->
+      <section class="bg-white dark:bg-stone-800 mb-4 sm:mb-6 p-5 sm:p-6 border border-stone-200 dark:border-stone-700 rounded-xl">
+        <h2 class="flex items-center gap-2 mb-2 font-display font-semibold text-stone-800 dark:text-stone-100 text-lg">
+          <ShoppingCart class="w-5 h-5 text-stone-400" />
+          REWE-Integration
+        </h2>
+        <p class="mb-5 text-stone-400 dark:text-stone-500 text-xs">
+          Produktsuche und Preise aus deinem REWE-Markt.
+        </p>
+
+        <div class="space-y-3">
+          <SettingsInput label="Markt-ID" v-model="settingsMap.rewe_market_id"
+            placeholder="z.B. 1234567" @save="saveSetting('rewe_market_id', settingsMap.rewe_market_id)" />
+          <SettingsInput label="Postleitzahl" v-model="settingsMap.rewe_zip_code"
+            placeholder="z.B. 50667" @save="saveSetting('rewe_zip_code', settingsMap.rewe_zip_code)" />
         </div>
       </section>
 
@@ -175,7 +245,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue';
+import { ref, reactive, onMounted, h } from 'vue';
 import { useApi } from '@/composables/useApi.js';
 import { useNotification } from '@/composables/useNotification.js';
 import {
@@ -184,6 +254,10 @@ import {
   Wrench,
   RefreshCw,
   Trash2,
+  Bot as BotIcon,
+  ShoppingCart,
+  Eye,
+  EyeOff,
 } from 'lucide-vue-next';
 
 const api = useApi();
@@ -251,4 +325,54 @@ async function runCleanup() {
 }
 
 onMounted(loadSettings);
+
+// ============================================
+// SettingsInput — Inline-Komponente für Einstellungsfelder
+// ============================================
+const SettingsInput = {
+  props: {
+    label: String,
+    modelValue: { type: String, default: '' },
+    type: { type: String, default: 'text' },
+    placeholder: { type: String, default: '' },
+  },
+  emits: ['update:modelValue', 'save'],
+  setup(props, { emit }) {
+    const showPassword = ref(false);
+    const inputType = ref(props.type);
+
+    function toggleVisibility() {
+      showPassword.value = !showPassword.value;
+      inputType.value = showPassword.value ? 'text' : 'password';
+    }
+
+    let debounceTimer = null;
+    function onInput(e) {
+      emit('update:modelValue', e.target.value);
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => emit('save'), 800);
+    }
+
+    return () => {
+      const isPassword = props.type === 'password';
+      return h('div', { class: 'flex sm:flex-row flex-col sm:justify-between sm:items-center gap-2' }, [
+        h('label', { class: 'font-medium text-stone-600 dark:text-stone-300 text-sm shrink-0 w-28' }, props.label),
+        h('div', { class: 'relative flex-1' }, [
+          h('input', {
+            type: isPassword ? inputType.value : 'text',
+            value: props.modelValue || '',
+            placeholder: props.placeholder,
+            class: 'bg-white dark:bg-stone-900 px-3 py-1.5 border border-stone-200 dark:border-stone-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 w-full text-stone-800 dark:text-stone-200 text-sm' + (isPassword ? ' pr-10' : ''),
+            onInput,
+          }),
+          isPassword ? h('button', {
+            type: 'button',
+            class: 'top-1/2 right-2.5 absolute text-stone-400 hover:text-stone-600 dark:hover:text-stone-300 -translate-y-1/2',
+            onClick: toggleVisibility,
+          }, [h(showPassword.value ? EyeOff : Eye, { class: 'w-4 h-4' })]) : null,
+        ]),
+      ]);
+    };
+  },
+};
 </script>

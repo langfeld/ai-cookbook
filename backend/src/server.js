@@ -16,7 +16,7 @@ import swagger from '@fastify/swagger';
 import swaggerUi from '@fastify/swagger-ui';
 import { config } from './config/env.js';
 import { initializeDatabase } from './config/database.js';
-import { mkdirSync, existsSync } from 'fs';
+import { mkdirSync, existsSync, readFileSync } from 'fs';
 import { resolve } from 'path';
 
 // --- Routen importieren ---
@@ -56,11 +56,9 @@ const app = Fastify({
 // Plugins registrieren
 // ============================================
 
-// CORS für Frontend-Zugriff
+// CORS für Frontend-Zugriff (in Docker nicht nötig, da gleicher Origin)
 await app.register(cors, {
-  origin: config.isDev
-    ? ['http://localhost:5173', 'http://localhost:8080']
-    : ['http://localhost:8080'],
+  origin: true,
   credentials: true,
 });
 
@@ -97,6 +95,27 @@ await app.register(fastifyStatic, {
   prefix: '/api/uploads/',
   decorateReply: false,
 });
+
+// Frontend SPA ausliefern (nur wenn /public existiert, also im Docker-Build)
+const publicPath = resolve('public');
+if (existsSync(publicPath)) {
+  await app.register(fastifyStatic, {
+    root: publicPath,
+    prefix: '/',
+    decorateReply: false,
+    wildcard: false,
+  });
+
+  // SPA-Fallback: Alle unbekannten Routen → index.html
+  const indexHtml = readFileSync(resolve(publicPath, 'index.html'));
+  app.setNotFoundHandler((request, reply) => {
+    if (request.url.startsWith('/api/')) {
+      reply.status(404).send({ error: 'Route nicht gefunden.' });
+    } else {
+      reply.type('text/html').send(indexHtml);
+    }
+  });
+}
 
 // Swagger API-Dokumentation (nur in Entwicklung)
 if (config.isDev) {
@@ -189,12 +208,21 @@ const start = async () => {
 
     // Server starten
     await app.listen({ port: config.port, host: '0.0.0.0' });
-    console.log(`🚀 AI Cookbook Backend läuft auf Port ${config.port}`);
-    console.log(`📚 API-Docs: http://localhost:${config.port}/docs`);
+    console.log(`🚀 AI Cookbook läuft auf Port ${config.port}`);
+    if (config.isDev) console.log(`📚 API-Docs: http://localhost:${config.port}/docs`);
   } catch (err) {
     app.log.error(err);
     process.exit(1);
   }
 };
+
+// Graceful Shutdown (Docker stop)
+const shutdown = async (signal) => {
+  console.log(`\n⏹️  ${signal} — fahre herunter…`);
+  await app.close();
+  process.exit(0);
+};
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));
 
 start();

@@ -1,0 +1,89 @@
+# ============================================
+# GitHub Actions — Docker Build & Push to ghcr.io
+# ============================================
+# Baut ein einzelnes Docker-Image (Backend + Frontend) und pusht es
+# zur GitHub Container Registry (ghcr.io).
+#
+# Trigger:
+#   - Push auf main/master → Tag: latest
+#   - Git-Tag (v1.0.0)    → Tag: 1.0.0 + latest
+#
+# Voraussetzung:
+#   Repository Settings → Actions → General →
+#   "Read and write permissions" für GITHUB_TOKEN aktivieren
+
+name: Build & Push Docker Image
+
+on:
+  push:
+    branches: [main, master]
+    tags: ['v*']
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+
+    steps:
+      # ---- Repository auschecken ----
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # ---- QEMU für Multi-Arch (ARM64 für NAS) ----
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      # ---- Docker Buildx ----
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # ---- Am ghcr.io anmelden ----
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # ---- Image-Name in Kleinbuchstaben ----
+      - name: Prepare image name
+        id: prep
+        run: |
+          REPO="${{ github.repository }}"
+          echo "image_name=${REPO,,}" >> "$GITHUB_OUTPUT"
+
+      # ---- Tags und Labels generieren ----
+      - name: Docker Metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ steps.prep.outputs.image_name }}
+          tags: |
+            # latest bei Push auf main/master
+            type=raw,value=latest,enable={{is_default_branch}}
+            # Semver-Tags: v1.2.3 → 1.2.3, 1.2, 1
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            # SHA-Tag für eindeutige Zuordnung
+            type=sha,prefix=sha-
+
+      # ---- Image bauen und pushen ----
+      - name: Build and Push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          platforms: linux/amd64,linux/arm64
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

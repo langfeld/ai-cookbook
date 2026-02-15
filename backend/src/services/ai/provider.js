@@ -14,7 +14,7 @@
  * 4. Konfiguration in config/env.js ergänzen
  */
 
-import { config } from '../../config/env.js';
+import { getAiConfig } from '../../config/settings.js';
 import { KimiProvider } from './kimi.js';
 import { OpenAIProvider } from './openai.js';
 import { AnthropicProvider } from './anthropic.js';
@@ -25,25 +25,30 @@ export { BaseAIProvider } from './base.js';
 
 /**
  * Registry aller verfügbaren Provider
- * Zum Hinzufügen: einfach hier ergänzen
+ * Config wird bei jedem Aufruf frisch aus der DB gelesen,
+ * damit Änderungen im Admin-Panel sofort wirken.
  */
 const providerMap = {
-  kimi: () => new KimiProvider(config.ai.kimi),
-  openai: () => new OpenAIProvider(config.ai.openai),
-  anthropic: () => new AnthropicProvider(config.ai.anthropic),
-  ollama: () => new OllamaProvider(config.ai.ollama),
+  kimi:      (ai) => new KimiProvider(ai.kimi),
+  openai:    (ai) => new OpenAIProvider(ai.openai),
+  anthropic: (ai) => new AnthropicProvider(ai.anthropic),
+  ollama:    (ai) => new OllamaProvider(ai.ollama),
 };
 
 // Singleton-Instanz des aktiven Providers
 let activeProvider = null;
+let activeProviderName = null;
 
 /**
- * Gibt die aktive AI-Provider-Instanz zurück
- * Erstellt sie beim ersten Aufruf (Lazy Loading)
+ * Gibt die aktive AI-Provider-Instanz zurück.
+ * Erstellt sie beim ersten Aufruf oder wenn sich der Provider geändert hat.
  */
 export function getAIProvider() {
-  if (!activeProvider) {
-    const providerName = config.ai.provider;
+  const aiConfig = getAiConfig();
+  const providerName = aiConfig.provider;
+
+  // Provider neu erstellen, wenn sich die Auswahl geändert hat
+  if (!activeProvider || activeProviderName !== providerName) {
     const factory = providerMap[providerName];
 
     if (!factory) {
@@ -53,7 +58,8 @@ export function getAIProvider() {
       );
     }
 
-    activeProvider = factory();
+    activeProvider = factory(aiConfig);
+    activeProviderName = providerName;
     console.log(`🤖 AI-Provider geladen: ${activeProvider.name}`);
   }
 

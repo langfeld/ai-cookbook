@@ -17,13 +17,28 @@ import { resolve, join } from 'path';
 import sharp from 'sharp';
 import { config } from '../config/env.js';
 import { safePath, generateId } from '../utils/helpers.js';
+import { resetProvider } from '../services/ai/provider.js';
 
 // Erlaubte Einstellungs-Keys (verhindert Injection beliebiger Keys)
 const ALLOWED_SETTINGS = new Set([
+  // Allgemein
   'registration_enabled',
-  'ai_provider',
-  'max_upload_size',
   'maintenance_mode',
+  'max_upload_size',
+  // KI-Provider
+  'ai_provider',
+  'kimi_api_key',
+  'kimi_base_url',
+  'kimi_model',
+  'openai_api_key',
+  'openai_model',
+  'anthropic_api_key',
+  'anthropic_model',
+  'ollama_base_url',
+  'ollama_model',
+  // REWE
+  'rewe_market_id',
+  'rewe_zip_code',
 ]);
 
 export default async function adminRoutes(fastify) {
@@ -352,8 +367,15 @@ export default async function adminRoutes(fastify) {
   }, async () => {
     const rows = db.prepare('SELECT key, value FROM settings').all();
     const settings = {};
+
+    // API-Keys maskieren (nur letzte 4 Zeichen zeigen)
+    const sensitiveKeys = new Set(['kimi_api_key', 'openai_api_key', 'anthropic_api_key']);
     for (const row of rows) {
-      settings[row.key] = row.value;
+      if (sensitiveKeys.has(row.key) && row.value && row.value.length > 4) {
+        settings[row.key] = '•'.repeat(row.value.length - 4) + row.value.slice(-4);
+      } else {
+        settings[row.key] = row.value;
+      }
     }
     return { settings };
   });
@@ -383,19 +405,33 @@ export default async function adminRoutes(fastify) {
       return reply.status(400).send({ error: `Unbekannte Einstellungen: ${invalidKeys.join(', ')}` });
     }
 
+    // Maskierte API-Keys ignorieren (wenn der Wert nur • und 4 Zeichen am Ende hat)
+    const sensitiveKeys = new Set(['kimi_api_key', 'openai_api_key', 'anthropic_api_key']);
+    const filteredSettings = {};
+    for (const [key, value] of Object.entries(settings)) {
+      if (sensitiveKeys.has(key) && value && value.startsWith('•')) continue; // Maskiert → nicht überschreiben
+      filteredSettings[key] = value;
+    }
+
     const stmt = db.prepare(
       "INSERT INTO settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP) ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = CURRENT_TIMESTAMP"
     );
 
     const transaction = db.transaction(() => {
-      for (const [key, value] of Object.entries(settings)) {
+      for (const [key, value] of Object.entries(filteredSettings)) {
         stmt.run(key, String(value));
       }
     });
 
     transaction();
 
-    logAdminAction(request.user.id, 'Einstellungen geändert', Object.keys(settings).join(', '));
+    // KI-Provider zurücksetzen, wenn sich KI-Einstellungen geändert haben
+    const aiKeys = Object.keys(filteredSettings).filter(k => k.startsWith('ai_') || k.endsWith('_api_key') || k.endsWith('_model') || k.endsWith('_base_url'));
+    if (aiKeys.length > 0) {
+      resetProvider();
+    }
+
+    logAdminAction(request.user.id, 'Einstellungen geändert', Object.keys(filteredSettings).join(', '));
 
     return { message: 'Einstellungen gespeichert.' };
   });

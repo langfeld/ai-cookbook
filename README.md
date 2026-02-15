@@ -6,7 +6,7 @@ Eine KI-gestützte Rezeptverwaltung mit intelligentem Wochenplaner, Einkaufslist
 ![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-4-06B6D4?logo=tailwindcss&logoColor=white)
 ![Fastify](https://img.shields.io/badge/Fastify-5-000000?logo=fastify&logoColor=white)
 ![SQLite](https://img.shields.io/badge/SQLite-3-003B57?logo=sqlite&logoColor=white)
-![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)
+![Docker](https://img.shields.io/badge/Docker-ghcr.io-2496ED?logo=docker&logoColor=white)
 
 ---
 
@@ -71,32 +71,64 @@ Eine KI-gestützte Rezeptverwaltung mit intelligentem Wochenplaner, Einkaufslist
 | **Bildverarbeitung** | Sharp (Resize, WebP-Konvertierung) | 0.33 |
 | **KI-Provider** | Kimi K2.5 (Moonshot AI) — austauschbar | — |
 | **Auth** | JWT (@fastify/jwt + bcryptjs) | — |
-| **Container** | Docker + Docker Compose + Nginx | — |
+| **Container** | Docker (Single-Container) + ghcr.io | — |
 
 ---
 
 ## 🚀 Schnellstart
 
 ### Voraussetzungen
-- **Node.js 22+** (für lokale Entwicklung) oder **Docker + Docker Compose**
+- **Node.js 22+** (für lokale Entwicklung) oder **Docker**
 - Ein API-Key für Kimi/Moonshot AI (oder einen anderen KI-Provider)
 
-### Installation (Docker)
+### Docker Compose (empfohlen)
 
 ```bash
-# Repository klonen
-git clone <repo-url> ai-cookbook
-cd ai-cookbook
-
-# Umgebungsvariablen konfigurieren
-cp .env.example .env
-# .env bearbeiten: JWT_SECRET und KIMI_API_KEY eintragen
-
-# Container starten
+# 1. docker-compose.yml anpassen (Image-Name, JWT_SECRET, API-Key)
+# 2. Starten:
 docker compose up -d
 ```
 
+Die mitgelieferte `docker-compose.yml` enthält alle Einstellungen mit Erklärungen.
+
+### Docker Run (Einzeiler)
+
+```bash
+docker run -d \
+  --name cookbook \
+  --restart unless-stopped \
+  -p 8080:3001 \
+  -v cookbook-data:/app/data \
+  -e JWT_SECRET=$(openssl rand -base64 48) \
+  -e PUID=1000 \
+  -e PGID=1000 \
+  ghcr.io/GITHUB_USER/ai-cookbook:latest
+```
+
+> ⚠️ **`GITHUB_USER`** durch deinen GitHub-Benutzernamen ersetzen (Kleinbuchstaben).
+
 Erreichbar unter **http://localhost:8080**
+
+> 💡 **KI-API-Keys, REWE-Daten und weitere Einstellungen** werden bequem über das **Admin-Panel** (Einstellungen) konfiguriert — nicht mehr per Umgebungsvariable!
+
+#### Umgebungsvariablen
+
+| Variable | Pflicht | Standard | Beschreibung |
+|---|---|---|---|
+| `JWT_SECRET` | ✅ | — | Geheimer Schlüssel für Auth-Tokens |
+| `PUID` | — | `1000` | User-ID für Volume-Dateien (NAS!) |
+| `PGID` | — | `1000` | Group-ID für Volume-Dateien (NAS!) |
+| `KIMI_API_KEY` | — | — | Fallback, wenn nicht im Admin-Panel gesetzt |
+| `AI_PROVIDER` | — | `kimi` | Fallback für KI-Anbieter |
+| `MAX_UPLOAD_SIZE` | — | `10` | Fallback für Max-Upload in MB |
+
+#### Volumes
+
+| Mount | Beschreibung |
+|---|---|
+| `/app/data` | Datenbank (`cookbook.db`) + Upload-Bilder (`uploads/`) |
+
+> **NAS-Tipp:** Auf Synology/QNAP die PUID/PGID an deinen NAS-Benutzer anpassen, damit Dateien im Volume die richtigen Besitzerrechte haben. Synology-Standard ist oft `1000:1000`, QNAP nutzt häufig `500:500`.
 
 ### Lokale Entwicklung (ohne Docker)
 
@@ -118,13 +150,21 @@ npm run dev          # → http://localhost:5173
 
 > **Hinweis:** Das Backend lädt `.env` über `--env-file=../.env` (Node 22 nativ, kein dotenv nötig).
 
+### Docker selber bauen
+
+```bash
+git clone <repo-url> ai-cookbook
+cd ai-cookbook
+docker build -t ai-cookbook .
+docker run -d --name cookbook -p 8080:3001 -v cookbook-data:/app/data --env-file .env ai-cookbook
+```
+
 ### 🛡️ Admin-Account einrichten
 
 Beim **ersten Start** existiert kein Administrator. So wird der initiale Admin-Account erstellt:
 
 ```bash
-# 1. Backend muss laufen, dann:
-curl -X POST http://localhost:3001/api/admin/seed
+curl -X POST http://localhost:8080/api/admin/seed
 ```
 
 **Antwort:**
@@ -140,14 +180,33 @@ curl -X POST http://localhost:3001/api/admin/seed
 ```
 
 **Ablauf bei frischem Start:**
-1. App starten (Backend + Frontend)
+1. Container starten (siehe oben)
 2. `POST /api/admin/seed` aufrufen → Erstellt Admin-Account (`admin` / `admin123`)
-3. Im Browser anmelden unter `http://localhost:5173/login`
+3. Im Browser anmelden unter `http://localhost:8080/login`
 4. In der Sidebar erscheint der **Admin-Bereich** (Shield-Icon)
-5. Unter **Admin → Benutzer** das eigene Passwort über „Passwort zurücksetzen" ändern
-6. Optional: Registrierung und andere Einstellungen unter **Admin → Einstellungen** konfigurieren
+5. **Admin → Einstellungen → KI-Konfiguration** → API-Key eintragen
+6. Unter **Admin → Benutzer** das eigene Passwort über „Passwort zurücksetzen" ändern
+7. Optional: REWE-Integration, Upload-Limits und weitere Einstellungen konfigurieren
 
 > **Sicherheit:** Die Seed-Route funktioniert **nur**, wenn noch kein Admin existiert. Bei einem erneuten Aufruf wird `400 Es existiert bereits ein Administrator` zurückgegeben.
+
+### Aktualisieren
+
+```bash
+# Mit Docker Compose:
+docker compose pull && docker compose up -d
+
+# Oder manuell:
+docker pull ghcr.io/GITHUB_USER/ai-cookbook:latest
+docker stop cookbook && docker rm cookbook
+# Gleicher docker run Befehl wie oben (Volume bleibt erhalten)
+```
+
+### GitHub Actions
+
+Der Workflow (`.github/workflows/docker-build.yml`) baut das Image automatisch bei Push auf `main` oder bei Git-Tags (`v1.0.0`) und pusht es zu `ghcr.io`. Images werden für **amd64 + arm64** gebaut.
+
+**Voraussetzung:** *Settings → Actions → General → Workflow permissions → Read and write permissions*.
 
 ---
 
@@ -155,89 +214,60 @@ curl -X POST http://localhost:3001/api/admin/seed
 
 ```
 ai-cookbook/
+├── Dockerfile                  # Single-Container Build (Frontend + Backend)
+├── docker-compose.yml          # Compose für NAS / einfaches Deployment
+├── entrypoint.sh               # PUID/PGID-Handling für NAS-Berechtigungen
+├── .dockerignore
 ├── .env.example                # Umgebungsvariablen-Vorlage
-├── docker-compose.yml          # 3-Service-Compose (Backend, Frontend, Nginx)
-├── README.md
+├── .github/workflows/
+│   └── docker-build.yml        # GitHub Actions → ghcr.io
 │
 ├── backend/
-│   ├── Dockerfile
 │   ├── package.json
 │   └── src/
-│       ├── server.js           # Fastify Server + Plugin-Registrierung
+│       ├── server.js           # Fastify Server + Frontend-Serving + SPA-Fallback
 │       ├── config/
 │       │   ├── env.js          # Zentrale Config aus Umgebungsvariablen
-│       │   ├── database.js     # SQLite-Initialisierung (WAL, FK, CASCADE)
-│       │   └── migrate.js      # DB-Migrationen
-│       ├── plugins/            # Fastify-Plugins (Auth, CORS, Static)
+│       │   └── database.js     # SQLite-Initialisierung (WAL, FK, CASCADE)
 │       ├── routes/
 │       │   ├── auth.js         # Registrierung, Login, Token-Refresh
-│       │   ├── recipes.js      # CRUD + Foto-Import + Text-Import
+│       │   ├── recipes.js      # CRUD + Foto-Import + Text-Import + Export/Import
 │       │   ├── categories.js   # Kategorien CRUD
 │       │   ├── mealplan.js     # Wochenplaner + KI-Generierung
 │       │   ├── shopping.js     # Einkaufsliste + REWE-Matching
 │       │   ├── pantry.js       # Vorratsschrank CRUD + Verbrauch
 │       │   ├── rewe.js         # REWE Produktsuche
-│       │   └── admin.js        # Admin: Stats, Benutzerverwaltung, Settings, Logs
+│       │   └── admin.js        # Admin: Stats, Benutzer, Settings, Logs, Export/Import
 │       ├── services/
 │       │   ├── ai/
 │       │   │   ├── base.js     # BaseAIProvider (Chat, JSON-Parse, Bildanalyse)
 │       │   │   ├── kimi.js     # Kimi K2.5 Provider (api.moonshot.ai)
 │       │   │   └── index.js    # Provider-Factory
-│       │   └── recipe-parser.js # Multi-Bild-Rezeptanalyse (max 16384 Tokens)
+│       │   └── recipe-parser.js # Multi-Bild-Rezeptanalyse
 │       └── utils/
 │
-├── frontend/
-│   ├── Dockerfile
-│   ├── package.json
-│   ├── vite.config.js          # Vite 6 + @vitejs/plugin-vue + @tailwindcss/vite
-│   └── src/
-│       ├── main.js             # App-Einstieg + Pinia + Router
-│       ├── App.vue             # Layout-Shell (Sidebar, Header, Transition)
-│       ├── assets/styles/
-│       │   └── main.css        # Tailwind 4 (@theme, @custom-variant dark)
-│       ├── components/
-│       │   ├── layout/
-│       │   │   ├── AppSidebar.vue     # Responsive: Desktop static, Mobile overlay
-│       │   │   ├── AppHeader.vue      # Suche, Theme-Toggle, Benutzermenü
-│       │   │   ├── ThemeToggle.vue    # Dark/Light Mode Umschalter
-│       │   │   └── NotificationToast.vue
-│       │   ├── ui/
-│       │   │   ├── ConfirmDialog.vue  # Wiederverwendbarer Bestätigungsdialog
-│       │   │   └── ImageCropModal.vue # Bildzuschnitt mit Seitenverhältnissen
-│       │   ├── recipes/
-│       │   │   ├── RecipeCard.vue     # Grid-Vorschaukarte
-│       │   │   ├── RecipeImportModal.vue # KI-Import (Foto + Text)
-│       │   │   └── RecipeImportExportModal.vue # JSON Export/Import (User + Admin)
-│       │   └── dashboard/
-│       │       └── StatCard.vue
-│       ├── views/
-│       │   ├── LoginView.vue          # Login + Registrierung
-│       │   ├── DashboardView.vue      # Statistiken, Tagesplan, Schnellaktionen
-│       │   ├── RecipesView.vue        # Übersicht mit Filtern + Suche
-│       │   ├── RecipeDetailView.vue   # Vollansicht mit Zutatenhighlighting
-│       │   ├── RecipeFormView.vue     # Erstellen/Bearbeiten + Bildzuschnitt
-│       │   ├── MealPlanView.vue       # 7-Tage-Wochenplaner
-│       │   ├── ShoppingView.vue       # Einkaufsliste + REWE
-│       │   ├── PantryView.vue         # Vorratsschrank
-│       │   └── admin/
-│       │       ├── AdminDashboardView.vue  # System-Statistiken + Logs
-│       │       ├── AdminUsersView.vue      # Benutzerverwaltung
-│       │       └── AdminSettingsView.vue   # Systemeinstellungen + Cleanup
-│       ├── stores/                    # Pinia Stores
-│       │   ├── auth.js
-│       │   ├── recipes.js
-│       │   ├── mealplan.js
-│       │   ├── shopping.js
-│       │   └── pantry.js
-│       ├── composables/
-│       │   ├── useApi.js              # Fetch-Wrapper mit Fehlerbehandlung
-│       │   ├── useTheme.js            # Dark-Mode-Verwaltung
-│       │   └── useNotification.js     # Toast-System
-│       └── router/
-│           └── index.js
-│
-└── nginx/
-    └── default.conf                   # Reverse Proxy (Frontend + /api → Backend)
+└── frontend/
+    ├── package.json
+    ├── vite.config.js          # Vite 6 + @vitejs/plugin-vue + @tailwindcss/vite
+    └── src/
+        ├── main.js             # App-Einstieg + Pinia + Router
+        ├── App.vue             # Layout-Shell (Sidebar, Header, Transition)
+        ├── assets/styles/
+        │   └── main.css        # Tailwind 4 (@theme, @custom-variant dark)
+        ├── components/
+        │   ├── layout/         # Sidebar, Header, ThemeToggle, Toast
+        │   ├── ui/             # ConfirmDialog, ImageCropModal
+        │   ├── recipes/        # RecipeCard, ImportModal, ImportExportModal
+        │   └── dashboard/      # StatCard
+        ├── views/
+        │   ├── LoginView.vue
+        │   ├── DashboardView.vue
+        │   ├── RecipesView.vue / RecipeDetailView.vue / RecipeFormView.vue
+        │   ├── MealPlanView.vue / ShoppingView.vue / PantryView.vue
+        │   └── admin/          # AdminDashboard, AdminUsers, AdminSettings
+        ├── stores/             # Pinia (auth, recipes, mealplan, shopping, pantry)
+        ├── composables/        # useApi, useTheme, useNotification
+        └── router/index.js
 ```
 
 ---
