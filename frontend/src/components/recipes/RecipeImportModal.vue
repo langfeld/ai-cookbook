@@ -1,9 +1,9 @@
 <!--
   ============================================
-  RecipeImportModal - Foto-Import Dialog
+  RecipeImportModal - Import Dialog
   ============================================
-  Ermöglicht den Import von Rezepten per Foto oder Text.
-  Die KI analysiert das Bild und extrahiert das Rezept.
+  Ermöglicht den Import von Rezepten per Foto, Text oder URL.
+  Die KI analysiert die Quelle und extrahiert das Rezept.
 -->
 <template>
   <div class="z-50 fixed inset-0 flex justify-center items-center p-4">
@@ -23,7 +23,7 @@
       </div>
 
       <div class="p-6">
-        <!-- Tab: Foto / Text -->
+        <!-- Tab: Foto / Text / URL -->
         <div class="flex bg-stone-100 dark:bg-stone-800 mb-6 p-1 rounded-lg">
           <button
             @click="importMode = 'photo'"
@@ -31,6 +31,13 @@
           >
             <Camera class="w-4 h-4" />
             Foto
+          </button>
+          <button
+            @click="importMode = 'url'"
+            :class="tabClass(importMode === 'url')"
+          >
+            <Globe class="w-4 h-4" />
+            URL
           </button>
           <button
             @click="importMode = 'text'"
@@ -81,6 +88,24 @@
           </p>
         </div>
 
+        <!-- URL-Import -->
+        <div v-else-if="importMode === 'url'">
+          <div class="space-y-3">
+            <div>
+              <input
+                v-model="importUrl"
+                type="url"
+                placeholder="https://www.chefkoch.de/rezepte/..."
+                class="bg-stone-50 dark:bg-stone-800 px-4 py-3 border border-stone-200 focus:border-primary-400 dark:border-stone-700 rounded-xl outline-none focus:ring-1 focus:ring-primary-400 w-full text-stone-700 dark:text-stone-300 text-sm"
+                @keydown.enter.prevent="handleImport"
+              />
+            </div>
+            <p class="text-stone-400 dark:text-stone-500 text-xs leading-relaxed">
+              Füge einen Link zu einem Rezept ein — z.B. von Chefkoch, Lecker, EatSmarter, Kitchen Stories oder jeder anderen Rezeptseite.
+            </p>
+          </div>
+        </div>
+
         <!-- Text-Import -->
         <div v-else>
           <textarea
@@ -110,7 +135,7 @@
         </button>
         <button
           @click="handleImport"
-          :disabled="importing || (selectedFiles.length === 0 && importMode === 'photo') || (!importText && importMode === 'text')"
+          :disabled="importDisabled"
           class="flex items-center gap-2 bg-primary-600 hover:bg-primary-700 disabled:opacity-50 px-4 py-2 rounded-lg font-medium text-white text-sm transition-colors disabled:cursor-not-allowed"
         >
           <span v-if="importing" class="flex items-center gap-2">
@@ -131,8 +156,8 @@
 </template>
 
 <script setup>
-import { ref } from 'vue';
-import { X, Camera, FileText, Upload, Sparkles, Plus, ImageIcon } from 'lucide-vue-next';
+import { ref, computed } from 'vue';
+import { X, Camera, FileText, Globe, Upload, Sparkles, Plus, ImageIcon } from 'lucide-vue-next';
 import { useRecipesStore } from '@/stores/recipes.js';
 import { useNotification } from '@/composables/useNotification.js';
 
@@ -145,7 +170,16 @@ const importMode = ref('photo');
 const selectedFiles = ref([]);
 const previewUrls = ref([]);
 const importText = ref('');
+const importUrl = ref('');
 const importing = ref(false);
+
+const importDisabled = computed(() => {
+  if (importing.value) return true;
+  if (importMode.value === 'photo') return selectedFiles.value.length === 0;
+  if (importMode.value === 'url') return !importUrl.value || !importUrl.value.startsWith('http');
+  if (importMode.value === 'text') return !importText.value;
+  return true;
+});
 
 function tabClass(active) {
   return [
@@ -164,7 +198,6 @@ function handleFileSelect(event) {
     selectedFiles.value.push(file);
     previewUrls.value.push(URL.createObjectURL(file));
   }
-  // Input zurücksetzen, damit gleiche Dateien nochmal gewählt werden können
   event.target.value = '';
 }
 
@@ -180,6 +213,8 @@ async function handleImport() {
     let result;
     if (importMode.value === 'photo' && selectedFiles.value.length > 0) {
       result = await recipesStore.importFromPhoto(selectedFiles.value);
+    } else if (importMode.value === 'url' && importUrl.value) {
+      result = await recipesStore.importFromUrl(importUrl.value);
     } else if (importMode.value === 'text' && importText.value) {
       result = await recipesStore.importFromText(importText.value);
     }

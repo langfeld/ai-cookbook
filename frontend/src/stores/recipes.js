@@ -107,6 +107,13 @@ export const useRecipesStore = defineStore('recipes', () => {
     return data;
   }
 
+  /** Rezept per URL importieren */
+  async function importFromUrl(url) {
+    const data = await api.post('/recipes/import-url', { url });
+    await fetchRecipes();
+    return data;
+  }
+
   /** Favorit umschalten */
   async function toggleFavorite(id) {
     const data = await api.post(`/recipes/${id}/favorite`);
@@ -164,7 +171,7 @@ export const useRecipesStore = defineStore('recipes', () => {
     recipes, currentRecipe, categories, loading, filters,
     totalRecipes, favoriteRecipes, recentRecipes,
     fetchRecipes, fetchRecipe, createRecipe, updateRecipe, deleteRecipe,
-    importFromPhoto, importFromText, toggleFavorite, markAsCooked,
+    importFromPhoto, importFromText, importFromUrl, toggleFavorite, markAsCooked,
     fetchCategories, createCategory, exportRecipes, importRecipes,
   };
 });

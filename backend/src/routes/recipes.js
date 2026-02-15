@@ -16,7 +16,7 @@
  */
 
 import db from '../config/database.js';
-import { parseRecipeFromImage, parseRecipeFromText, suggestCategories } from '../services/recipe-parser.js';
+import { parseRecipeFromImage, parseRecipeFromText, parseRecipeFromUrl, suggestCategories } from '../services/recipe-parser.js';
 import { config } from '../config/env.js';
 import { writeFileSync, readFileSync, existsSync } from 'fs';
 import { resolve, join } from 'path';
@@ -388,6 +388,83 @@ export default async function recipesRoutes(fastify) {
         parsedRecipe.cook_time || 0,
         parsedRecipe.total_time || 0,
         parsedRecipe.difficulty || 'mittel'
+      );
+
+      const recipeId = recipeResult.lastInsertRowid;
+
+      if (parsedRecipe.suggested_categories?.length) {
+        const insertCat = db.prepare(
+          'INSERT OR IGNORE INTO recipe_categories (recipe_id, category_id) SELECT ?, id FROM categories WHERE user_id = ? AND name = ?'
+        );
+        for (const catName of parsedRecipe.suggested_categories) {
+          insertCat.run(recipeId, userId, catName);
+        }
+      }
+
+      if (parsedRecipe.ingredients?.length) {
+        const insertIng = db.prepare(
+          'INSERT INTO ingredients (recipe_id, name, amount, unit, group_name, sort_order, is_optional, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+        );
+        parsedRecipe.ingredients.forEach((ing, idx) => {
+          insertIng.run(recipeId, ing.name, ing.amount, ing.unit, ing.group_name, idx, ing.is_optional ? 1 : 0, ing.notes);
+        });
+      }
+
+      if (parsedRecipe.steps?.length) {
+        const insertStep = db.prepare(
+          'INSERT INTO cooking_steps (recipe_id, step_number, title, instruction, duration_minutes) VALUES (?, ?, ?, ?, ?)'
+        );
+        parsedRecipe.steps.forEach((step) => {
+          insertStep.run(recipeId, step.step_number, step.title, step.instruction, step.duration_minutes);
+        });
+      }
+
+      return recipeId;
+    });
+
+    const recipeId = transaction();
+    return reply.status(201).send({ id: recipeId, recipe: parsedRecipe });
+  });
+
+  /**
+   * POST /api/recipes/import-url
+   * Rezept von einer URL importieren (KI analysiert die Webseite)
+   */
+  fastify.post('/import-url', {
+    schema: {
+      description: 'Rezept aus URL importieren (KI)',
+      tags: ['Rezepte'],
+      security: [{ bearerAuth: [] }],
+      body: {
+        type: 'object',
+        required: ['url'],
+        properties: {
+          url: { type: 'string', format: 'uri' },
+        },
+      },
+    },
+  }, async (request, reply) => {
+    const userId = request.user.id;
+    const { url } = request.body;
+
+    const categories = db.prepare('SELECT name FROM categories WHERE user_id = ?').all(userId);
+    const parsedRecipe = await parseRecipeFromUrl(url, categories.map(c => c.name));
+
+    // Gleiche Speicher-Logik wie bei Text-Import
+    const transaction = db.transaction(() => {
+      const recipeResult = db.prepare(`
+        INSERT INTO recipes (user_id, title, description, servings, prep_time, cook_time, total_time, difficulty, ai_generated, notes)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
+      `).run(
+        userId,
+        parsedRecipe.title,
+        parsedRecipe.description,
+        parsedRecipe.servings || 4,
+        parsedRecipe.prep_time || 0,
+        parsedRecipe.cook_time || 0,
+        parsedRecipe.total_time || 0,
+        parsedRecipe.difficulty || 'mittel',
+        `Importiert von: ${url}`
       );
 
       const recipeId = recipeResult.lastInsertRowid;

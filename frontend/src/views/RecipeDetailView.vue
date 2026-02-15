@@ -276,11 +276,21 @@ function highlightIngredients(text) {
 
   // Zuerst HTML escapen, dann Highlights einfügen
   let result = escapeHtml(text);
-  for (const ing of recipe.value.ingredients) {
-    const escapedName = escapeHtml(ing.name);
-    const regex = new RegExp('(' + escapedName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')', 'gi');
-    result = result.replace(regex, '<span class="ingredient-highlight">$1</span>');
-  }
+
+  // Zutatennamen deduplizieren und nach Länge sortieren (längste zuerst),
+  // damit "Olivenöl" vor "Öl" matcht und kein doppeltes Wrapping entsteht
+  const uniqueNames = [...new Set(recipe.value.ingredients.map(i => i.name))];
+  uniqueNames.sort((a, b) => b.length - a.length);
+
+  // Einzelne Regex mit Alternation: alle Zutaten in einem Durchlauf ersetzen
+  const escapedNames = uniqueNames.map(n =>
+    escapeHtml(n).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  );
+  if (!escapedNames.length) return result;
+
+  const combined = new RegExp('\\b(' + escapedNames.join('|') + ')\\b', 'gi');
+  result = result.replace(combined, '<span class="ingredient-highlight">$1</span>');
+
   return result;
 }
 

@@ -131,6 +131,131 @@ Wichtig:
 }
 
 /**
+ * Extrahiert ein Rezept aus einer URL
+ * Ruft die Webseite ab, extrahiert den Text-Inhalt und lässt die KI daraus ein Rezept erstellen
+ * @param {string} url - Die URL der Rezeptseite
+ * @param {string[]} existingCategories - Vorhandene Kategorie-Namen
+ * @returns {Promise<object>} - Strukturiertes Rezept-Objekt
+ */
+export async function parseRecipeFromUrl(url, existingCategories = []) {
+  // Webseite abrufen
+  const response = await fetch(url, {
+    headers: {
+      'User-Agent': 'Mozilla/5.0 (compatible; AI-Cookbook/1.0)',
+      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+      'Accept-Language': 'de-DE,de;q=0.9,en;q=0.5',
+    },
+    signal: AbortSignal.timeout(15000),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Webseite konnte nicht abgerufen werden (HTTP ${response.status})`);
+  }
+
+  const html = await response.text();
+
+  // HTML zu lesbarem Text reduzieren:
+  // 1. Script/Style/Nav/Footer/Header entfernen
+  let text = html
+    .replace(/<script[\s\S]*?<\/script>/gi, '')
+    .replace(/<style[\s\S]*?<\/style>/gi, '')
+    .replace(/<nav[\s\S]*?<\/nav>/gi, '')
+    .replace(/<footer[\s\S]*?<\/footer>/gi, '')
+    .replace(/<header[\s\S]*?<\/header>/gi, '')
+    .replace(/<aside[\s\S]*?<\/aside>/gi, '')
+    .replace(/<!--[\s\S]*?-->/g, '');
+
+  // 2. Strukturierte Daten (JSON-LD) extrahieren, falls vorhanden
+  let jsonLd = '';
+  const jsonLdMatch = html.match(/<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi);
+  if (jsonLdMatch) {
+    for (const match of jsonLdMatch) {
+      const content = match.replace(/<\/?script[^>]*>/gi, '').trim();
+      try {
+        const parsed = JSON.parse(content);
+        // Recipe-Schema erkennen
+        const isRecipe = (obj) => obj?.['@type'] === 'Recipe' || (Array.isArray(obj?.['@graph']) && obj['@graph'].some(i => i['@type'] === 'Recipe'));
+        if (isRecipe(parsed)) {
+          jsonLd = content;
+          break;
+        }
+      } catch { /* Kein valides JSON-LD */ }
+    }
+  }
+
+  // 3. HTML-Tags entfernen und Text bereinigen
+  text = text
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#039;/g, "'")
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  // Text auf vernünftige Länge begrenzen (KI-Token-Limit)
+  const maxChars = 12000;
+  if (text.length > maxChars) {
+    text = text.substring(0, maxChars) + '…';
+  }
+
+  const ai = getAIProvider();
+
+  const prompt = `
+Extrahiere das Rezept von dieser Webseite und erstelle ein vollständiges, strukturiertes Rezept.
+
+Quell-URL: ${url}
+${jsonLd ? `\nStrukturierte Daten (JSON-LD):\n${jsonLd}\n` : ''}
+Seiteninhalt:
+${text}
+
+Vorhandene Kategorien: ${existingCategories.join(', ') || 'Frühstück, Mittagessen, Abendessen, Snack'}
+
+Antworte im folgenden JSON-Format:
+{
+  "title": "Rezeptname",
+  "description": "Kurze Beschreibung (1-2 Sätze)",
+  "servings": 4,
+  "prep_time": 15,
+  "cook_time": 30,
+  "total_time": 45,
+  "difficulty": "leicht|mittel|schwer",
+  "suggested_categories": ["Mittagessen"],
+  "ingredients": [
+    {
+      "name": "Zutatename",
+      "amount": 500,
+      "unit": "g",
+      "group_name": null,
+      "is_optional": false,
+      "notes": ""
+    }
+  ],
+  "steps": [
+    {
+      "step_number": 1,
+      "title": "Vorbereitung",
+      "instruction": "Detaillierte Anleitung...",
+      "duration_minutes": 10
+    }
+  ]
+}
+
+Wichtig:
+- Alle Mengenangaben als Zahlen (nicht als Brüche wie ½)
+- Einheiten standardisiert: g, kg, ml, l, TL, EL, Stk, Bund, Prise, Dose
+- Kochschritte klar unterteilt mit sinnvollen Titeln
+- In den Kochschritten die Zutaten im Text erwähnen
+- Falls die Seite kein erkennbares Rezept enthält, erstelle ein Rezept basierend auf dem Titel oder Thema der Seite
+`;
+
+  const result = await ai.chatJSON(prompt, { maxTokens: 16384 });
+  return result;
+}
+
+/**
  * Schlägt Kategorien für ein bestehendes Rezept vor
  * @param {object} recipe - Das Rezept (title, ingredients, etc.)
  * @param {string[]} availableCategories - Verfügbare Kategorien
