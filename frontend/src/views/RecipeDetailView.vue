@@ -98,28 +98,78 @@
           <h2 class="font-semibold text-stone-800 dark:text-stone-100 text-lg">
             🥕 Zutaten
           </h2>
-          <!-- Portionsrechner -->
-          <div class="flex items-center gap-2">
-            <button
-              @click="adjustedServings = Math.max(1, adjustedServings - 1)"
-              class="flex justify-center items-center bg-stone-100 hover:bg-stone-200 dark:bg-stone-800 dark:hover:bg-stone-700 rounded-full w-8 h-8 text-stone-600 dark:text-stone-400"
-            >
-              <Minus class="w-4 h-4" />
-            </button>
-            <span class="w-20 font-medium text-stone-700 dark:text-stone-300 text-sm text-center">
-              {{ adjustedServings }} Port.
-            </span>
-            <button
-              @click="adjustedServings++"
-              class="flex justify-center items-center bg-stone-100 hover:bg-stone-200 dark:bg-stone-800 dark:hover:bg-stone-700 rounded-full w-8 h-8 text-stone-600 dark:text-stone-400"
-            >
-              <Plus class="w-4 h-4" />
-            </button>
+          <div class="flex items-center gap-3">
+            <!-- Ansichts-Toggle (nur bei echten Gruppen) -->
+            <div v-if="hasGroups" class="flex bg-stone-100 dark:bg-stone-800 p-0.5 rounded-lg">
+              <button
+                @click="ingredientView = 'all'"
+                :class="[
+                  'flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-colors',
+                  ingredientView === 'all'
+                    ? 'bg-white dark:bg-stone-700 text-stone-800 dark:text-stone-100 shadow-sm'
+                    : 'text-stone-500 dark:text-stone-400 hover:text-stone-700 dark:hover:text-stone-300'
+                ]"
+                title="Alle Zutaten"
+              >
+                <List class="w-3.5 h-3.5" />
+                Alle
+              </button>
+              <button
+                @click="ingredientView = 'grouped'"
+                :class="[
+                  'flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-colors',
+                  ingredientView === 'grouped'
+                    ? 'bg-white dark:bg-stone-700 text-stone-800 dark:text-stone-100 shadow-sm'
+                    : 'text-stone-500 dark:text-stone-400 hover:text-stone-700 dark:hover:text-stone-300'
+                ]"
+                title="Nach Schritten gruppiert"
+              >
+                <Layers class="w-3.5 h-3.5" />
+                Gruppiert
+              </button>
+            </div>
+            <!-- Portionsrechner -->
+            <div class="flex items-center gap-2">
+              <button
+                @click="adjustedServings = Math.max(1, adjustedServings - 1)"
+                class="flex justify-center items-center bg-stone-100 hover:bg-stone-200 dark:bg-stone-800 dark:hover:bg-stone-700 rounded-full w-8 h-8 text-stone-600 dark:text-stone-400"
+              >
+                <Minus class="w-4 h-4" />
+              </button>
+              <span class="w-20 font-medium text-stone-700 dark:text-stone-300 text-sm text-center">
+                {{ adjustedServings }} Port.
+              </span>
+              <button
+                @click="adjustedServings++"
+                class="flex justify-center items-center bg-stone-100 hover:bg-stone-200 dark:bg-stone-800 dark:hover:bg-stone-700 rounded-full w-8 h-8 text-stone-600 dark:text-stone-400"
+              >
+                <Plus class="w-4 h-4" />
+              </button>
+            </div>
           </div>
         </div>
 
-        <!-- Zutaten-Liste (gruppiert) -->
-        <div class="space-y-4">
+        <!-- Zutaten-Liste: Alle (flach, zusammengeführt) -->
+        <ul v-if="ingredientView === 'all' || !hasGroups" class="space-y-2">
+          <li
+            v-for="ing in flatIngredients"
+            :key="ing.id"
+            class="flex items-center gap-3 hover:bg-stone-50 dark:hover:bg-stone-800/50 px-3 py-1.5 rounded-lg transition-colors"
+          >
+            <span :class="['w-2 h-2 rounded-full shrink-0', ingredientColor(ing.name)]" />
+            <span class="w-20 font-medium text-stone-800 dark:text-stone-200 text-sm text-right">
+              {{ scaleAmount(ing.amount) }} {{ ing.unit }}
+            </span>
+            <span class="flex-1 text-stone-700 dark:text-stone-300 text-sm">
+              {{ ing.name }}
+              <span v-if="ing.is_optional" class="ml-1 text-stone-400 text-xs">(optional)</span>
+              <span v-if="ing.notes" class="ml-1 text-stone-400 text-xs">– {{ ing.notes }}</span>
+            </span>
+          </li>
+        </ul>
+
+        <!-- Zutaten-Liste: Gruppiert nach Schritten -->
+        <div v-else class="space-y-4">
           <div v-for="(group, groupName) in groupedIngredients" :key="groupName">
             <h3 v-if="groupName !== 'default'" class="mb-2 font-medium text-stone-500 dark:text-stone-400 text-sm">
               {{ groupName }}
@@ -215,7 +265,7 @@ import { ref, computed, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useRecipesStore } from '@/stores/recipes.js';
 import { useNotification } from '@/composables/useNotification.js';
-import { Star, Clock, Users, ChefHat, Pencil, Plus, Minus, Trash2 } from 'lucide-vue-next';
+import { Star, Clock, Users, ChefHat, Pencil, Plus, Minus, Trash2, List, Layers } from 'lucide-vue-next';
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue';
 
 const route = useRoute();
@@ -227,6 +277,7 @@ const recipe = computed(() => recipesStore.currentRecipe);
 const adjustedServings = ref(4);
 const showDeleteDialog = ref(false);
 const deleting = ref(false);
+const ingredientView = ref('all');
 
 const deleteMessage = computed(() => {
   const title = recipe.value?.title || 'dieses Rezept';
@@ -250,6 +301,32 @@ const groupedIngredients = computed(() => {
     groups[group].push(ing);
   }
   return groups;
+});
+
+// Gibt es echte Gruppen? (Toggle nur anzeigen wenn ja)
+const hasGroups = computed(() => {
+  const keys = Object.keys(groupedIngredients.value);
+  return keys.length > 1 || (keys.length === 1 && keys[0] !== 'default');
+});
+
+// Flache Zutatenliste — gleiche Zutat+Einheit zusammenführen
+const flatIngredients = computed(() => {
+  const ingredients = recipe.value?.ingredients || [];
+  const merged = new Map();
+  for (const ing of ingredients) {
+    const key = `${ing.name.toLowerCase()}::${(ing.unit || '').toLowerCase()}`;
+    if (merged.has(key)) {
+      const existing = merged.get(key);
+      existing.amount = (existing.amount || 0) + (ing.amount || 0);
+      // Optional/Notes zusammenführen
+      if (ing.notes && !existing.notes?.includes(ing.notes)) {
+        existing.notes = [existing.notes, ing.notes].filter(Boolean).join(', ');
+      }
+    } else {
+      merged.set(key, { ...ing });
+    }
+  }
+  return [...merged.values()];
 });
 
 // Portionsrechner: Menge umrechnen
