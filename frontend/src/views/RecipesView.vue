@@ -23,13 +23,13 @@
           <ArrowDownUp class="w-4 h-4" />
           <span class="hidden sm:inline">Export/Import</span>
         </button>
-        <!-- Foto-Import Button -->
+        <!-- KI-Import Button -->
         <button
           @click="showPhotoImport = true"
           class="flex items-center gap-2 px-4 py-2 rounded-lg font-medium text-white text-sm transition-colors bg-accent-600 hover:bg-accent-700"
         >
-          <Camera class="w-4 h-4" />
-          <span class="hidden sm:inline">Foto importieren</span>
+          <Sparkles class="w-4 h-4" />
+          <span class="hidden sm:inline">KI-Import</span>
         </button>
         <!-- Neues Rezept -->
         <router-link
@@ -140,7 +140,7 @@
 <script setup>
 import { ref, onMounted } from 'vue';
 import { useRecipesStore } from '@/stores/recipes.js';
-import { Search, Camera, Plus, Star, BookOpen, ArrowDownUp } from 'lucide-vue-next';
+import { Search, Sparkles, Plus, Star, BookOpen, ArrowDownUp } from 'lucide-vue-next';
 import RecipeCard from '@/components/recipes/RecipeCard.vue';
 import RecipeImportModal from '@/components/recipes/RecipeImportModal.vue';
 import RecipeImportExportModal from '@/components/recipes/RecipeImportExportModal.vue';

@@ -137,7 +137,7 @@ import { useMealPlanStore } from '@/stores/mealplan.js';
 import { useShoppingStore } from '@/stores/shopping.js';
 import { usePantryStore } from '@/stores/pantry.js';
 import {
-  Calendar, Zap, History, BookOpen, Camera,
+  Calendar, Zap, History, BookOpen, Sparkles,
   CalendarPlus, ShoppingCart, Star, Warehouse,
 } from 'lucide-vue-next';
 import StatCard from '@/components/dashboard/StatCard.vue';
@@ -176,7 +176,7 @@ const todayMeals = computed(() => {
 // Schnellaktionen
 const quickActions = [
   { to: '/recipes/new', icon: BookOpen, label: 'Rezept erstellen' },
-  { to: '/recipes?import=photo', icon: Camera, label: 'Foto importieren' },
+  { to: '/recipes?import=photo', icon: Sparkles, label: 'KI-Import' },
   { to: '/mealplan?generate=true', icon: CalendarPlus, label: 'Wochenplan erstellen' },
   { to: '/shopping', icon: ShoppingCart, label: 'Einkaufsliste' },
 ];
