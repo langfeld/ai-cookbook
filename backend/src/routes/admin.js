@@ -11,7 +11,6 @@
 
 import bcrypt from 'bcryptjs';
 import db from '../config/database.js';
-import { createDefaultCategories } from '../config/database.js';
 import { readdirSync, statSync, unlinkSync, readFileSync, writeFileSync, existsSync } from 'fs';
 import { resolve, join } from 'path';
 import sharp from 'sharp';
@@ -54,11 +53,8 @@ export default async function adminRoutes(fastify) {
 
   // ============================================
   // Alle Admin-Routen erfordern Admin-Rolle
-  // /seed ist ausgenommen (prüft selbst)
   // ============================================
   fastify.addHook('onRequest', async function (request, reply) {
-    // Seed-Route überspringen (erlaubt unauthentifierten Zugriff)
-    if (request.url.includes('/admin/seed') && request.method === 'POST') return;
     return fastify.requireAdmin(request, reply);
   });
 
@@ -471,45 +467,6 @@ export default async function adminRoutes(fastify) {
     logAdminAction(request.user.id, 'Aufräumen durchgeführt', `${cleaned} verwaiste Bilder entfernt`);
 
     return { cleaned, message: `${cleaned} verwaiste Bilder entfernt.` };
-  });
-
-  // ============================================
-  // POST /api/admin/seed - Ersten Admin erstellen
-  // ============================================
-  fastify.post('/seed', {
-    config: {
-      rateLimit: { max: 3, timeWindow: '1 hour' },
-      allowUnauthenticated: true,
-    },
-    schema: {
-      description: 'Erstellt den ersten Admin-Account (nur wenn keine Admins existieren)',
-      tags: ['Admin'],
-    },
-  }, async (request, reply) => {
-    // Hook überspringen für diese Route
-    // Prüfen ob bereits ein Admin existiert
-    const existingAdmin = db.prepare("SELECT id FROM users WHERE role = 'admin'").get();
-    if (existingAdmin) {
-      return reply.status(400).send({ error: 'Es existiert bereits ein Administrator.' });
-    }
-
-    const passwordHash = await bcrypt.hash('admin123', 12);
-    const result = db.prepare(
-      "INSERT INTO users (username, email, password_hash, display_name, role) VALUES (?, ?, ?, ?, ?)"
-    ).run('admin', 'admin@cookbook.local', passwordHash, 'Administrator', 'admin');
-
-    createDefaultCategories(result.lastInsertRowid);
-
-    logAdminAction(result.lastInsertRowid, 'Admin-Account erstellt', 'Initialer Seed');
-
-    return {
-      message: 'Admin-Account erstellt!',
-      credentials: {
-        username: 'admin',
-        password: 'admin123',
-        hint: 'Bitte Passwort nach dem ersten Login ändern!',
-      },
-    };
   });
 
   // ============================================

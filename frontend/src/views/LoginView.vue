@@ -18,12 +18,31 @@
         </p>
       </div>
 
+      <!-- Setup-Banner: Ersteinrichtung -->
+      <div
+        v-if="needsSetup"
+        class="bg-primary-50 dark:bg-primary-950/40 mb-4 p-4 border border-primary-200 dark:border-primary-800 rounded-2xl"
+      >
+        <div class="flex gap-3">
+          <div class="text-2xl shrink-0">🚀</div>
+          <div>
+            <p class="font-semibold text-primary-800 dark:text-primary-200 text-sm">
+              Willkommen zur Ersteinrichtung!
+            </p>
+            <p class="mt-1 text-primary-700 dark:text-primary-300 text-xs leading-relaxed">
+              Registriere dein Konto — es wird automatisch zum <strong>Administrator</strong>.
+              Danach kannst du im Admin-Bereich KI-Keys und weitere Einstellungen konfigurieren.
+            </p>
+          </div>
+        </div>
+      </div>
+
       <!-- Formular-Karte -->
       <div class="bg-white dark:bg-stone-900 shadow-xl p-8 border border-stone-200 dark:border-stone-800 rounded-2xl">
         <!-- Tab-Umschalter -->
-        <div class="flex bg-stone-100 dark:bg-stone-800 mb-6 p-1 rounded-lg">
+        <div v-if="showTabs" class="flex bg-stone-100 dark:bg-stone-800 mb-6 p-1 rounded-lg">
           <button
-            v-for="tab in ['login', 'register']"
+            v-for="tab in availableTabs"
             :key="tab"
             @click="activeTab = tab"
             :class="[
@@ -126,7 +145,7 @@
               Bitte warten...
             </span>
             <span v-else>
-              {{ activeTab === 'login' ? 'Anmelden' : 'Registrieren' }}
+              {{ activeTab === 'login' ? 'Anmelden' : (needsSetup ? 'Admin-Account erstellen' : 'Registrieren') }}
             </span>
           </button>
         </form>
@@ -141,9 +160,10 @@
 </template>
 
 <script setup>
-import { ref, reactive } from 'vue';
+import { ref, reactive, computed, onMounted } from 'vue';
 import { useRouter, useRoute } from 'vue-router';
 import { useAuthStore } from '@/stores/auth.js';
+import { apiRaw } from '@/composables/useApi.js';
 import ThemeToggle from '@/components/layout/ThemeToggle.vue';
 
 const router = useRouter();
@@ -151,6 +171,8 @@ const route = useRoute();
 const authStore = useAuthStore();
 
 const activeTab = ref('login');
+const needsSetup = ref(false);
+const registrationEnabled = ref(true);
 const error = ref('');
 const form = reactive({
   login: '',
@@ -158,6 +180,32 @@ const form = reactive({
   email: '',
   password: '',
   displayName: '',
+});
+
+// Tabs abhängig vom Status: Setup → nur Register, Registration disabled → nur Login
+const availableTabs = computed(() => {
+  if (needsSetup.value) return ['register'];
+  if (!registrationEnabled.value) return ['login'];
+  return ['login', 'register'];
+});
+
+// Tabs nur anzeigen, wenn es mehr als einen gibt
+const showTabs = computed(() => availableTabs.value.length > 1);
+
+// Setup-Status beim Laden prüfen
+onMounted(async () => {
+  try {
+    const data = await apiRaw('/auth/setup-status');
+    needsSetup.value = data.needsSetup;
+    registrationEnabled.value = data.registrationEnabled;
+
+    // Bei Ersteinrichtung direkt auf Register wechseln
+    if (data.needsSetup) {
+      activeTab.value = 'register';
+    }
+  } catch {
+    // Fallback: Beide Tabs anzeigen
+  }
 });
 
 async function handleSubmit() {

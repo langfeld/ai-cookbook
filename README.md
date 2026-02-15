@@ -159,36 +159,19 @@ docker build -t ai-cookbook .
 docker run -d --name cookbook -p 8080:3001 -v cookbook-data:/app/data --env-file .env ai-cookbook
 ```
 
-### 🛡️ Admin-Account einrichten
+### 🛡️ Ersteinrichtung
 
-Beim **ersten Start** existiert kein Administrator. So wird der initiale Admin-Account erstellt:
+Beim **ersten Start** existiert kein Administrator. Die App erkennt das automatisch:
 
-```bash
-curl -X POST http://localhost:8080/api/admin/seed
-```
-
-**Antwort:**
-```json
-{
-  "message": "Admin-Account erstellt!",
-  "credentials": {
-    "username": "admin",
-    "password": "admin123",
-    "hint": "Bitte Passwort nach dem ersten Login ändern!"
-  }
-}
-```
-
-**Ablauf bei frischem Start:**
 1. Container starten (siehe oben)
-2. `POST /api/admin/seed` aufrufen → Erstellt Admin-Account (`admin` / `admin123`)
-3. Im Browser anmelden unter `http://localhost:8080/login`
-4. In der Sidebar erscheint der **Admin-Bereich** (Shield-Icon)
-5. **Admin → Einstellungen → KI-Konfiguration** → API-Key eintragen
-6. Unter **Admin → Benutzer** das eigene Passwort über „Passwort zurücksetzen" ändern
-7. Optional: REWE-Integration, Upload-Limits und weitere Einstellungen konfigurieren
+2. Im Browser `http://localhost:8080` öffnen
+3. Die Login-Seite zeigt einen **Setup-Hinweis** und das Registrierungsformular
+4. **Den ersten Account registrieren** — dieser wird automatisch zum **Administrator**
+5. In der Sidebar erscheint der **Admin-Bereich** (Shield-Icon)
+6. **Admin → Einstellungen → KI-Konfiguration** → API-Key eintragen
+7. Optional: Registrierung für weitere Benutzer deaktivieren, REWE-Integration konfigurieren
 
-> **Sicherheit:** Die Seed-Route funktioniert **nur**, wenn noch kein Admin existiert. Bei einem erneuten Aufruf wird `400 Es existiert bereits ein Administrator` zurückgegeben.
+> **Sicherheit:** Nur der allererste registrierte Account wird zum Admin. Alle weiteren Accounts erhalten die Rolle „Benutzer".
 
 ### Aktualisieren
 
@@ -277,7 +260,8 @@ ai-cookbook/
 ### Auth (`/api/auth`)
 | Methode | Pfad | Beschreibung |
 |---------|------|-------------|
-| `POST` | `/register` | Neuen Benutzer registrieren |
+| `GET` | `/setup-status` | Prüft ob Ersteinrichtung nötig ist (öffentlich) |
+| `POST` | `/register` | Neuen Benutzer registrieren (erster User → Admin) |
 | `POST` | `/login` | Anmelden, JWT erhalten |
 | `GET` | `/me` | Aktuellen Benutzer abrufen |
 
@@ -342,11 +326,10 @@ ai-cookbook/
 | `POST` | `/match-shopping-list` | Gesamte Liste matchen |
 
 ### Admin (`/api/admin`) 🔒
-> Alle Routen (außer `/seed`) erfordern `role=admin`.
+> Alle Routen erfordern `role=admin`.
 
 | Methode | Pfad | Beschreibung |
 |---------|------|-------------|
-| `POST` | `/seed` | Ersten Admin-Account erstellen (nur wenn kein Admin existiert) |
 | `GET` | `/stats` | Dashboard-Statistiken (User, Rezepte, Speicher, beliebte Rezepte) |
 | `GET` | `/users` | Alle Benutzer mit Rezeptanzahl und letzter Aktivität |
 | `PUT` | `/users/:id` | Benutzer-Rolle oder Status ändern |
@@ -466,7 +449,6 @@ Dieses Projekt verwendet **Tailwind CSS 4** mit CSS-basierter Konfiguration:
 - **REWE-API:** Inoffizielle API, kann sich ändern. Fehlende Market-ID deaktiviert die Funktion
 - **KI-Genauigkeit:** Foto-Import funktioniert am besten mit gut beleuchteten, scharfen Rezeptfotos
 - **SQLite:** Für Single-Server-Betrieb ausgelegt, nicht für horizontale Skalierung
-- **Admin-Seed:** Der erste Admin kann nur via API-Call (`POST /api/admin/seed`) erstellt werden, nicht über die UI
 - **Passwort ändern:** Es gibt aktuell keine Self-Service-Funktion zum Passwort-Ändern. Admins können Passwörter über die Benutzerverwaltung zurücksetzen
 
 ---
