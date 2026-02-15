@@ -145,6 +145,26 @@ export default async function ingredientIconRoutes(fastify) {
   });
 
   // ============================================
+  // GET /api/ingredient-icons/usage — Alle verwendeten Zutatennamen (Admin)
+  // ============================================
+  fastify.get('/usage', {
+    onRequest: [fastify.requireAdmin],
+    schema: {
+      description: 'Alle einzigartigen Zutatennamen aus Rezepten abrufen',
+      tags: ['Zutaten-Icons'],
+      security: [{ bearerAuth: [] }],
+    },
+  }, async () => {
+    const ingredients = db.prepare(`
+      SELECT DISTINCT LOWER(TRIM(name)) as name, COUNT(*) as count
+      FROM ingredients
+      GROUP BY LOWER(TRIM(name))
+      ORDER BY count DESC, name ASC
+    `).all();
+    return { ingredients };
+  });
+
+  // ============================================
   // POST /api/ingredient-icons/bulk — Mehrere Mappings auf einmal (Admin)
   // ============================================
   fastify.post('/bulk', {

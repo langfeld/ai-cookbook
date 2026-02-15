@@ -15,7 +15,7 @@
           Zutaten-Icons
         </h1>
         <p class="mt-1 text-stone-500 dark:text-stone-400 text-sm">
-          Emoji-Zuordnungen für Zutaten verwalten · {{ filteredIcons.length }} Einträge
+          Emoji-Zuordnungen für Zutaten verwalten · {{ icons.length }} Mappings · {{ allIngredients.length }} Zutaten
         </p>
       </div>
       <button
@@ -33,9 +33,38 @@
       <input
         v-model="searchQuery"
         type="text"
-        placeholder="Zutat suchen..."
+        :placeholder="activeTab === 'mappings' ? 'Mapping suchen...' : activeTab === 'used' ? 'Verwendete Zutat suchen...' : 'Zutat ohne Icon suchen...'"
         class="bg-white dark:bg-stone-900 py-2.5 pr-4 pl-10 border border-stone-200 dark:border-stone-700 rounded-xl outline-none focus:ring-2 focus:ring-primary-400 w-full text-sm"
       />
+    </div>
+
+    <!-- Tabs -->
+    <div class="flex gap-1 bg-stone-100 dark:bg-stone-800 mb-4 p-1 rounded-xl">
+      <button
+        v-for="tab in tabs"
+        :key="tab.id"
+        @click="activeTab = tab.id; searchQuery = ''"
+        :class="[
+          'flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors flex-1 justify-center',
+          activeTab === tab.id
+            ? 'bg-white dark:bg-stone-900 text-stone-800 dark:text-stone-100 shadow-sm'
+            : 'text-stone-500 dark:text-stone-400 hover:text-stone-700 dark:hover:text-stone-300'
+        ]"
+      >
+        <component :is="tab.icon" class="w-4 h-4" />
+        <span class="hidden sm:inline">{{ tab.label }}</span>
+        <span
+          v-if="tab.count !== null"
+          :class="[
+            'px-1.5 py-0.5 rounded-full text-xs font-semibold',
+            activeTab === tab.id
+              ? 'bg-primary-100 dark:bg-primary-900/50 text-primary-700 dark:text-primary-300'
+              : 'bg-stone-200 dark:bg-stone-700 text-stone-500 dark:text-stone-400'
+          ]"
+        >
+          {{ tab.count }}
+        </span>
+      </button>
     </div>
 
     <!-- Loading -->
@@ -43,53 +72,145 @@
       <div class="border-4 border-primary-200 dark:border-primary-800 border-t-primary-600 rounded-full w-8 h-8 animate-spin"></div>
     </div>
 
-    <!-- Tabelle -->
-    <div v-else class="bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-800 rounded-xl overflow-hidden">
-      <div class="overflow-x-auto">
-        <table class="w-full">
-          <thead>
-            <tr class="bg-stone-50 dark:bg-stone-800/50 border-stone-200 dark:border-stone-700 border-b text-left">
-              <th class="px-4 py-3 w-16 font-semibold text-stone-500 dark:text-stone-400 text-xs uppercase tracking-wider">Icon</th>
-              <th class="px-4 py-3 font-semibold text-stone-500 dark:text-stone-400 text-xs uppercase tracking-wider">Keyword</th>
-              <th class="px-4 py-3 w-28 font-semibold text-stone-500 dark:text-stone-400 text-xs text-right uppercase tracking-wider">Aktionen</th>
-            </tr>
-          </thead>
-          <tbody class="divide-y divide-stone-100 dark:divide-stone-800">
-            <tr
-              v-for="icon in filteredIcons"
-              :key="icon.id"
-              class="hover:bg-stone-50 dark:hover:bg-stone-800/30 transition-colors"
-            >
-              <td class="px-4 py-3 text-2xl text-center">{{ icon.emoji }}</td>
-              <td class="px-4 py-3 font-medium text-stone-700 dark:text-stone-300 text-sm">{{ icon.keyword }}</td>
-              <td class="px-4 py-3 text-right">
-                <div class="flex justify-end gap-1">
-                  <button
-                    @click="openEdit(icon)"
-                    class="hover:bg-stone-100 dark:hover:bg-stone-700 p-1.5 rounded-lg text-stone-400 hover:text-primary-600 transition-colors"
-                    title="Bearbeiten"
-                  >
-                    <Pencil class="w-4 h-4" />
-                  </button>
-                  <button
-                    @click="deleteIcon(icon)"
-                    class="hover:bg-red-50 dark:hover:bg-red-900/20 p-1.5 rounded-lg text-stone-400 hover:text-red-600 transition-colors"
-                    title="Löschen"
-                  >
-                    <Trash2 class="w-4 h-4" />
-                  </button>
-                </div>
-              </td>
-            </tr>
-            <tr v-if="filteredIcons.length === 0">
-              <td colspan="3" class="px-4 py-12 text-stone-400 text-sm text-center italic">
-                {{ searchQuery ? 'Keine Ergebnisse gefunden.' : 'Noch keine Mappings vorhanden.' }}
-              </td>
-            </tr>
-          </tbody>
-        </table>
+    <!-- ====== TAB: Alle Mappings ====== -->
+    <template v-else-if="activeTab === 'mappings'">
+      <div class="bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-800 rounded-xl overflow-hidden">
+        <div class="overflow-x-auto">
+          <table class="w-full">
+            <thead>
+              <tr class="bg-stone-50 dark:bg-stone-800/50 border-stone-200 dark:border-stone-700 border-b text-left">
+                <th class="px-4 py-3 w-16 font-semibold text-stone-500 dark:text-stone-400 text-xs uppercase tracking-wider">Icon</th>
+                <th class="px-4 py-3 font-semibold text-stone-500 dark:text-stone-400 text-xs uppercase tracking-wider">Keyword</th>
+                <th class="px-4 py-3 w-28 font-semibold text-stone-500 dark:text-stone-400 text-xs text-right uppercase tracking-wider">Aktionen</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-stone-100 dark:divide-stone-800">
+              <tr
+                v-for="icon in filteredIcons"
+                :key="icon.id"
+                class="hover:bg-stone-50 dark:hover:bg-stone-800/30 transition-colors"
+              >
+                <td class="px-4 py-3 text-2xl text-center">{{ icon.emoji }}</td>
+                <td class="px-4 py-3 font-medium text-stone-700 dark:text-stone-300 text-sm">{{ icon.keyword }}</td>
+                <td class="px-4 py-3 text-right">
+                  <div class="flex justify-end gap-1">
+                    <button
+                      @click="openEdit(icon)"
+                      class="hover:bg-stone-100 dark:hover:bg-stone-700 p-1.5 rounded-lg text-stone-400 hover:text-primary-600 transition-colors"
+                      title="Bearbeiten"
+                    >
+                      <Pencil class="w-4 h-4" />
+                    </button>
+                    <button
+                      @click="deleteIcon(icon)"
+                      class="hover:bg-red-50 dark:hover:bg-red-900/20 p-1.5 rounded-lg text-stone-400 hover:text-red-600 transition-colors"
+                      title="Löschen"
+                    >
+                      <Trash2 class="w-4 h-4" />
+                    </button>
+                  </div>
+                </td>
+              </tr>
+              <tr v-if="filteredIcons.length === 0">
+                <td colspan="3" class="px-4 py-12 text-stone-400 text-sm text-center italic">
+                  {{ searchQuery ? 'Keine Ergebnisse gefunden.' : 'Noch keine Mappings vorhanden.' }}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </div>
-    </div>
+    </template>
+
+    <!-- ====== TAB: Verwendete Icons ====== -->
+    <template v-else-if="activeTab === 'used'">
+      <div class="bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-800 rounded-xl overflow-hidden">
+        <div class="overflow-x-auto">
+          <table class="w-full">
+            <thead>
+              <tr class="bg-stone-50 dark:bg-stone-800/50 border-stone-200 dark:border-stone-700 border-b text-left">
+                <th class="px-4 py-3 w-16 font-semibold text-stone-500 dark:text-stone-400 text-xs uppercase tracking-wider">Icon</th>
+                <th class="px-4 py-3 font-semibold text-stone-500 dark:text-stone-400 text-xs uppercase tracking-wider">Zutat</th>
+                <th class="px-4 py-3 font-semibold text-stone-500 dark:text-stone-400 text-xs uppercase tracking-wider">Gematchtes Keyword</th>
+                <th class="px-4 py-3 w-24 font-semibold text-stone-500 dark:text-stone-400 text-xs text-right uppercase tracking-wider">Rezepte</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-stone-100 dark:divide-stone-800">
+              <tr
+                v-for="item in filteredUsedIngredients"
+                :key="item.name"
+                class="hover:bg-stone-50 dark:hover:bg-stone-800/30 transition-colors"
+              >
+                <td class="px-4 py-3 text-2xl text-center">{{ item.emoji }}</td>
+                <td class="px-4 py-3 font-medium text-stone-700 dark:text-stone-300 text-sm">{{ item.name }}</td>
+                <td class="px-4 py-3 text-stone-400 text-xs">
+                  <span class="bg-stone-100 dark:bg-stone-800 px-2 py-0.5 rounded">{{ item.matchedKeyword }}</span>
+                </td>
+                <td class="px-4 py-3 font-medium text-stone-500 text-sm text-right">{{ item.count }}×</td>
+              </tr>
+              <tr v-if="filteredUsedIngredients.length === 0">
+                <td colspan="4" class="px-4 py-12 text-stone-400 text-sm text-center italic">
+                  {{ searchQuery ? 'Keine Ergebnisse gefunden.' : 'Keine verwendeten Zutaten mit Icon-Match.' }}
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </template>
+
+    <!-- ====== TAB: Ohne Zuordnung ====== -->
+    <template v-else-if="activeTab === 'unmatched'">
+      <div v-if="filteredUnmatchedIngredients.length > 0" class="flex items-start gap-3 bg-amber-50 dark:bg-amber-900/20 mb-4 p-4 border border-amber-200 dark:border-amber-800 rounded-xl">
+        <AlertTriangle class="mt-0.5 w-5 h-5 text-amber-500 shrink-0" />
+        <p class="text-amber-700 dark:text-amber-300 text-sm">
+          Diese Zutaten aus deinen Rezepten haben kein passendes Emoji-Mapping.
+          Klicke auf <strong>+</strong>, um direkt ein Mapping zu erstellen.
+        </p>
+      </div>
+      <div class="bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-800 rounded-xl overflow-hidden">
+        <div class="overflow-x-auto">
+          <table class="w-full">
+            <thead>
+              <tr class="bg-stone-50 dark:bg-stone-800/50 border-stone-200 dark:border-stone-700 border-b text-left">
+                <th class="px-4 py-3 w-16 font-semibold text-stone-500 dark:text-stone-400 text-xs uppercase tracking-wider">Icon</th>
+                <th class="px-4 py-3 font-semibold text-stone-500 dark:text-stone-400 text-xs uppercase tracking-wider">Zutat</th>
+                <th class="px-4 py-3 w-24 font-semibold text-stone-500 dark:text-stone-400 text-xs text-right uppercase tracking-wider">Rezepte</th>
+                <th class="px-4 py-3 w-20 font-semibold text-stone-500 dark:text-stone-400 text-xs text-right uppercase tracking-wider">Aktion</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-stone-100 dark:divide-stone-800">
+              <tr
+                v-for="item in filteredUnmatchedIngredients"
+                :key="item.name"
+                class="hover:bg-stone-50 dark:hover:bg-stone-800/30 transition-colors"
+              >
+                <td class="px-4 py-3 text-center text-stone-300 dark:text-stone-600 text-lg">•</td>
+                <td class="px-4 py-3 font-medium text-stone-700 dark:text-stone-300 text-sm">{{ item.name }}</td>
+                <td class="px-4 py-3 font-medium text-stone-500 text-sm text-right">{{ item.count }}×</td>
+                <td class="px-4 py-3 text-right">
+                  <button
+                    @click="openAddForIngredient(item.name)"
+                    class="flex justify-center items-center hover:bg-primary-50 dark:hover:bg-primary-900/30 ml-auto rounded-lg w-8 h-8 text-stone-400 hover:text-primary-600 transition-colors"
+                    title="Mapping erstellen"
+                  >
+                    <PlusCircle class="w-4 h-4" />
+                  </button>
+                </td>
+              </tr>
+              <tr v-if="filteredUnmatchedIngredients.length === 0">
+                <td colspan="4" class="px-4 py-12 text-stone-400 text-sm text-center italic">
+                  <template v-if="searchQuery">Keine Ergebnisse gefunden.</template>
+                  <template v-else>
+                    <span class="text-green-500">✓</span> Alle Zutaten haben ein Icon-Mapping! 🎉
+                  </template>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </template>
 
     <!-- Hinweis-Box -->
     <div class="flex items-start gap-3 bg-blue-50 dark:bg-blue-900/20 mt-6 p-4 border border-blue-200 dark:border-blue-800 rounded-xl">
@@ -209,16 +330,19 @@ import { useApi } from '@/composables/useApi.js';
 import { useNotification } from '@/composables/useNotification.js';
 import { useIngredientIcons } from '@/composables/useIngredientIcons.js';
 import {
-  Search, PlusCircle, Pencil, Trash2, X, ExternalLink, Info,
+  Search, PlusCircle, Pencil, Trash2, X, ExternalLink, Info, AlertTriangle,
+  List, CheckCircle, CircleOff,
 } from 'lucide-vue-next';
 
 const api = useApi();
 const { showSuccess, showError } = useNotification();
-const { invalidate: invalidateIconCache } = useIngredientIcons();
+const { invalidate: invalidateIconCache, getEmoji: getEmojiFromCache } = useIngredientIcons();
 
 const icons = ref([]);
+const allIngredients = ref([]); // Alle verwendeten Zutatennamen aus Rezepten
 const loading = ref(true);
 const searchQuery = ref('');
+const activeTab = ref('mappings');
 const showModal = ref(false);
 const editId = ref(null);
 const formKeyword = ref('');
@@ -322,6 +446,67 @@ const filteredIcons = computed(() => {
   return icons.value.filter(i => i.keyword.includes(q) || i.emoji.includes(q));
 });
 
+// Lokales Fuzzy-Matching (gleiche Logik wie im Composable, aber mit Keyword-Info)
+function getEmojiWithKeyword(ingredientName) {
+  if (!ingredientName || !icons.value.length) return null;
+  const name = ingredientName.trim().toLowerCase();
+
+  // 1. Exakter Match
+  const exact = icons.value.find(i => i.keyword === name);
+  if (exact) return { emoji: exact.emoji, keyword: exact.keyword };
+
+  // 2. Keyword ist Teilstring des Zutatennamens (längste zuerst)
+  const sorted = [...icons.value].sort((a, b) => b.keyword.length - a.keyword.length);
+  const partial = sorted.find(i => name.includes(i.keyword));
+  if (partial) return { emoji: partial.emoji, keyword: partial.keyword };
+
+  // 3. Zutatenname ist Teilstring eines Keywords
+  const reverse = sorted.find(i => i.keyword.includes(name));
+  if (reverse) return { emoji: reverse.emoji, keyword: reverse.keyword };
+
+  return null;
+}
+
+// Zutaten mit Match (verwendete Icons)
+const usedIngredients = computed(() => {
+  return allIngredients.value
+    .map(ing => {
+      const match = getEmojiWithKeyword(ing.name);
+      if (!match) return null;
+      return { name: ing.name, count: ing.count, emoji: match.emoji, matchedKeyword: match.keyword };
+    })
+    .filter(Boolean);
+});
+
+// Zutaten ohne Match
+const unmatchedIngredients = computed(() => {
+  return allIngredients.value
+    .filter(ing => !getEmojiWithKeyword(ing.name))
+    .sort((a, b) => b.count - a.count);
+});
+
+// Gefilterte Listen für Suche
+const filteredUsedIngredients = computed(() => {
+  if (!searchQuery.value) return usedIngredients.value;
+  const q = searchQuery.value.toLowerCase();
+  return usedIngredients.value.filter(i =>
+    i.name.includes(q) || i.emoji.includes(q) || i.matchedKeyword.includes(q)
+  );
+});
+
+const filteredUnmatchedIngredients = computed(() => {
+  if (!searchQuery.value) return unmatchedIngredients.value;
+  const q = searchQuery.value.toLowerCase();
+  return unmatchedIngredients.value.filter(i => i.name.includes(q));
+});
+
+// Tabs-Definition
+const tabs = computed(() => [
+  { id: 'mappings', label: 'Alle Mappings', icon: List, count: icons.value.length },
+  { id: 'used', label: 'Verwendet', icon: CheckCircle, count: usedIngredients.value.length },
+  { id: 'unmatched', label: 'Ohne Zuordnung', icon: CircleOff, count: unmatchedIngredients.value.length },
+]);
+
 const filteredEmojiPicker = computed(() => {
   if (!emojiSearch.value) return emojiPickerData;
   const q = emojiSearch.value.toLowerCase();
@@ -333,6 +518,14 @@ const filteredEmojiPicker = computed(() => {
 function openAdd() {
   editId.value = null;
   formKeyword.value = '';
+  formEmoji.value = '';
+  emojiSearch.value = '';
+  showModal.value = true;
+}
+
+function openAddForIngredient(ingredientName) {
+  editId.value = null;
+  formKeyword.value = ingredientName;
   formEmoji.value = '';
   emojiSearch.value = '';
   showModal.value = true;
@@ -391,8 +584,12 @@ async function deleteIcon(icon) {
 async function fetchIcons() {
   loading.value = true;
   try {
-    const data = await api.get('/ingredient-icons');
-    icons.value = data.icons || [];
+    const [iconsData, usageData] = await Promise.all([
+      api.get('/ingredient-icons'),
+      api.get('/ingredient-icons/usage'),
+    ]);
+    icons.value = iconsData.icons || [];
+    allIngredients.value = usageData.ingredients || [];
   } catch {
     // handled
   } finally {
