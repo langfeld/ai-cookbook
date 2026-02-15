@@ -40,7 +40,7 @@ RUN chmod +x /entrypoint.sh
 EXPOSE 3001
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s \
-  CMD wget -qO- http://localhost:3001/health || exit 1
+  CMD wget -qO- http://127.0.0.1:3001/health || exit 1
 
 ENTRYPOINT ["/entrypoint.sh"]
 CMD ["node", "src/server.js"]
