@@ -393,9 +393,9 @@
     <Teleport to="body">
       <Transition name="modal">
         <div v-if="selectedMeal" class="z-50 fixed inset-0 flex justify-center items-center bg-black/40 p-4" @click.self="selectedMeal = null">
-          <div class="bg-white dark:bg-stone-900 shadow-2xl border border-stone-200 dark:border-stone-700 rounded-2xl w-full max-w-sm overflow-hidden">
+          <div class="bg-white dark:bg-stone-900 shadow-2xl border border-stone-200 dark:border-stone-700 rounded-2xl w-full max-w-md overflow-hidden">
             <!-- Bild -->
-            <div class="relative bg-stone-100 dark:bg-stone-800 h-48">
+            <div class="relative bg-stone-100 dark:bg-stone-800 h-56">
               <img v-if="selectedMeal.image_url" :src="selectedMeal.image_url"
                 class="w-full h-full object-cover" />
               <div v-else class="flex justify-center items-center w-full h-full">
