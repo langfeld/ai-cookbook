@@ -38,7 +38,7 @@
           :key="item.id"
           class="bg-amber-100 dark:bg-amber-900/40 px-2 py-1 rounded-lg text-amber-700 dark:text-amber-300 text-xs"
         >
-          {{ item.name }} – {{ formatDate(item.expires_at) }}
+          {{ item.ingredient_name }} – {{ formatDate(item.expiry_date) }}
         </span>
       </div>
     </div>
@@ -68,7 +68,7 @@
           >
             <div class="flex justify-between items-start">
               <div>
-                <h4 class="font-medium text-stone-800 dark:text-stone-200 text-sm">{{ item.name }}</h4>
+                <h4 class="font-medium text-stone-800 dark:text-stone-200 text-sm">{{ item.ingredient_name }}</h4>
                 <p class="mt-0.5 text-stone-500 dark:text-stone-400 text-xs">
                   {{ item.amount }} {{ item.unit }}
                 </p>
@@ -91,14 +91,14 @@
               </div>
             </div>
             <!-- Ablaufdatum -->
-            <div v-if="item.expires_at" class="mt-2">
+            <div v-if="item.expiry_date" class="mt-2">
               <span :class="[
                 'text-xs px-2 py-0.5 rounded-full',
-                isExpiringSoon(item.expires_at)
+                isExpiringSoon(item.expiry_date)
                   ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400'
                   : 'bg-stone-100 dark:bg-stone-800 text-stone-500'
               ]">
-                MHD: {{ formatDate(item.expires_at) }}
+                MHD: {{ formatDate(item.expiry_date) }}
               </span>
             </div>
           </div>
@@ -171,7 +171,7 @@
       <div v-if="useModal.show" class="z-50 fixed inset-0 flex justify-center items-center bg-black/50 p-4" @click.self="useModal.show = false">
         <div class="space-y-4 bg-white dark:bg-stone-900 p-6 rounded-2xl w-full max-w-sm animate-slide-up">
           <h2 class="font-semibold text-stone-800 dark:text-stone-100 text-lg">
-            {{ useModal.item?.name }} verbrauchen
+            {{ useModal.item?.ingredient_name }} verbrauchen
           </h2>
           <p class="text-stone-500 text-sm">
             Vorrätig: {{ useModal.item?.amount }} {{ useModal.item?.unit }}
@@ -231,13 +231,13 @@ const pantryCategories = [
 const expiringItems = computed(() => {
   const threshold = new Date();
   threshold.setDate(threshold.getDate() + 3);
-  return pantryStore.items.filter(i => i.expires_at && new Date(i.expires_at) <= threshold);
+  return pantryStore.items.filter(i => i.expiry_date && new Date(i.expiry_date) <= threshold);
 });
 
 // Nach Suche filtern und gruppieren
 const filteredGrouped = computed(() => {
   const query = search.value.toLowerCase();
-  const items = pantryStore.items.filter(i => !query || i.name.toLowerCase().includes(query));
+  const items = pantryStore.items.filter(i => !query || i.ingredient_name.toLowerCase().includes(query));
   const groups = {};
   for (const item of items) {
     const cat = item.category || 'Sonstiges';
@@ -274,7 +274,13 @@ function openUseModal(item) {
 
 async function addItem() {
   try {
-    await pantryStore.addItem(addForm);
+    await pantryStore.addItem({
+      ingredient_name: addForm.name,
+      amount: addForm.amount,
+      unit: addForm.unit,
+      category: addForm.category || undefined,
+      expiry_date: addForm.expires_at || undefined,
+    });
     showSuccess(`${addForm.name} hinzugefügt!`);
     showAddModal.value = false;
     Object.assign(addForm, { name: '', amount: 1, unit: 'Stk.', category: '', expires_at: '' });
@@ -294,10 +300,10 @@ async function useAmount() {
 }
 
 async function removeItem(item) {
-  if (!confirm(`${item.name} wirklich entfernen?`)) return;
+  if (!confirm(`${item.ingredient_name} wirklich entfernen?`)) return;
   try {
     await pantryStore.removeItem(item.id);
-    showSuccess(`${item.name} entfernt`);
+    showSuccess(`${item.ingredient_name} entfernt`);
   } catch {
     // Fehler wird von useApi angezeigt
   }

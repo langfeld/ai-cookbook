@@ -68,9 +68,14 @@ export const useShoppingStore = defineStore('shopping', () => {
     }
   }
 
-  /** Einkauf abschließen */
-  async function completePurchase(listId, purchasedItems) {
-    return await api.post(`/shopping/${listId}/complete`, { purchasedItems });
+  /** Einkauf abschließen – abgehakte Items in den Vorratsschrank */
+  async function completePurchase() {
+    if (!currentList.value?.id) throw new Error('Keine aktive Einkaufsliste');
+    const data = await api.post(`/shopping/${currentList.value.id}/complete`, {});
+    // Liste zurücksetzen
+    currentList.value = null;
+    items.value = [];
+    return data;
   }
 
   return {

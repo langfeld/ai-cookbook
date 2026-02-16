@@ -151,12 +151,8 @@ export default async function shoppingRoutes(fastify) {
             items: {
               type: 'object',
               properties: {
-                itemId: { type: 'integer' },
-                name: { type: 'string' },
-                reweProductName: { type: 'string' },
-                rewePrice: { type: 'number' },
-                rewePackageSize: { type: 'string' },
-                surplus: { type: 'number' },
+                ingredient_name: { type: 'string' },
+                amount: { type: 'number' },
                 unit: { type: 'string' },
                 category: { type: 'string' },
               },
@@ -167,18 +163,29 @@ export default async function shoppingRoutes(fastify) {
     },
   }, async (request) => {
     const userId = request.user.id;
-    const { purchasedItems } = request.body;
+    const listId = Number(request.params.listId);
+    let { purchasedItems } = request.body;
 
-    // Einkauf verarbeiten (Überschüsse in Vorratsschrank)
-    if (purchasedItems?.length) {
-      processPurchase(userId, request.params.listId, purchasedItems);
+    // Wenn keine Items mitgeschickt wurden, alle abgehakten Items aus der Liste nehmen
+    if (!purchasedItems?.length) {
+      purchasedItems = db.prepare(
+        'SELECT ingredient_name, amount, unit FROM shopping_list_items WHERE shopping_list_id = ? AND is_checked = 1'
+      ).all(listId);
+    }
+
+    // Gekaufte Items in Vorratsschrank übernehmen
+    if (purchasedItems.length) {
+      processPurchase(userId, listId, purchasedItems);
     }
 
     // Liste als inaktiv markieren
     db.prepare(
       'UPDATE shopping_lists SET is_active = 0 WHERE id = ? AND user_id = ?'
-    ).run(request.params.listId, userId);
+    ).run(listId, userId);
 
-    return { message: 'Einkauf abgeschlossen! Überschüsse wurden im Vorratsschrank gespeichert.' };
+    return {
+      message: 'Einkauf abgeschlossen! Gekaufte Artikel wurden im Vorratsschrank gespeichert.',
+      pantryItemsAdded: purchasedItems.length,
+    };
   });
 }

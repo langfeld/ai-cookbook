@@ -235,6 +235,7 @@ export function initializeDatabase() {
     CREATE INDEX IF NOT EXISTS idx_meal_plan_entries_plan ON meal_plan_entries(meal_plan_id);
     CREATE INDEX IF NOT EXISTS idx_shopping_items_list ON shopping_list_items(shopping_list_id);
     CREATE INDEX IF NOT EXISTS idx_pantry_user ON pantry(user_id);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_pantry_user_ingredient ON pantry(user_id, ingredient_name);
     CREATE INDEX IF NOT EXISTS idx_cooking_history_user ON cooking_history(user_id, cooked_at);
 
     -- ============================================

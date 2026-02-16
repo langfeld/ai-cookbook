@@ -150,15 +150,12 @@ export function saveShoppingList(userId, mealPlanId, items, name = 'Einkaufslist
 }
 
 /**
- * Verarbeitet den Einkauf: Überschüsse in den Vorratsschrank
+ * Verarbeitet den Einkauf: Gekaufte Items in den Vorratsschrank
  * @param {number} userId - Benutzer-ID
  * @param {number} listId - Einkaufslisten-ID
- * @param {object[]} purchasedItems - Tatsächlich gekaufte Items mit REWE-Mengen
+ * @param {object[]} purchasedItems - Gekaufte Items (abgehakte Artikel)
  */
 export function processPurchase(userId, listId, purchasedItems) {
-  const updateItem = db.prepare(
-    'UPDATE shopping_list_items SET is_checked = 1, rewe_product_name = ?, rewe_price = ?, rewe_package_size = ? WHERE id = ?'
-  );
   const upsertPantry = db.prepare(`
     INSERT INTO pantry (user_id, ingredient_name, amount, unit, category)
     VALUES (?, ?, ?, ?, ?)
@@ -169,12 +166,14 @@ export function processPurchase(userId, listId, purchasedItems) {
 
   const transaction = db.transaction(() => {
     for (const item of purchasedItems) {
-      // Einkaufsitem aktualisieren
-      updateItem.run(item.reweProductName, item.rewePrice, item.rewePackageSize, item.itemId);
-
-      // Überschuss in Vorratsschrank
-      if (item.surplus > 0) {
-        upsertPantry.run(userId, item.name, item.surplus, item.unit, item.category || 'Sonstiges');
+      if (item.amount > 0) {
+        upsertPantry.run(
+          userId,
+          item.ingredient_name || item.name,
+          item.amount,
+          item.unit || 'Stk',
+          item.category || 'Sonstiges'
+        );
       }
     }
   });
