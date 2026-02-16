@@ -104,6 +104,63 @@ export default async function mealplanRoutes(fastify) {
   });
 
   // ─────────────────────────────────────────────
+  // POST /add-recipe – Rezept manuell zum Planer hinzufügen
+  // ─────────────────────────────────────────────
+  fastify.post('/add-recipe', {
+    schema: {
+      description: 'Rezept manuell zum Wochenplan hinzufügen (erstellt Plan automatisch falls nötig)',
+      tags: ['Wochenplan'],
+      security: [{ bearerAuth: [] }],
+      body: {
+        type: 'object',
+        required: ['recipe_id', 'day_of_week', 'meal_type', 'week_start'],
+        properties: {
+          recipe_id: { type: 'integer' },
+          day_of_week: { type: 'integer', minimum: 0, maximum: 6 },
+          meal_type: { type: 'string', enum: ['fruehstueck', 'mittag', 'abendessen', 'snack'] },
+          week_start: { type: 'string', format: 'date' },
+          servings: { type: 'integer', minimum: 1, default: 4 },
+        },
+      },
+    },
+  }, async (request, reply) => {
+    const { recipe_id, day_of_week, meal_type, week_start, servings = 4 } = request.body;
+    const userId = request.user.id;
+
+    // Rezept prüfen
+    const recipe = db.prepare('SELECT id FROM recipes WHERE id = ?').get(recipe_id);
+    if (!recipe) return reply.status(404).send({ error: 'Rezept nicht gefunden' });
+
+    // Plan für die Woche suchen oder erstellen
+    let plan = db.prepare('SELECT id FROM meal_plans WHERE user_id = ? AND week_start = ?').get(userId, week_start);
+    if (!plan) {
+      const { lastInsertRowid } = db.prepare(
+        'INSERT INTO meal_plans (user_id, week_start, person_count) VALUES (?, ?, ?)'
+      ).run(userId, week_start, servings);
+      plan = { id: lastInsertRowid };
+    }
+
+    // Prüfen ob Slot bereits belegt
+    const existing = db.prepare(
+      'SELECT id FROM meal_plan_entries WHERE meal_plan_id = ? AND day_of_week = ? AND meal_type = ?'
+    ).get(plan.id, day_of_week, meal_type);
+    if (existing) return reply.status(409).send({ error: 'Dieser Slot ist bereits belegt. Entferne zuerst den bestehenden Eintrag.' });
+
+    // Eintrag erstellen
+    const { lastInsertRowid } = db.prepare(
+      'INSERT INTO meal_plan_entries (meal_plan_id, recipe_id, day_of_week, meal_type, servings) VALUES (?, ?, ?, ?, ?)'
+    ).run(plan.id, recipe_id, day_of_week, meal_type, servings);
+
+    const entry = db.prepare(`
+      SELECT mpe.*, r.title as recipe_title, r.image_url, r.total_time, r.difficulty, r.servings as original_servings
+      FROM meal_plan_entries mpe JOIN recipes r ON mpe.recipe_id = r.id WHERE mpe.id = ?
+    `).get(lastInsertRowid);
+
+    const fullPlan = getMealPlan(userId, week_start);
+    return { message: 'Rezept zum Wochenplan hinzugefügt!', entry, plan: fullPlan };
+  });
+
+  // ─────────────────────────────────────────────
   // GET /suggestions – Rezeptvorschläge für Slot
   // ─────────────────────────────────────────────
   fastify.get('/suggestions', {

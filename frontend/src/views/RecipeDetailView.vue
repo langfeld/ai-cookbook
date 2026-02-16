@@ -88,6 +88,14 @@
               <Trash2 class="w-4 h-4" />
               Löschen
             </button>
+            <button
+              @click="plannerServings = adjustedServings; showPlannerModal = true"
+              class="flex sm:flex-initial flex-1 justify-center items-center gap-2 bg-primary-600 hover:bg-primary-700 px-4 py-2 rounded-lg font-medium text-white text-sm transition-colors"
+            >
+              <CalendarPlus class="w-4 h-4" />
+              <span class="hidden sm:inline">Zum Planer</span>
+              <span class="sm:hidden">Planer</span>
+            </button>
           </div>
         </div>
       </div>
@@ -246,6 +254,103 @@
       <div class="border-2 border-primary-200 border-t-primary-600 rounded-full w-8 h-8 animate-spin" />
     </div>
 
+    <!-- ═══════════════════ WOCHENPLANER MODAL ═══════════════════ -->
+    <Teleport to="body">
+      <Transition name="fade">
+        <div v-if="showPlannerModal" class="z-50 fixed inset-0 flex justify-center items-center bg-black/40 p-4" @click.self="showPlannerModal = false">
+          <div class="bg-white dark:bg-stone-900 shadow-2xl border border-stone-200 dark:border-stone-700 rounded-2xl w-full max-w-md overflow-hidden">
+            <!-- Header -->
+            <div class="flex justify-between items-center p-5 border-stone-200 dark:border-stone-700 border-b">
+              <h3 class="font-bold text-stone-800 dark:text-stone-100 text-lg">📅 Zum Wochenplaner</h3>
+              <button @click="showPlannerModal = false"
+                class="hover:bg-stone-100 dark:hover:bg-stone-800 p-1.5 rounded-full transition-colors">
+                <X class="w-5 h-5 text-stone-500" />
+              </button>
+            </div>
+
+            <div class="space-y-5 p-5">
+              <!-- Wochen-Navigation -->
+              <div>
+                <label class="block mb-2 font-medium text-stone-700 dark:text-stone-300 text-sm">Woche</label>
+                <div class="flex items-center gap-2">
+                  <button @click="plannerWeekOffset--"
+                    class="hover:bg-stone-100 dark:hover:bg-stone-800 p-2 rounded-lg transition-colors">
+                    <ChevronLeft class="w-4 h-4 text-stone-600 dark:text-stone-400" />
+                  </button>
+                  <span class="flex-1 font-medium text-stone-700 dark:text-stone-300 text-sm text-center">
+                    {{ plannerWeekLabel }}
+                  </span>
+                  <button @click="plannerWeekOffset++"
+                    class="hover:bg-stone-100 dark:hover:bg-stone-800 p-2 rounded-lg transition-colors">
+                    <ChevronRight class="w-4 h-4 text-stone-600 dark:text-stone-400" />
+                  </button>
+                </div>
+              </div>
+
+              <!-- Tag auswählen -->
+              <div>
+                <label class="block mb-2 font-medium text-stone-700 dark:text-stone-300 text-sm">Tag</label>
+                <div class="gap-1.5 grid grid-cols-7">
+                  <button v-for="(day, idx) in plannerWeekDays" :key="idx"
+                    @click="plannerDay = idx"
+                    :class="[
+                      'flex flex-col items-center gap-0.5 py-2 rounded-lg text-xs font-medium transition-colors',
+                      plannerDay === idx
+                        ? 'bg-primary-600 text-white'
+                        : 'bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-400 hover:bg-stone-200 dark:hover:bg-stone-700'
+                    ]">
+                    <span>{{ day.short }}</span>
+                    <span class="opacity-75 text-[10px]">{{ day.date }}</span>
+                  </button>
+                </div>
+              </div>
+
+              <!-- Slot auswählen -->
+              <div>
+                <label class="block mb-2 font-medium text-stone-700 dark:text-stone-300 text-sm">Mahlzeit</label>
+                <div class="gap-2 grid grid-cols-2">
+                  <button v-for="mt in plannerMealTypes" :key="mt.key"
+                    @click="plannerSlot = mt.key"
+                    :class="[
+                      'flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors',
+                      plannerSlot === mt.key
+                        ? 'bg-primary-600 text-white'
+                        : 'bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-400 hover:bg-stone-200 dark:hover:bg-stone-700'
+                    ]">
+                    <span>{{ mt.icon }}</span> {{ mt.label }}
+                  </button>
+                </div>
+              </div>
+
+              <!-- Portionen -->
+              <div>
+                <label class="block mb-2 font-medium text-stone-700 dark:text-stone-300 text-sm">Portionen</label>
+                <div class="flex items-center gap-3">
+                  <button @click="plannerServings = Math.max(1, plannerServings - 1)"
+                    class="flex justify-center items-center bg-stone-100 hover:bg-stone-200 dark:bg-stone-800 dark:hover:bg-stone-700 rounded-full w-9 h-9 transition-colors">
+                    <Minus class="w-4 h-4 text-stone-600 dark:text-stone-400" />
+                  </button>
+                  <span class="w-16 font-semibold text-stone-700 dark:text-stone-300 text-center">{{ plannerServings }}</span>
+                  <button @click="plannerServings++"
+                    class="flex justify-center items-center bg-stone-100 hover:bg-stone-200 dark:bg-stone-800 dark:hover:bg-stone-700 rounded-full w-9 h-9 transition-colors">
+                    <Plus class="w-4 h-4 text-stone-600 dark:text-stone-400" />
+                  </button>
+                </div>
+              </div>
+
+              <!-- Hinzufügen Button -->
+              <button @click="addToPlan" :disabled="addingToPlan"
+                class="flex justify-center items-center gap-2 bg-primary-600 hover:bg-primary-700 disabled:opacity-50 shadow-sm px-4 py-3 rounded-xl w-full font-medium text-white transition-colors">
+                <CalendarPlus v-if="!addingToPlan" class="w-5 h-5" />
+                <div v-else class="border-2 border-white/30 border-t-white rounded-full w-5 h-5 animate-spin" />
+                {{ addingToPlan ? 'Wird hinzugefügt…' : 'Zum Wochenplan hinzufügen' }}
+              </button>
+            </div>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
+
     <!-- Bestätigungs-Dialog zum Löschen -->
     <ConfirmDialog
       v-model="showDeleteDialog"
@@ -264,14 +369,16 @@
 import { ref, computed, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useRecipesStore } from '@/stores/recipes.js';
+import { useMealPlanStore } from '@/stores/mealplan.js';
 import { useNotification } from '@/composables/useNotification.js';
-import { Star, Clock, Users, ChefHat, Pencil, Plus, Minus, Trash2, List, Layers } from 'lucide-vue-next';
+import { Star, Clock, Users, ChefHat, Pencil, Plus, Minus, Trash2, List, Layers, CalendarPlus, X, ChevronLeft, ChevronRight } from 'lucide-vue-next';
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue';
 import { useIngredientIcons } from '@/composables/useIngredientIcons.js';
 
 const route = useRoute();
 const router = useRouter();
 const recipesStore = useRecipesStore();
+const mealPlanStore = useMealPlanStore();
 const { showSuccess } = useNotification();
 const { loadIcons, getEmoji } = useIngredientIcons();
 
@@ -280,6 +387,69 @@ const adjustedServings = ref(4);
 const showDeleteDialog = ref(false);
 const deleting = ref(false);
 const ingredientView = ref('all');
+
+// ─── Wochenplaner-Modal ───
+const showPlannerModal = ref(false);
+const addingToPlan = ref(false);
+const plannerWeekOffset = ref(0);
+const plannerDay = ref((() => { const d = new Date().getDay(); return d === 0 ? 6 : d - 1; })());
+const plannerSlot = ref('mittag');
+const plannerServings = ref(4);
+
+const plannerMealTypes = [
+  { key: 'fruehstueck', label: 'Frühstück', icon: '🌅' },
+  { key: 'mittag', label: 'Mittag', icon: '☀️' },
+  { key: 'abendessen', label: 'Abend', icon: '🌙' },
+  { key: 'snack', label: 'Snack', icon: '🍎' },
+];
+
+const plannerWeekStart = computed(() => {
+  const today = new Date();
+  const day = today.getDay();
+  const monday = new Date(today);
+  monday.setDate(today.getDate() - day + (day === 0 ? -6 : 1) + plannerWeekOffset.value * 7);
+  return monday.toISOString().split('T')[0];
+});
+
+const plannerWeekDays = computed(() => {
+  const [y, m, d] = plannerWeekStart.value.split('-').map(Number);
+  const monday = new Date(y, m - 1, d);
+  return ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So'].map((short, i) => {
+    const dt = new Date(monday);
+    dt.setDate(monday.getDate() + i);
+    return { short, date: `${dt.getDate()}.${dt.getMonth() + 1}.` };
+  });
+});
+
+const plannerWeekLabel = computed(() => {
+  const [y, m, d] = plannerWeekStart.value.split('-').map(Number);
+  const monday = new Date(y, m - 1, d);
+  const sunday = new Date(monday);
+  sunday.setDate(monday.getDate() + 6);
+  const fmt = (dt) => `${dt.getDate()}.${dt.getMonth() + 1}.`;
+  return `${fmt(monday)} – ${fmt(sunday)}${sunday.getFullYear()}`;
+});
+
+async function addToPlan() {
+  addingToPlan.value = true;
+  try {
+    await mealPlanStore.addRecipeToPlan(
+      recipe.value.id,
+      plannerDay.value,
+      plannerSlot.value,
+      plannerWeekStart.value,
+      plannerServings.value,
+    );
+    showPlannerModal.value = false;
+    const dayLabel = plannerWeekDays.value[plannerDay.value]?.short || '';
+    const slotLabel = plannerMealTypes.find(mt => mt.key === plannerSlot.value)?.label || '';
+    showSuccess(`Zum Wochenplan hinzugefügt (${dayLabel}, ${slotLabel})! 📅`);
+  } catch {
+    // Fehler wird von useApi angezeigt
+  } finally {
+    addingToPlan.value = false;
+  }
+}
 
 const deleteMessage = computed(() => {
   const title = recipe.value?.title || 'dieses Rezept';

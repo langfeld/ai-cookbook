@@ -102,6 +102,22 @@ export const useMealPlanStore = defineStore('mealplan', () => {
     return data;
   }
 
+  /** Rezept manuell zum Wochenplan hinzufügen (erstellt Plan automatisch) */
+  async function addRecipeToPlan(recipeId, dayOfWeek, mealType, weekStart, servings = 4) {
+    const data = await api.post('/mealplan/add-recipe', {
+      recipe_id: recipeId,
+      day_of_week: dayOfWeek,
+      meal_type: mealType,
+      week_start: weekStart,
+      servings,
+    });
+    // Wenn der aktuelle Plan betroffen ist, aktualisieren
+    if (data.plan && currentPlan.value?.week_start === weekStart) {
+      currentPlan.value = data.plan;
+    }
+    return data;
+  }
+
   /** Eintrag per Drag & Drop verschieben */
   async function moveEntry(planId, entryId, dayOfWeek, mealType) {
     const data = await api.post(`/mealplan/${planId}/entry/${entryId}/move`, {
@@ -130,6 +146,6 @@ export const useMealPlanStore = defineStore('mealplan', () => {
     currentPlan, planHistory, loading, generating,
     mealTypeLabels,
     generatePlan, fetchCurrentPlan, fetchHistory,
-    fetchSuggestions, markCooked, swapRecipe, addEntry, moveEntry, removeEntry, deletePlan,
+    fetchSuggestions, markCooked, swapRecipe, addEntry, addRecipeToPlan, moveEntry, removeEntry, deletePlan,
   };
 });
