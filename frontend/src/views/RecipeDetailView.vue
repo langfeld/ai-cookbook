@@ -433,7 +433,7 @@ const plannerWeekLabel = computed(() => {
 async function addToPlan() {
   addingToPlan.value = true;
   try {
-    await mealPlanStore.addRecipeToPlan(
+    const result = await mealPlanStore.addRecipeToPlan(
       recipe.value.id,
       plannerDay.value,
       plannerSlot.value,
@@ -443,7 +443,8 @@ async function addToPlan() {
     showPlannerModal.value = false;
     const dayLabel = plannerWeekDays.value[plannerDay.value]?.short || '';
     const slotLabel = plannerMealTypes.find(mt => mt.key === plannerSlot.value)?.label || '';
-    showSuccess(`Zum Wochenplan hinzugefügt (${dayLabel}, ${slotLabel})! 📅`);
+    const icon = result.replaced ? '🔄' : '📅';
+    showSuccess(`${result.message || 'Zum Wochenplan hinzugefügt'} (${dayLabel}, ${slotLabel}) ${icon}`);
   } catch {
     // Fehler wird von useApi angezeigt
   } finally {

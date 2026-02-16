@@ -128,36 +128,51 @@ export default async function mealplanRoutes(fastify) {
     const userId = request.user.id;
 
     // Rezept prüfen
-    const recipe = db.prepare('SELECT id FROM recipes WHERE id = ?').get(recipe_id);
+    const recipe = db.prepare('SELECT id, title FROM recipes WHERE id = ?').get(recipe_id);
     if (!recipe) return reply.status(404).send({ error: 'Rezept nicht gefunden' });
 
     // Plan für die Woche suchen oder erstellen
     let plan = db.prepare('SELECT id FROM meal_plans WHERE user_id = ? AND week_start = ?').get(userId, week_start);
     if (!plan) {
       const { lastInsertRowid } = db.prepare(
-        'INSERT INTO meal_plans (user_id, week_start, person_count) VALUES (?, ?, ?)'
-      ).run(userId, week_start, servings);
-      plan = { id: lastInsertRowid };
+        'INSERT INTO meal_plans (user_id, week_start) VALUES (?, ?)'
+      ).run(userId, week_start);
+      plan = { id: Number(lastInsertRowid) };
     }
 
-    // Prüfen ob Slot bereits belegt
+    // Prüfen ob Slot bereits belegt → ersetzen statt blockieren
+    let entryId;
+    let replaced = false;
     const existing = db.prepare(
       'SELECT id FROM meal_plan_entries WHERE meal_plan_id = ? AND day_of_week = ? AND meal_type = ?'
     ).get(plan.id, day_of_week, meal_type);
-    if (existing) return reply.status(409).send({ error: 'Dieser Slot ist bereits belegt. Entferne zuerst den bestehenden Eintrag.' });
 
-    // Eintrag erstellen
-    const { lastInsertRowid } = db.prepare(
-      'INSERT INTO meal_plan_entries (meal_plan_id, recipe_id, day_of_week, meal_type, servings) VALUES (?, ?, ?, ?, ?)'
-    ).run(plan.id, recipe_id, day_of_week, meal_type, servings);
+    if (existing) {
+      // Bestehendes Rezept durch neues ersetzen
+      db.prepare('UPDATE meal_plan_entries SET recipe_id = ?, servings = ?, is_cooked = 0 WHERE id = ?')
+        .run(recipe_id, servings, existing.id);
+      entryId = existing.id;
+      replaced = true;
+    } else {
+      // Neuen Eintrag erstellen
+      const { lastInsertRowid } = db.prepare(
+        'INSERT INTO meal_plan_entries (meal_plan_id, recipe_id, day_of_week, meal_type, servings) VALUES (?, ?, ?, ?, ?)'
+      ).run(plan.id, recipe_id, day_of_week, meal_type, servings);
+      entryId = Number(lastInsertRowid);
+    }
 
     const entry = db.prepare(`
       SELECT mpe.*, r.title as recipe_title, r.image_url, r.total_time, r.difficulty, r.servings as original_servings
       FROM meal_plan_entries mpe JOIN recipes r ON mpe.recipe_id = r.id WHERE mpe.id = ?
-    `).get(lastInsertRowid);
+    `).get(entryId);
 
     const fullPlan = getMealPlan(userId, week_start);
-    return { message: 'Rezept zum Wochenplan hinzugefügt!', entry, plan: fullPlan };
+    return {
+      message: replaced ? `„${recipe.title}" ersetzt das bisherige Rezept!` : `„${recipe.title}" zum Wochenplan hinzugefügt!`,
+      replaced,
+      entry,
+      plan: fullPlan,
+    };
   });
 
   // ─────────────────────────────────────────────
