@@ -202,10 +202,18 @@ const categoryKeywords = {
 
 function guessCategory(ingredientName) {
   const lower = ingredientName.toLowerCase();
+  let bestCategory = 'Sonstiges';
+  let bestLength = 0;
+
   for (const [category, keywords] of Object.entries(categoryKeywords)) {
-    if (keywords.some(kw => lower.includes(kw))) return category;
+    for (const kw of keywords) {
+      if (lower.includes(kw) && kw.length > bestLength) {
+        bestLength = kw.length;
+        bestCategory = category;
+      }
+    }
   }
-  return 'Sonstiges';
+  return bestCategory;
 }
 
 // Artikel nach Kategorie gruppieren
