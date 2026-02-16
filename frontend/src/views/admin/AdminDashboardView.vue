@@ -155,7 +155,6 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue';
 import { useApi } from '@/composables/useApi.js';
-import { useNotification } from '@/composables/useNotification.js';
 import RecipeImportExportModal from '@/components/recipes/RecipeImportExportModal.vue';
 import {
   Users,
@@ -170,7 +169,6 @@ import {
 } from 'lucide-vue-next';
 
 const api = useApi();
-const { showSuccess } = useNotification();
 const loading = ref(true);
 const stats = ref(null);
 const logs = ref([]);
@@ -213,7 +211,7 @@ function logDotColor(action) {
 
 function handleImported(data) {
   showExportImport.value = false;
-  showSuccess(data?.message || 'Import abgeschlossen!');
+  // Success-Notification wird bereits im Modal angezeigt
 }
 
 onMounted(async () => {

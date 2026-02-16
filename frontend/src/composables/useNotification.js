@@ -14,11 +14,18 @@ let nextId = 0;
 export function useNotification() {
   /**
    * Benachrichtigung hinzufügen
+   * Doppelte Nachrichten (gleicher Text + Typ) innerhalb von 2 Sekunden werden unterdrückt.
    * @param {string} message - Nachricht
    * @param {string} type - success, error, info, warning
    * @param {number} duration - Anzeigedauer in ms (0 = manuell schließen)
    */
   function addNotification(message, type = 'info', duration = 4000) {
+    // Deduplizierung: gleiche Nachricht + Typ nicht doppelt anzeigen
+    const isDuplicate = notifications.value.some(
+      n => n.message === message && n.type === type
+    );
+    if (isDuplicate) return;
+
     const id = nextId++;
     notifications.value.push({ id, message, type });
 

@@ -208,7 +208,7 @@ import { useNotification } from '@/composables/useNotification.js';
 import { Plus, Minus, Trash2, AlertTriangle } from 'lucide-vue-next';
 
 const pantryStore = usePantryStore();
-const { showSuccess, showError } = useNotification();
+const { showSuccess } = useNotification();
 
 const search = ref('');
 const showAddModal = ref(false);
@@ -278,8 +278,8 @@ async function addItem() {
     showSuccess(`${addForm.name} hinzugefügt!`);
     showAddModal.value = false;
     Object.assign(addForm, { name: '', amount: 1, unit: 'Stk.', category: '', expires_at: '' });
-  } catch (err) {
-    showError(err.message);
+  } catch {
+    // Fehler wird von useApi angezeigt
   }
 }
 
@@ -288,8 +288,8 @@ async function useAmount() {
     await pantryStore.useAmount(useModal.item.id, useModal.amount);
     showSuccess(`${useModal.amount} ${useModal.item.unit} verbraucht`);
     useModal.show = false;
-  } catch (err) {
-    showError(err.message);
+  } catch {
+    // Fehler wird von useApi angezeigt
   }
 }
 
@@ -298,8 +298,8 @@ async function removeItem(item) {
   try {
     await pantryStore.removeItem(item.id);
     showSuccess(`${item.name} entfernt`);
-  } catch (err) {
-    showError(err.message);
+  } catch {
+    // Fehler wird von useApi angezeigt
   }
 }
 

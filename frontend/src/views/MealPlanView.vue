@@ -138,7 +138,7 @@ import { useNotification } from '@/composables/useNotification.js';
 import { Sparkles, ChevronLeft, ChevronRight, Check, ExternalLink } from 'lucide-vue-next';
 
 const mealPlanStore = useMealPlanStore();
-const { showSuccess, showError } = useNotification();
+const { showSuccess } = useNotification();
 
 const weekOffset = ref(0);
 
@@ -194,8 +194,8 @@ async function generatePlan() {
   try {
     await mealPlanStore.generatePlan();
     showSuccess('Wochenplan erstellt! 🗓️');
-  } catch (err) {
-    showError('Fehler beim Generieren: ' + err.message);
+  } catch {
+    // Fehler wird von useApi angezeigt
   }
 }
 
@@ -203,8 +203,8 @@ async function markMealCooked(meal) {
   try {
     await mealPlanStore.markCooked(meal.id);
     showSuccess('Mahlzeit als gekocht markiert! ✅');
-  } catch (err) {
-    showError(err.message);
+  } catch {
+    // Fehler wird von useApi angezeigt
   }
 }
 

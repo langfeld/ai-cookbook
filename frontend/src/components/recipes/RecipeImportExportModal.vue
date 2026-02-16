@@ -351,8 +351,8 @@ async function handleImport() {
 
     showSuccess(importResult.value.message);
     emit('imported', importResult.value);
-  } catch (err) {
-    showError(err.message || 'Import fehlgeschlagen');
+  } catch {
+    // Fehler wird von useApi angezeigt
   } finally {
     importing.value = false;
   }

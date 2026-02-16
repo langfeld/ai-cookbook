@@ -272,7 +272,7 @@ import { useIngredientIcons } from '@/composables/useIngredientIcons.js';
 const route = useRoute();
 const router = useRouter();
 const recipesStore = useRecipesStore();
-const { showSuccess, showError } = useNotification();
+const { showSuccess } = useNotification();
 const { loadIcons, getEmoji } = useIngredientIcons();
 
 const recipe = computed(() => recipesStore.currentRecipe);
@@ -396,8 +396,8 @@ async function deleteRecipe() {
     showDeleteDialog.value = false;
     showSuccess('Rezept gelöscht! 🗑️');
     router.push('/recipes');
-  } catch (err) {
-    showError('Fehler beim Löschen: ' + err.message);
+  } catch {
+    // Fehler wird von useApi angezeigt
   } finally {
     deleting.value = false;
   }

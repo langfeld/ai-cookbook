@@ -140,7 +140,7 @@ import { useNotification } from '@/composables/useNotification.js';
 import { ListPlus, Check, ShoppingBag } from 'lucide-vue-next';
 
 const shoppingStore = useShoppingStore();
-const { showSuccess, showError } = useNotification();
+const { showSuccess } = useNotification();
 const reweLoading = ref(false);
 
 const totalCount = computed(() => shoppingStore.activeList?.items?.length || 0);
@@ -191,8 +191,8 @@ async function generateList() {
   try {
     await shoppingStore.generateList();
     showSuccess('Einkaufsliste erstellt! 📝');
-  } catch (err) {
-    showError(err.message);
+  } catch {
+    // Fehler wird von useApi angezeigt
   }
 }
 
@@ -205,8 +205,8 @@ async function matchWithRewe() {
   try {
     await shoppingStore.matchWithRewe();
     showSuccess('REWE-Produkte zugeordnet! 🏪');
-  } catch (err) {
-    showError('REWE-Zuordnung fehlgeschlagen: ' + err.message);
+  } catch {
+    // Fehler wird von useApi angezeigt
   } finally {
     reweLoading.value = false;
   }
@@ -216,8 +216,8 @@ async function completePurchase() {
   try {
     await shoppingStore.completePurchase();
     showSuccess('Einkauf abgeschlossen! Vorräte aktualisiert. 🎉');
-  } catch (err) {
-    showError(err.message);
+  } catch {
+    // Fehler wird von useApi angezeigt
   }
 }
 

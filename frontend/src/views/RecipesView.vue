@@ -173,7 +173,7 @@ function handleImported(data) {
 function handleExportImportDone(data) {
   showExportImport.value = false;
   recipesStore.fetchRecipes();
-  showSuccess(data?.message || 'Import abgeschlossen!');
+  // Success-Notification wird bereits im Modal angezeigt
 }
 
 onMounted(() => {

@@ -221,7 +221,7 @@ import ImageCropModal from '@/components/ui/ImageCropModal.vue';
 const route = useRoute();
 const router = useRouter();
 const recipesStore = useRecipesStore();
-const { showSuccess, showError } = useNotification();
+const { showSuccess } = useNotification();
 const api = useApi();
 
 const saving = ref(false);
@@ -343,8 +343,8 @@ async function saveRecipe() {
     }
 
     router.push(`/recipes/${recipeId}`);
-  } catch (err) {
-    showError('Fehler beim Speichern: ' + err.message);
+  } catch {
+    // Fehler wird von useApi angezeigt
   } finally {
     saving.value = false;
   }
