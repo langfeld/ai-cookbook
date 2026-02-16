@@ -273,6 +273,26 @@ export function initializeDatabase() {
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     );
     CREATE INDEX IF NOT EXISTS idx_ingredient_icons_keyword ON ingredient_icons(keyword);
+
+    -- ============================================
+    -- REWE Produkt-Präferenzen (merkt sich die manuelle Auswahl)
+    -- ============================================
+    CREATE TABLE IF NOT EXISTS rewe_product_preferences (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      ingredient_name TEXT NOT NULL COLLATE NOCASE,   -- normalisiert (z.B. "butter")
+      rewe_product_id TEXT NOT NULL,
+      rewe_product_name TEXT NOT NULL,
+      rewe_price INTEGER,                             -- Cent, letzter bekannter Preis
+      rewe_package_size TEXT,
+      times_selected INTEGER DEFAULT 1,               -- wie oft gewählt (Vertrauen)
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      UNIQUE(user_id, ingredient_name)
+    );
+    CREATE INDEX IF NOT EXISTS idx_rewe_prefs_user ON rewe_product_preferences(user_id);
+    CREATE INDEX IF NOT EXISTS idx_rewe_prefs_ingredient ON rewe_product_preferences(user_id, ingredient_name);
   `);
 
   // ============================================

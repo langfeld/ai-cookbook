@@ -159,7 +159,7 @@ export const useShoppingStore = defineStore('shopping', () => {
     return await api.get(`/rewe/search-ingredient?q=${encodeURIComponent(query)}`);
   }
 
-  /** REWE-Produkt für ein Item manuell setzen/ändern */
+  /** REWE-Produkt für ein Item manuell setzen/ändern (speichert auch Präferenz) */
   async function setReweProduct(itemId, product) {
     const data = await api.put(`/shopping/item/${itemId}/rewe-product`, {
       productId: product.id,
@@ -179,10 +179,25 @@ export const useShoppingStore = defineStore('shopping', () => {
     return data;
   }
 
+  /** Gespeicherte REWE Produkt-Präferenzen laden */
+  async function fetchPreferences() {
+    return await api.get('/rewe/preferences');
+  }
+
+  /** Einzelne Produkt-Präferenz löschen */
+  async function deletePreference(prefId) {
+    return await api.del(`/rewe/preferences/${prefId}`);
+  }
+
+  /** Alle Produkt-Präferenzen löschen */
+  async function clearAllPreferences() {
+    return await api.del('/rewe/preferences');
+  }
+
   return {
     currentList, items, activeList, reweMatches, loading, reweProgress,
     openItemsCount, estimatedTotal, reweLinkedItems,
     generateList, fetchActiveList, toggleItem, matchWithRewe, completePurchase, addItem, deleteItem,
-    searchReweProducts, setReweProduct,
+    searchReweProducts, setReweProduct, fetchPreferences, deletePreference, clearAllPreferences,
   };
 });

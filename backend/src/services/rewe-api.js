@@ -335,8 +335,11 @@ function formatPrice(priceCents) {
  * @param {object[]} shoppingItems - Array mit { name, amount, unit }
  * @param {function} [onProgress] - Optionaler Callback: (progress) => void
  *   progress: { current, total, itemName, matched, productName, price }
+ * @param {object} [options] - Optionale Einstellungen
+ * @param {Map} [options.preferences] - Map<ingredientName, { rewe_product_id, rewe_product_name, rewe_price, rewe_package_size }>
  */
-export async function matchShoppingListWithRewe(shoppingItems, onProgress) {
+export async function matchShoppingListWithRewe(shoppingItems, onProgress, options = {}) {
+  const { preferences } = options;
   const results = [];
   const BATCH_SIZE = 10;
   const DELAY_BETWEEN = 500;       // ms zwischen einzelnen Anfragen
@@ -347,13 +350,41 @@ export async function matchShoppingListWithRewe(shoppingItems, onProgress) {
 
   for (let i = 0; i < shoppingItems.length; i++) {
     const item = shoppingItems[i];
-    const match = await findBestProduct(item.name, item.amount, item.unit);
+    let match = null;
+    let fromPreference = false;
 
-    if (match) {
+    // 1. Gespeicherte Präferenz prüfen (spart API-Call!)
+    const pref = preferences?.get(item.name.toLowerCase().trim());
+    if (pref) {
+      const parsedSize = parsePackageSize(pref.rewe_product_name);
+      match = {
+        product: {
+          id: pref.rewe_product_id,
+          name: pref.rewe_product_name,
+          price: pref.rewe_price,
+          priceFormatted: formatPrice(pref.rewe_price),
+          packageSize: pref.rewe_package_size || parsedSize.raw || '',
+          productUrl: buildReweProductUrl(pref.rewe_product_name, pref.rewe_product_id),
+          parsedAmount: parsedSize.amount,
+          parsedUnit: parsedSize.unit,
+        },
+        neededAmount: item.amount,
+        unit: item.unit,
+        fromPreference: true,
+      };
+      fromPreference = true;
       matchedCount++;
-      console.log(`  ✓ ${item.name} → ${match.product.name} (${match.product.priceFormatted || '?'})`);
+      console.log(`  ★ ${item.name} → ${pref.rewe_product_name} (gespeicherte Präferenz)`);
     } else {
-      console.log(`  ✗ ${item.name} → kein Treffer`);
+      // 2. Kein gespeichertes Produkt → REWE API abfragen
+      match = await findBestProduct(item.name, item.amount, item.unit);
+
+      if (match) {
+        matchedCount++;
+        console.log(`  ✓ ${item.name} → ${match.product.name} (${match.product.priceFormatted || '?'})`);
+      } else {
+        console.log(`  ✗ ${item.name} → kein Treffer`);
+      }
     }
 
     results.push({
@@ -371,11 +402,12 @@ export async function matchShoppingListWithRewe(shoppingItems, onProgress) {
         matchedCount,
         productName: match?.product?.name || null,
         price: match?.product?.priceFormatted || null,
+        fromPreference,
       });
     }
 
-    // Rate-Limiting: Pause zwischen Anfragen
-    if (i < shoppingItems.length - 1) {
+    // Rate-Limiting: Pause nur bei API-Calls (Präferenzen brauchen keine Pause)
+    if (!fromPreference && i < shoppingItems.length - 1) {
       // Größere Pause nach jedem Batch
       if ((i + 1) % BATCH_SIZE === 0) {
         console.log(`  ⏳ Batch-Pause (${DELAY_BETWEEN_BATCHES}ms)…`);
@@ -386,7 +418,9 @@ export async function matchShoppingListWithRewe(shoppingItems, onProgress) {
     }
   }
 
-  console.log(`REWE-Matching fertig: ${matchedCount}/${results.length} zugeordnet`);
+  const prefCount = results.filter(r => r.reweMatch?.fromPreference).length;
+  const apiCount = matchedCount - prefCount;
+  console.log(`REWE-Matching fertig: ${matchedCount}/${results.length} zugeordnet (${prefCount} aus Präferenzen, ${apiCount} via API)`);
 
   return results;
 }

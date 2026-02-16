@@ -274,15 +274,35 @@ export default async function shoppingRoutes(fastify) {
   }, async (request, reply) => {
     const { productId, productName, price, packageSize } = request.body;
 
-    const result = db.prepare(`
-      UPDATE shopping_list_items
-      SET rewe_product_id = ?, rewe_product_name = ?, rewe_price = ?, rewe_package_size = ?
-      WHERE id = ? AND shopping_list_id IN (SELECT id FROM shopping_lists WHERE user_id = ?)
-    `).run(productId, productName, price, packageSize || null, request.params.id, request.user.id);
+    // 1. Item in der Einkaufsliste aktualisieren
+    const item = db.prepare(`
+      SELECT sli.id, sli.ingredient_name FROM shopping_list_items sli
+      JOIN shopping_lists sl ON sli.shopping_list_id = sl.id
+      WHERE sli.id = ? AND sl.user_id = ?
+    `).get(request.params.id, request.user.id);
 
-    if (!result.changes) {
+    if (!item) {
       return reply.status(404).send({ error: 'Artikel nicht gefunden' });
     }
+
+    db.prepare(`
+      UPDATE shopping_list_items
+      SET rewe_product_id = ?, rewe_product_name = ?, rewe_price = ?, rewe_package_size = ?
+      WHERE id = ?
+    `).run(productId, productName, price, packageSize || null, item.id);
+
+    // 2. Produkt-Präferenz speichern/aktualisieren (merkt sich die Auswahl für nächstes Mal)
+    db.prepare(`
+      INSERT INTO rewe_product_preferences (user_id, ingredient_name, rewe_product_id, rewe_product_name, rewe_price, rewe_package_size, times_selected, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, 1, CURRENT_TIMESTAMP)
+      ON CONFLICT(user_id, ingredient_name) DO UPDATE SET
+        rewe_product_id = excluded.rewe_product_id,
+        rewe_product_name = excluded.rewe_product_name,
+        rewe_price = excluded.rewe_price,
+        rewe_package_size = excluded.rewe_package_size,
+        times_selected = times_selected + 1,
+        updated_at = CURRENT_TIMESTAMP
+    `).run(request.user.id, item.ingredient_name.toLowerCase().trim(), productId, productName, price, packageSize || null);
 
     return {
       message: 'REWE-Produkt aktualisiert',
@@ -293,6 +313,7 @@ export default async function shoppingRoutes(fastify) {
         packageSize: packageSize || null,
         url: buildReweProductUrl(productName, productId),
       },
+      preferenceSaved: true,
     };
   });
 

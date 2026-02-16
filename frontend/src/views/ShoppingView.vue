@@ -88,7 +88,9 @@
               <div class="min-w-0">
                 <p class="font-medium text-stone-800 dark:text-stone-200 text-sm truncate">
                   <span v-if="reweMatchPercent < 100">
-                    🔍 {{ shoppingStore.reweProgress.itemName }}…
+                    <span v-if="shoppingStore.reweProgress.fromPreference">⭐</span>
+                    <span v-else>🔍</span>
+                    {{ shoppingStore.reweProgress.itemName }}…
                   </span>
                   <span v-else>✅ Fertig!</span>
                 </p>
@@ -463,7 +465,7 @@
                       <p class="flex items-center gap-2 mt-0.5 text-stone-500 dark:text-stone-400 text-xs">
                         <span v-if="product.packageSize">{{ product.packageSize }}</span>
                         <span v-if="idx === 0" class="inline-flex items-center gap-0.5 bg-green-100 dark:bg-green-900/40 px-1.5 py-0.5 rounded font-medium text-[10px] text-green-700 dark:text-green-400">
-                          Günstigster
+                          Relevantester
                         </span>
                         <span v-if="pickerItem.rewe_product?.id === product.id" class="inline-flex items-center gap-0.5 bg-blue-100 dark:bg-blue-900/40 px-1.5 py-0.5 rounded font-medium text-[10px] text-blue-700 dark:text-blue-400">
                           <Check class="w-2.5 h-2.5" /> Ausgewählt
@@ -488,7 +490,8 @@
               <!-- Footer -->
               <div class="bg-stone-50 dark:bg-stone-800/50 px-5 py-3 border-stone-200 dark:border-stone-700 border-t">
                 <p class="text-[10px] text-stone-400 dark:text-stone-500 text-center">
-                  Klicke auf ein Produkt, um es dieser Zutat zuzuweisen. Preise sortiert von günstig → teuer.
+                  <Heart class="inline -mt-0.5 mr-0.5 w-3 h-3" />
+                  Deine Auswahl wird gespeichert und beim nächsten Matching automatisch verwendet.
                 </p>
               </div>
             </div>
@@ -518,7 +521,7 @@ import { computed, ref, onMounted } from 'vue';
 import { useShoppingStore } from '@/stores/shopping.js';
 import { useMealPlanStore } from '@/stores/mealplan.js';
 import { useNotification } from '@/composables/useNotification.js';
-import { ListPlus, Check, ShoppingBag, Plus, Package, BookOpen, BookX, ExternalLink, ShoppingCart, X, ArrowRightLeft, Search, Tag, Trash2 } from 'lucide-vue-next';
+import { ListPlus, Check, ShoppingBag, Plus, Package, BookOpen, BookX, ExternalLink, ShoppingCart, X, ArrowRightLeft, Search, Tag, Trash2, Star, Heart } from 'lucide-vue-next';
 
 const shoppingStore = useShoppingStore();
 const mealPlanStore = useMealPlanStore();
@@ -782,7 +785,7 @@ async function selectProduct(product) {
   if (!pickerItem.value) return;
   try {
     await shoppingStore.setReweProduct(pickerItem.value.id, product);
-    showSuccess(`${product.name} zugewiesen! ✅`);
+    showSuccess(`${product.name} zugewiesen & gemerkt! ⭐`);
     closeProductPicker();
   } catch {
     showError('Produkt konnte nicht zugewiesen werden.');

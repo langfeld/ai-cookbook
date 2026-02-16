@@ -90,6 +90,17 @@ export default async function reweRoutes(fastify) {
       return reply.status(404).send({ error: 'Keine offenen Items in der Einkaufsliste' });
     }
 
+    // Gespeicherte Produkt-Präferenzen des Users laden
+    const prefRows = db.prepare(
+      'SELECT ingredient_name, rewe_product_id, rewe_product_name, rewe_price, rewe_package_size FROM rewe_product_preferences WHERE user_id = ?'
+    ).all(request.user.id);
+
+    const preferences = new Map(
+      prefRows.map(p => [p.ingredient_name.toLowerCase().trim(), p])
+    );
+
+    console.log(`📦 ${preferences.size} gespeicherte Produkt-Präferenzen geladen`);
+
     // SSE-Stream einrichten
     reply.raw.writeHead(200, {
       'Content-Type': 'text/event-stream',
@@ -116,6 +127,8 @@ export default async function reweRoutes(fastify) {
       (progress) => {
         sendEvent('progress', progress);
       },
+      // Optionen: gespeicherte Präferenzen mitgeben
+      { preferences },
     );
 
     // Ergebnisse in die Datenbank schreiben
@@ -233,5 +246,64 @@ export default async function reweRoutes(fastify) {
         error: 'Marktsuche fehlgeschlagen. Bitte versuche es erneut oder gib die Markt-ID manuell ein.',
       };
     }
+  });
+
+  /**
+   * GET /api/rewe/preferences
+   * Gespeicherte Produkt-Präferenzen des Users laden
+   */
+  fastify.get('/preferences', {
+    schema: {
+      description: 'Gespeicherte REWE Produkt-Präferenzen laden',
+      tags: ['REWE'],
+      security: [{ bearerAuth: [] }],
+    },
+  }, async (request) => {
+    const prefs = db.prepare(`
+      SELECT id, ingredient_name, rewe_product_id, rewe_product_name, rewe_price, rewe_package_size, times_selected, updated_at
+      FROM rewe_product_preferences
+      WHERE user_id = ?
+      ORDER BY ingredient_name ASC
+    `).all(request.user.id);
+
+    return { preferences: prefs, total: prefs.length };
+  });
+
+  /**
+   * DELETE /api/rewe/preferences/:id
+   * Einzelne Produkt-Präferenz löschen (vergessen)
+   */
+  fastify.delete('/preferences/:id', {
+    schema: {
+      description: 'Produkt-Präferenz löschen',
+      tags: ['REWE'],
+      security: [{ bearerAuth: [] }],
+    },
+  }, async (request, reply) => {
+    const result = db.prepare(
+      'DELETE FROM rewe_product_preferences WHERE id = ? AND user_id = ?'
+    ).run(request.params.id, request.user.id);
+
+    if (!result.changes) {
+      return reply.status(404).send({ error: 'Präferenz nicht gefunden' });
+    }
+    return { message: 'Präferenz gelöscht' };
+  });
+
+  /**
+   * DELETE /api/rewe/preferences
+   * Alle Produkt-Präferenzen des Users löschen
+   */
+  fastify.delete('/preferences', {
+    schema: {
+      description: 'Alle Produkt-Präferenzen löschen',
+      tags: ['REWE'],
+      security: [{ bearerAuth: [] }],
+    },
+  }, async (request) => {
+    const result = db.prepare(
+      'DELETE FROM rewe_product_preferences WHERE user_id = ?'
+    ).run(request.user.id);
+    return { message: `${result.changes} Präferenz(en) gelöscht`, deleted: result.changes };
   });
 }
