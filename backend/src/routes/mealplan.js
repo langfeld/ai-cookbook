@@ -2,23 +2,23 @@
  * ============================================
  * Wochenplan-Routen
  * ============================================
- * Algorithmische Wochenplanung mit optionalem KI-Reasoning
+ * Algorithmische Wochenplanung mit optionalem KI-Reasoning,
+ * Rezepttausch-Vorschlägen und Drag-&-Drop-Unterstützung.
  */
 
 import db from '../config/database.js';
-import { generateWeekPlan, saveMealPlan, getMealPlan } from '../services/meal-planner.js';
+import { generateWeekPlan, saveMealPlan, getMealPlan, getSuggestions } from '../services/meal-planner.js';
 import { getWeekStart } from '../utils/helpers.js';
 
 export default async function mealplanRoutes(fastify) {
   fastify.addHook('onRequest', fastify.authenticate);
 
-  /**
-   * POST /api/mealplan/generate
-   * Wochenplan algorithmisch generieren (+ optionales KI-Reasoning)
-   */
+  // ─────────────────────────────────────────────
+  // POST /generate – Wochenplan generieren
+  // ─────────────────────────────────────────────
   fastify.post('/generate', {
     schema: {
-      description: 'Wochenplan generieren (Algorithmus + KI-Reasoning)',
+      description: 'Wochenplan generieren (Algorithmus + optionales KI-Reasoning)',
       tags: ['Wochenplan'],
       security: [{ bearerAuth: [] }],
       body: {
@@ -38,20 +38,25 @@ export default async function mealplanRoutes(fastify) {
   }, async (request, reply) => {
     try {
       const userId = request.user.id;
-      const options = {
-        ...request.body,
-        weekStart: request.body?.weekStart || getWeekStart(),
-      };
+      const weekStart = request.body?.weekStart || getWeekStart();
+      const options = { ...request.body, weekStart };
 
-      // Wochenplan algorithmisch generieren
+      // Bestehenden Plan für diese Woche löschen
+      const existing = db.prepare('SELECT id FROM meal_plans WHERE user_id = ? AND week_start = ?').get(userId, weekStart);
+      if (existing) {
+        db.prepare('DELETE FROM meal_plans WHERE id = ?').run(existing.id);
+      }
+
       const planData = await generateWeekPlan(userId, options);
+      const planId = saveMealPlan(userId, weekStart, planData);
 
-      // Plan speichern
-      const planId = saveMealPlan(userId, options.weekStart, planData);
+      // Gespeicherten Plan mit vollständigen Entries zurückgeben
+      const savedPlan = getMealPlan(userId, weekStart);
 
       return {
         planId,
-        plan: planData,
+        plan: savedPlan,
+        reasoning: planData.reasoning,
         message: 'Wochenplan erfolgreich generiert!',
       };
     } catch (error) {
@@ -59,10 +64,9 @@ export default async function mealplanRoutes(fastify) {
     }
   });
 
-  /**
-   * GET /api/mealplan
-   * Aktuellen Wochenplan abrufen
-   */
+  // ─────────────────────────────────────────────
+  // GET / – Wochenplan abrufen
+  // ─────────────────────────────────────────────
   fastify.get('/', {
     schema: {
       description: 'Wochenplan abrufen',
@@ -78,18 +82,12 @@ export default async function mealplanRoutes(fastify) {
   }, async (request) => {
     const weekStart = request.query.weekStart || getWeekStart();
     const plan = getMealPlan(request.user.id, weekStart);
-
-    if (!plan) {
-      return { plan: null, message: 'Kein Plan für diese Woche vorhanden' };
-    }
-
-    return { plan };
+    return { plan: plan || null };
   });
 
-  /**
-   * GET /api/mealplan/history
-   * Vergangene Wochenpläne
-   */
+  // ─────────────────────────────────────────────
+  // GET /history – Plan-Historie
+  // ─────────────────────────────────────────────
   fastify.get('/history', {
     schema: { description: 'Wochenplan-Historie', tags: ['Wochenplan'], security: [{ bearerAuth: [] }] },
   }, async (request) => {
@@ -102,38 +100,153 @@ export default async function mealplanRoutes(fastify) {
       ORDER BY mp.week_start DESC
       LIMIT 20
     `).all(request.user.id);
-
     return { plans };
   });
 
-  /**
-   * PUT /api/mealplan/:planId/entry/:entryId
-   * Einzelnen Eintrag im Wochenplan ändern (z.B. Rezept tauschen)
-   */
+  // ─────────────────────────────────────────────
+  // GET /suggestions – Rezeptvorschläge für Slot
+  // ─────────────────────────────────────────────
+  fastify.get('/suggestions', {
+    schema: {
+      description: 'Intelligente Rezeptvorschläge für einen Slot',
+      tags: ['Wochenplan'],
+      security: [{ bearerAuth: [] }],
+      querystring: {
+        type: 'object',
+        properties: {
+          dayIdx: { type: 'integer', minimum: 0, maximum: 6 },
+          mealType: { type: 'string', enum: ['fruehstueck', 'mittag', 'abendessen', 'snack'] },
+          excludeRecipeIds: { type: 'string' },
+          limit: { type: 'integer', minimum: 1, maximum: 20, default: 8 },
+        },
+      },
+    },
+  }, async (request) => {
+    const { dayIdx = 0, mealType = 'mittag', limit = 8 } = request.query;
+    const excludeRecipeIds = request.query.excludeRecipeIds
+      ? request.query.excludeRecipeIds.split(',').map(Number).filter(Boolean)
+      : [];
+    const suggestions = getSuggestions(request.user.id, { dayIdx, mealType, excludeRecipeIds, limit });
+    return { suggestions };
+  });
+
+  // ─────────────────────────────────────────────
+  // POST /:planId/entry – Neuen Eintrag hinzufügen
+  // ─────────────────────────────────────────────
+  fastify.post('/:planId/entry', {
+    schema: {
+      description: 'Neuen Eintrag zu einem Wochenplan hinzufügen',
+      tags: ['Wochenplan'],
+      security: [{ bearerAuth: [] }],
+      body: {
+        type: 'object',
+        required: ['recipe_id', 'day_of_week', 'meal_type'],
+        properties: {
+          recipe_id: { type: 'integer' },
+          day_of_week: { type: 'integer', minimum: 0, maximum: 6 },
+          meal_type: { type: 'string', enum: ['fruehstueck', 'mittag', 'abendessen', 'snack'] },
+          servings: { type: 'integer', minimum: 1, default: 4 },
+        },
+      },
+    },
+  }, async (request, reply) => {
+    const { recipe_id, day_of_week, meal_type, servings = 4 } = request.body;
+    const { planId } = request.params;
+    const userId = request.user.id;
+
+    const plan = db.prepare('SELECT id FROM meal_plans WHERE id = ? AND user_id = ?').get(planId, userId);
+    if (!plan) return reply.status(404).send({ error: 'Plan nicht gefunden' });
+
+    // Prüfen ob Slot schon belegt ist
+    const existing = db.prepare(
+      'SELECT id FROM meal_plan_entries WHERE meal_plan_id = ? AND day_of_week = ? AND meal_type = ?'
+    ).get(planId, day_of_week, meal_type);
+    if (existing) return reply.status(409).send({ error: 'Dieser Slot ist bereits belegt' });
+
+    const { lastInsertRowid } = db.prepare(
+      'INSERT INTO meal_plan_entries (meal_plan_id, recipe_id, day_of_week, meal_type, servings) VALUES (?, ?, ?, ?, ?)'
+    ).run(planId, recipe_id, day_of_week, meal_type, servings);
+
+    const entry = db.prepare(`
+      SELECT mpe.*, r.title as recipe_title, r.image_url, r.total_time, r.difficulty, r.servings as original_servings
+      FROM meal_plan_entries mpe JOIN recipes r ON mpe.recipe_id = r.id WHERE mpe.id = ?
+    `).get(lastInsertRowid);
+
+    return { message: 'Eintrag hinzugefügt!', entry };
+  });
+
+  // ─────────────────────────────────────────────
+  // PUT /:planId/entry/:entryId – Eintrag ändern
+  // ─────────────────────────────────────────────
   fastify.put('/:planId/entry/:entryId', {
     schema: {
-      description: 'Wochenplan-Eintrag ändern',
+      description: 'Wochenplan-Eintrag ändern (Rezept tauschen, Slot ändern)',
       tags: ['Wochenplan'],
       security: [{ bearerAuth: [] }],
     },
   }, async (request, reply) => {
-    const { recipe_id, servings } = request.body;
+    const { recipe_id, servings, day_of_week, meal_type } = request.body;
 
     const result = db.prepare(`
-      UPDATE meal_plan_entries SET recipe_id = COALESCE(?, recipe_id), servings = COALESCE(?, servings)
+      UPDATE meal_plan_entries
+      SET recipe_id = COALESCE(?, recipe_id),
+          servings = COALESCE(?, servings),
+          day_of_week = COALESCE(?, day_of_week),
+          meal_type = COALESCE(?, meal_type)
       WHERE id = ? AND meal_plan_id IN (SELECT id FROM meal_plans WHERE user_id = ?)
-    `).run(recipe_id, servings, request.params.entryId, request.user.id);
+    `).run(recipe_id, servings, day_of_week, meal_type, request.params.entryId, request.user.id);
 
     if (result.changes === 0) return reply.status(404).send({ error: 'Eintrag nicht gefunden' });
-    return { message: 'Eintrag aktualisiert!' };
+
+    const entry = db.prepare(`
+      SELECT mpe.*, r.title as recipe_title, r.image_url, r.total_time, r.difficulty, r.servings as original_servings
+      FROM meal_plan_entries mpe JOIN recipes r ON mpe.recipe_id = r.id WHERE mpe.id = ?
+    `).get(request.params.entryId);
+
+    return { message: 'Eintrag aktualisiert!', entry };
   });
 
-  /**
-   * POST /api/mealplan/:planId/entry/:entryId/cooked
-   * Mahlzeit als gekocht markieren
-   */
+  // ─────────────────────────────────────────────
+  // POST /:planId/entry/:entryId/move – Drag&Drop
+  // ─────────────────────────────────────────────
+  fastify.post('/:planId/entry/:entryId/move', {
+    schema: {
+      description: 'Eintrag in anderen Slot verschieben (Drag & Drop)',
+      tags: ['Wochenplan'],
+      security: [{ bearerAuth: [] }],
+    },
+  }, async (request, reply) => {
+    const { day_of_week, meal_type } = request.body;
+    const { planId, entryId } = request.params;
+    const userId = request.user.id;
+
+    const plan = db.prepare('SELECT id FROM meal_plans WHERE id = ? AND user_id = ?').get(planId, userId);
+    if (!plan) return reply.status(404).send({ error: 'Plan nicht gefunden' });
+
+    // Prüfen ob Zielslot bereits belegt → tauschen
+    const existingTarget = db.prepare(
+      'SELECT id FROM meal_plan_entries WHERE meal_plan_id = ? AND day_of_week = ? AND meal_type = ? AND id != ?'
+    ).get(planId, day_of_week, meal_type, entryId);
+
+    if (existingTarget) {
+      const source = db.prepare('SELECT day_of_week, meal_type FROM meal_plan_entries WHERE id = ?').get(entryId);
+      db.prepare('UPDATE meal_plan_entries SET day_of_week = ?, meal_type = ? WHERE id = ?')
+        .run(source.day_of_week, source.meal_type, existingTarget.id);
+    }
+
+    db.prepare('UPDATE meal_plan_entries SET day_of_week = ?, meal_type = ? WHERE id = ?')
+      .run(day_of_week, meal_type, entryId);
+
+    const weekStart = db.prepare('SELECT week_start FROM meal_plans WHERE id = ?').get(planId).week_start;
+    const updatedPlan = getMealPlan(userId, weekStart);
+    return { message: 'Eintrag verschoben!', plan: updatedPlan };
+  });
+
+  // ─────────────────────────────────────────────
+  // POST /:planId/entry/:entryId/cooked – Toggle
+  // ─────────────────────────────────────────────
   fastify.post('/:planId/entry/:entryId/cooked', {
-    schema: { description: 'Als gekocht markieren', tags: ['Wochenplan'], security: [{ bearerAuth: [] }] },
+    schema: { description: 'Gekocht-Status togglen', tags: ['Wochenplan'], security: [{ bearerAuth: [] }] },
   }, async (request) => {
     const entry = db.prepare(`
       SELECT mpe.* FROM meal_plan_entries mpe
@@ -143,22 +256,37 @@ export default async function mealplanRoutes(fastify) {
 
     if (!entry) return { error: 'Eintrag nicht gefunden' };
 
-    // Als gekocht markieren
-    db.prepare('UPDATE meal_plan_entries SET is_cooked = 1 WHERE id = ?').run(entry.id);
+    const newState = entry.is_cooked ? 0 : 1;
+    db.prepare('UPDATE meal_plan_entries SET is_cooked = ? WHERE id = ?').run(newState, entry.id);
 
-    // Kochhistorie und Rezept-Statistik aktualisieren
-    db.prepare('INSERT INTO cooking_history (user_id, recipe_id, servings) VALUES (?, ?, ?)').run(
-      request.user.id, entry.recipe_id, entry.servings
-    );
-    db.prepare('UPDATE recipes SET times_cooked = times_cooked + 1, last_cooked_at = CURRENT_TIMESTAMP WHERE id = ?').run(entry.recipe_id);
+    if (newState === 1) {
+      db.prepare('INSERT INTO cooking_history (user_id, recipe_id, servings) VALUES (?, ?, ?)').run(
+        request.user.id, entry.recipe_id, entry.servings
+      );
+      db.prepare('UPDATE recipes SET times_cooked = times_cooked + 1, last_cooked_at = CURRENT_TIMESTAMP WHERE id = ?')
+        .run(entry.recipe_id);
+    }
 
-    return { message: 'Als gekocht markiert!' };
+    return { message: newState ? 'Als gekocht markiert!' : 'Markierung entfernt', is_cooked: newState };
   });
 
-  /**
-   * DELETE /api/mealplan/:id
-   * Wochenplan löschen
-   */
+  // ─────────────────────────────────────────────
+  // DELETE /:planId/entry/:entryId – Einzeleintrag
+  // ─────────────────────────────────────────────
+  fastify.delete('/:planId/entry/:entryId', {
+    schema: { description: 'Einzelnen Eintrag entfernen', tags: ['Wochenplan'], security: [{ bearerAuth: [] }] },
+  }, async (request, reply) => {
+    const result = db.prepare(`
+      DELETE FROM meal_plan_entries
+      WHERE id = ? AND meal_plan_id IN (SELECT id FROM meal_plans WHERE id = ? AND user_id = ?)
+    `).run(request.params.entryId, request.params.planId, request.user.id);
+    if (result.changes === 0) return reply.status(404).send({ error: 'Eintrag nicht gefunden' });
+    return { message: 'Eintrag entfernt' };
+  });
+
+  // ─────────────────────────────────────────────
+  // DELETE /:id – Gesamten Plan löschen
+  // ─────────────────────────────────────────────
   fastify.delete('/:id', {
     schema: { description: 'Wochenplan löschen', tags: ['Wochenplan'], security: [{ bearerAuth: [] }] },
   }, async (request, reply) => {

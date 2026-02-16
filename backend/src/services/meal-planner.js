@@ -20,6 +20,73 @@ import { getWeekStart } from '../utils/helpers.js';
 const DAY_NAMES = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag'];
 
 // ============================================
+// Mahlzeit-Typ → Kategorie-Mapping
+// ============================================
+
+/**
+ * Keywords pro Mahlzeit-Typ (lowercase).
+ * Wenn eine Rezept-Kategorie eines der Keywords enthält → passt zum Slot.
+ */
+const MEAL_TYPE_KEYWORDS = {
+  fruehstueck: ['frühstück', 'breakfast', 'brunch', 'morgen', 'müsli', 'smoothie', 'porridge', 'oatmeal'],
+  mittag:      ['mittagessen', 'mittag', 'lunch', 'hauptgericht', 'hauptspeise', 'main'],
+  abendessen:  ['abendessen', 'abend', 'dinner', 'hauptgericht', 'hauptspeise', 'main'],
+  snack:       ['snack', 'dessert', 'nachtisch', 'kuchen', 'gebäck', 'süß', 'vorspeise', 'beilage', 'kleinigkeit', 'appetizer'],
+};
+
+/**
+ * Title-Keywords als Fallback, wenn ein Rezept gar keine Kategorie hat.
+ */
+const TITLE_HINTS = {
+  fruehstueck: ['müsli', 'granola', 'porridge', 'smoothie', 'pancake', 'pfannkuchen', 'brötchen', 'toast', 'omelette', 'rührei', 'frühstück'],
+  snack:       ['kuchen', 'muffin', 'cookie', 'riegel', 'salat', 'dip', 'hummus', 'bruschetta', 'nachos'],
+};
+
+/**
+ * Prüft, ob ein Rezept zu einem bestimmten Mahlzeit-Typ passt.
+ * Gibt zurück: 'match' | 'neutral' | 'mismatch'
+ */
+function mealTypeFitness(recipe, mealType) {
+  const cats = (recipe.categories || '').split(',').map(c => c.trim().toLowerCase()).filter(Boolean);
+
+  // Rezept hat Kategorien → prüfen ob eine zum Mahlzeit-Typ passt
+  if (cats.length > 0) {
+    const targetKeywords = MEAL_TYPE_KEYWORDS[mealType] || [];
+    const hasMatch = cats.some(cat => targetKeywords.some(kw => cat.includes(kw)));
+    if (hasMatch) return 'match';
+
+    // Prüfen ob Rezept explizit zu einem ANDEREN Typ gehört
+    const otherTypes = Object.entries(MEAL_TYPE_KEYWORDS).filter(([key]) => key !== mealType);
+    const belongsToOther = otherTypes.some(([, keywords]) =>
+      cats.some(cat => keywords.some(kw => cat.includes(kw)))
+    );
+    if (belongsToOther) return 'mismatch';
+
+    return 'neutral'; // Kategorie vorhanden, passt zu keinem spezifischen Typ
+  }
+
+  // Kein Kategorie → Title als Fallback prüfen
+  const titleLower = (recipe.title || '').toLowerCase();
+  const titleHints = TITLE_HINTS[mealType];
+  if (titleHints && titleHints.some(hint => titleLower.includes(hint))) return 'match';
+
+  // Frühstück/Snack ohne passende Kategorie oder Title-Hint → eher unpassend
+  if (mealType === 'fruehstueck' || mealType === 'snack') return 'mismatch';
+
+  // Mittag/Abendessen: Rezepte ohne Kategorie gelten als mögliche Hauptgerichte
+  return 'neutral';
+}
+
+/**
+ * Harter Filter: Gibt nur Rezepte zurück, die zum Mahlzeit-Typ passen.
+ * 'mismatch'-Rezepte werden komplett ausgeschlossen.
+ * Gibt leeres Array zurück, wenn nichts passt → Slot bleibt dann leer.
+ */
+function filterByMealType(recipes, mealType) {
+  return recipes.filter(r => mealTypeFitness(r, mealType) !== 'mismatch');
+}
+
+// ============================================
 // Scoring-System
 // ============================================
 
@@ -29,6 +96,11 @@ const DAY_NAMES = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'S
  */
 function scoreRecipe(recipe, context) {
   let score = 100;
+
+  // Mahlzeit-Typ-Passung wird VOR dem Scoring per Filter erledigt (siehe filterByMealType).
+  // Im Score gibt es nur noch einen kleinen Bonus für perfekte Matches.
+  const fitness = mealTypeFitness(recipe, context.mealType || 'mittag');
+  if (fitness === 'match') score += 30; // Bonus für perfekte Kategorie-Passung
 
   // 1. Rotation: lange nicht gekocht = höherer Score (max +60)
   if (recipe.last_cooked) {
@@ -107,6 +179,69 @@ function weightedRandomPick(recipes, context) {
 }
 
 // ============================================
+// Vorschläge (für Rezepttausch)
+// ============================================
+
+/**
+ * Liefert bewertete Rezeptvorschläge für einen bestimmten Slot.
+ */
+export function getSuggestions(userId, { dayIdx = 0, mealType = 'mittag', excludeRecipeIds = [], limit = 8 } = {}) {
+  const recipes = db.prepare(`
+    SELECT r.*, GROUP_CONCAT(DISTINCT c.name) as category_names,
+      (SELECT COUNT(*) FROM cooking_history ch WHERE ch.recipe_id = r.id) as cook_count,
+      (SELECT MAX(ch.cooked_at) FROM cooking_history ch WHERE ch.recipe_id = r.id) as last_cooked,
+      (SELECT AVG(ch.rating) FROM cooking_history ch WHERE ch.recipe_id = r.id AND ch.rating IS NOT NULL) as avg_rating
+    FROM recipes r
+    LEFT JOIN recipe_categories rc ON r.id = rc.recipe_id
+    LEFT JOIN categories c ON rc.category_id = c.id
+    WHERE r.user_id = ?
+    GROUP BY r.id
+  `).all(userId);
+
+  const pantryItems = db.prepare(
+    'SELECT ingredient_name FROM pantry WHERE user_id = ? AND amount > 0'
+  ).all(userId);
+  const pantrySet = new Set(pantryItems.map(p => p.ingredient_name.toLowerCase()));
+  const excludeSet = new Set(excludeRecipeIds);
+
+  const scored = recipes
+    .filter(r => !excludeSet.has(r.id))
+    .map(r => {
+      const ingredients = db.prepare('SELECT name FROM ingredients WHERE recipe_id = ?').all(r.id);
+      return { ...r, categories: r.category_names || '', ingredientNames: ingredients.map(i => i.name.toLowerCase()) };
+    })
+    .filter(r => mealTypeFitness(r, mealType) !== 'mismatch') // Harter Filter!
+    .map(recipe => {
+      const context = { dayIdx, mealType, usedRecipeIds: new Set(), usedIngredients: new Set(), pantrySet, previousMealCategory: null };
+      const score = scoreRecipe(recipe, context);
+
+      // Kurzer Grund
+      const fitness = mealTypeFitness(recipe, mealType);
+      let reason = '';
+      if (fitness === 'match') reason = 'Passt zum Slot';
+      else if (recipe.is_favorite) reason = 'Favorit';
+      else if (!recipe.last_cooked) reason = 'Noch nie gekocht';
+      else if (recipe.cook_count <= 2) reason = 'Selten gekocht';
+      else reason = 'Gute Abwechslung';
+
+      return {
+        id: recipe.id,
+        title: recipe.title,
+        image_url: recipe.image_url,
+        total_time: recipe.total_time,
+        difficulty: recipe.difficulty,
+        is_favorite: recipe.is_favorite,
+        score,
+        reason,
+      };
+    })
+    .sort((a, b) => b.score - a.score)
+    .slice(0, limit);
+
+  return scored;
+}
+
+// ============================================
 // Plan-Generierung
 // ============================================
 
@@ -174,19 +309,30 @@ export async function generateWeekPlan(userId, options = {}) {
   // Tracking: letzte Kategorie pro Mahlzeit-Typ (für Abwechslung)
   const lastCategoryByMeal = {};
 
+  // Pro Mahlzeit-Typ: passende Rezepte vorab filtern
+  const recipesPerMealType = {};
+  for (const mt of mealTypes) {
+    recipesPerMealType[mt] = filterByMealType(recipeData, mt);
+  }
+
   for (let dayIdx = 0; dayIdx < 7; dayIdx++) {
     const dayMeals = [];
 
     for (const mealType of mealTypes) {
+      // Nur aus passenden Rezepten wählen
+      const eligible = recipesPerMealType[mealType];
+      if (eligible.length === 0) continue; // Keine passenden Rezepte → Slot leer lassen
+
       const context = {
         dayIdx,
+        mealType,
         usedRecipeIds,
         usedIngredients,
         pantrySet,
         previousMealCategory: lastCategoryByMeal[mealType] || null,
       };
 
-      const pick = weightedRandomPick(recipeData, context);
+      const pick = weightedRandomPick(eligible, context);
       const recipe = pick.recipe;
 
       // Gewähltes Rezept tracken
@@ -222,7 +368,14 @@ export async function generateWeekPlan(userId, options = {}) {
   const uniqueRecipes = new Set(plan.flatMap(d => d.meals.map(m => m.recipe_id))).size;
   const pantryUsed = [...usedIngredients].filter(i => pantrySet.has(i));
 
+  // Prüfen welche Mahlzeit-Typen übersprungen wurden (keine passenden Rezepte)
+  const skippedTypes = mealTypes.filter(mt => recipesPerMealType[mt].length === 0);
+  const MEAL_TYPE_LABELS = { fruehstueck: 'Frühstück', mittag: 'Mittagessen', abendessen: 'Abendessen', snack: 'Snacks' };
+
   let reasoning = `Plan: ${totalMeals} Mahlzeiten aus ${uniqueRecipes} verschiedenen Rezepten.`;
+  if (skippedTypes.length) {
+    reasoning += ` ${skippedTypes.map(t => MEAL_TYPE_LABELS[t] || t).join(', ')} übersprungen (keine passenden Rezepte vorhanden).`;
+  }
   if (pantryUsed.length) {
     reasoning += ` ${pantryUsed.length} Zutat(en) aus dem Vorrat berücksichtigt.`;
   }
