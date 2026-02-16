@@ -16,6 +16,12 @@ export const useShoppingStore = defineStore('shopping', () => {
 
   const api = useApi();
 
+  // Kombinierte aktive Liste (für Template-Zugriff via shoppingStore.activeList)
+  const activeList = computed(() => {
+    if (!currentList.value) return null;
+    return { ...currentList.value, items: items.value };
+  });
+
   // Anzahl der noch offenen Items
   const openItemsCount = computed(() => items.value.filter(i => !i.is_checked).length);
   // Geschätzter Gesamtpreis (REWE)
@@ -68,7 +74,7 @@ export const useShoppingStore = defineStore('shopping', () => {
   }
 
   return {
-    currentList, items, reweMatches, loading,
+    currentList, items, activeList, reweMatches, loading,
     openItemsCount, estimatedTotal,
     generateList, fetchActiveList, toggleItem, matchWithRewe, completePurchase,
   };

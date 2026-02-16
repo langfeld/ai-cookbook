@@ -80,7 +80,7 @@
             <!-- Artikelname -->
             <div class="flex-1 min-w-0">
               <div :class="['text-sm', item.is_checked ? 'line-through text-stone-400' : 'text-stone-800 dark:text-stone-200']">
-                {{ item.name }}
+                {{ item.ingredient_name }}
               </div>
               <!-- REWE-Produkt -->
               <div v-if="item.rewe_product" class="flex items-center gap-1 mt-0.5 text-red-500 text-xs">
@@ -136,11 +136,13 @@
 <script setup>
 import { computed, ref, onMounted } from 'vue';
 import { useShoppingStore } from '@/stores/shopping.js';
+import { useMealPlanStore } from '@/stores/mealplan.js';
 import { useNotification } from '@/composables/useNotification.js';
 import { ListPlus, Check, ShoppingBag } from 'lucide-vue-next';
 
 const shoppingStore = useShoppingStore();
-const { showSuccess } = useNotification();
+const mealPlanStore = useMealPlanStore();
+const { showSuccess, showError } = useNotification();
 const reweLoading = ref(false);
 
 const totalCount = computed(() => shoppingStore.activeList?.items?.length || 0);
@@ -152,12 +154,66 @@ const estimatedTotal = computed(() => {
   return shoppingStore.activeList.items.reduce((sum, item) => sum + (item.rewe_product?.price || 0), 0);
 });
 
+/** Zutat → Supermarkt-Abteilung zuordnen */
+const categoryKeywords = {
+  'Obst & Gemüse': [
+    'apfel', 'banane', 'birne', 'orange', 'zitrone', 'lime', 'mango', 'avocado', 'tomate',
+    'gurke', 'paprika', 'zwiebel', 'knoblauch', 'kartoffel', 'karotte', 'möhre', 'sellerie',
+    'lauch', 'porree', 'brokkoli', 'blumenkohl', 'zucchini', 'aubergine', 'spinat', 'salat',
+    'rucola', 'petersilie', 'basilikum', 'koriander', 'dill', 'schnittlauch', 'minze',
+    'ingwer', 'chili', 'jalapeño', 'frühlingszwiebel', 'schalotte', 'pilz', 'champignon',
+    'radieschen', 'kohlrabi', 'fenchel', 'kürbis', 'süßkartoffel', 'mais', 'erbsen',
+    'bohnen', 'linsen', 'kichererbsen', 'cocktailtomaten', 'kirschtomate', 'blattpetersilie',
+    'rosmarin', 'thymian', 'salbei', 'oregano', 'gemüse', 'obst', 'beere', 'himbeere',
+    'erdbeere', 'blaubeere', 'trauben', 'ananas', 'melone', 'kiwi', 'granatapfel',
+  ],
+  'Milchprodukte': [
+    'milch', 'butter', 'sahne', 'schmand', 'joghurt', 'quark', 'käse', 'frischkäse',
+    'mozzarella', 'parmesan', 'gouda', 'emmentaler', 'feta', 'halloumi', 'mascarpone',
+    'ricotta', 'crème fraîche', 'creme fraiche', 'sauerrahm', 'schlagsahne', 'ei', 'eier',
+  ],
+  'Fleisch & Fisch': [
+    'fleisch', 'hähnchen', 'huhn', 'chicken', 'pute', 'rind', 'schwein', 'hack', 'gehackt',
+    'steak', 'schnitzel', 'wurst', 'schinken', 'speck', 'bacon', 'lachs', 'thunfisch',
+    'garnele', 'shrimp', 'fisch', 'filet', 'burger', 'bratwurst', 'salami', 'chorizo',
+  ],
+  'Backwaren': [
+    'brot', 'brötchen', 'toast', 'baguette', 'ciabatta', 'croissant', 'tortilla', 'wrap',
+    'pizzateig', 'blätterteig', 'hefeteig', 'mehl', 'hefe', 'backpulver', 'burgerbrötchen',
+  ],
+  'Gewürze & Öle': [
+    'salz', 'pfeffer', 'paprika pulver', 'kurkuma', 'kreuzkümmel', 'kümmel', 'zimt',
+    'muskat', 'cayenne', 'chili pulver', 'curry', 'gewürz', 'öl', 'olivenöl', 'sonnenblumenöl',
+    'sesamöl', 'essig', 'balsamico', 'sojasoße', 'sojasauce', 'worcester', 'senf', 'ketchup',
+    'mayonnaise', 'tabasco', 'sriracha', 'honig', 'zucker', 'vanille', 'estragon',
+  ],
+  'Getränke': [
+    'wasser', 'saft', 'limonade', 'bier', 'wein', 'milch', 'tee', 'kaffee', 'cola',
+  ],
+  'Reis, Pasta & Co.': [
+    'reis', 'nudel', 'pasta', 'spaghetti', 'penne', 'fusilli', 'tagliatelle', 'couscous',
+    'bulgur', 'quinoa', 'haferflocken', 'müsli', 'cornflakes', 'basmatireis',
+  ],
+  'Konserven & Saucen': [
+    'dose', 'konserve', 'passata', 'tomatenmark', 'kokosmilch', 'kokosnussmilch',
+    'brühe', 'fond', 'sauce', 'pesto', 'currysauce', 'tomatensauce', 'sambal',
+  ],
+};
+
+function guessCategory(ingredientName) {
+  const lower = ingredientName.toLowerCase();
+  for (const [category, keywords] of Object.entries(categoryKeywords)) {
+    if (keywords.some(kw => lower.includes(kw))) return category;
+  }
+  return 'Sonstiges';
+}
+
 // Artikel nach Kategorie gruppieren
 const groupedItems = computed(() => {
   const items = shoppingStore.activeList?.items || [];
   const groups = {};
   for (const item of items) {
-    const cat = item.category || 'Sonstiges';
+    const cat = guessCategory(item.ingredient_name || '');
     if (!groups[cat]) groups[cat] = [];
     groups[cat].push(item);
   }
@@ -174,10 +230,10 @@ function categoryIcon(cat) {
     'Milchprodukte': '🧀',
     'Fleisch & Fisch': '🥩',
     'Backwaren': '🍞',
-    'Gewürze': '🧂',
+    'Gewürze & Öle': '🧂',
     'Getränke': '🥤',
-    'Tiefkühl': '🧊',
-    'Konserven': '🥫',
+    'Reis, Pasta & Co.': '🍚',
+    'Konserven & Saucen': '🥫',
     'Sonstiges': '📦',
   };
   return icons[cat] || '📦';
@@ -188,8 +244,17 @@ function formatPrice(cents) {
 }
 
 async function generateList() {
+  // Aktuellen Wochenplan laden, falls noch nicht vorhanden
+  if (!mealPlanStore.currentPlan) {
+    await mealPlanStore.fetchCurrentPlan();
+  }
+  const planId = mealPlanStore.currentPlan?.id;
+  if (!planId) {
+    showError('Kein Wochenplan vorhanden. Erstelle zuerst einen Plan im Wochenplaner.');
+    return;
+  }
   try {
-    await shoppingStore.generateList();
+    await shoppingStore.generateList(planId);
     showSuccess('Einkaufsliste erstellt! 📝');
   } catch {
     // Fehler wird von useApi angezeigt
