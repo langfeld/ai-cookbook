@@ -74,7 +74,37 @@ export default async function shoppingRoutes(fastify) {
       'SELECT * FROM shopping_list_items WHERE shopping_list_id = ? ORDER BY is_checked, ingredient_name'
     ).all(list.id);
 
-    return { list, items };
+    // Rezept-Infos (ID, Titel, Bild) für alle referenzierten Rezepte laden
+    const allRecipeIds = new Set();
+    for (const item of items) {
+      try {
+        const ids = JSON.parse(item.recipe_ids || '[]');
+        ids.forEach(id => allRecipeIds.add(id));
+      } catch { /* ignorieren */ }
+    }
+
+    let recipeLookup = {};
+    if (allRecipeIds.size > 0) {
+      const placeholders = [...allRecipeIds].map(() => '?').join(',');
+      const recipes = db.prepare(
+        `SELECT id, title, image_url FROM recipes WHERE id IN (${placeholders})`
+      ).all(...allRecipeIds);
+      for (const r of recipes) {
+        recipeLookup[r.id] = r;
+      }
+    }
+
+    // Items mit Rezept-Details anreichern
+    const enrichedItems = items.map(item => {
+      let recipeIds = [];
+      try { recipeIds = JSON.parse(item.recipe_ids || '[]'); } catch { /* */ }
+      return {
+        ...item,
+        recipes: recipeIds.map(id => recipeLookup[id]).filter(Boolean),
+      };
+    });
+
+    return { list, items: enrichedItems };
   });
 
   /**
@@ -110,6 +140,58 @@ export default async function shoppingRoutes(fastify) {
     `).run(request.params.id, request.user.id);
 
     return { message: 'Status aktualisiert' };
+  });
+
+  /**
+   * POST /api/shopping/item/add
+   * Manuell ein Item zur aktiven Einkaufsliste hinzufügen
+   */
+  fastify.post('/item/add', {
+    schema: {
+      description: 'Item manuell zur Einkaufsliste hinzufügen',
+      tags: ['Einkaufsliste'],
+      security: [{ bearerAuth: [] }],
+      body: {
+        type: 'object',
+        required: ['ingredient_name'],
+        properties: {
+          ingredient_name: { type: 'string', minLength: 1 },
+          amount: { type: 'number' },
+          unit: { type: 'string' },
+        },
+      },
+    },
+  }, async (request, reply) => {
+    const userId = request.user.id;
+    const { ingredient_name, amount, unit } = request.body;
+
+    // Aktive Liste finden oder neue erstellen
+    let list = db.prepare(
+      'SELECT * FROM shopping_lists WHERE user_id = ? AND is_active = 1 ORDER BY created_at DESC LIMIT 1'
+    ).get(userId);
+
+    if (!list) {
+      const { lastInsertRowid } = db.prepare(
+        'INSERT INTO shopping_lists (user_id, name) VALUES (?, ?)'
+      ).run(userId, 'Einkaufsliste');
+      list = { id: lastInsertRowid };
+    }
+
+    const { lastInsertRowid: itemId } = db.prepare(`
+      INSERT INTO shopping_list_items (shopping_list_id, ingredient_name, amount, unit, recipe_ids)
+      VALUES (?, ?, ?, ?, '[]')
+    `).run(list.id, ingredient_name.trim(), amount || null, unit || null);
+
+    return {
+      id: itemId,
+      ingredient_name: ingredient_name.trim(),
+      amount: amount || null,
+      unit: unit || null,
+      is_checked: 0,
+      recipes: [],
+      pantry_deducted: 0,
+      message: 'Artikel hinzugefügt',
+    };
   });
 
   /**

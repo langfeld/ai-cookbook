@@ -319,6 +319,13 @@ function migrateDatabase() {
     console.log('  ↳ Migration: max_upload_size_mb → max_upload_size umbenannt');
   }
 
+  // Spalte 'recipe_ids' in shopping_list_items hinzufügen (JSON-Array mit Rezept-IDs)
+  const sliCols = db.prepare("PRAGMA table_info(shopping_list_items)").all().map(c => c.name);
+  if (!sliCols.includes('recipe_ids')) {
+    db.exec("ALTER TABLE shopping_list_items ADD COLUMN recipe_ids TEXT DEFAULT '[]'");
+    console.log('  ↳ Migration: shopping_list_items.recipe_ids hinzugefügt');
+  }
+
   // Standard-Zutaten-Icons seeden (nur wenn Tabelle leer)
   const iconsCount = db.prepare("SELECT COUNT(*) as count FROM ingredient_icons").get().count;
   if (iconsCount === 0) {

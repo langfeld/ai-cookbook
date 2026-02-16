@@ -21,6 +21,20 @@
       </div>
       <div class="flex gap-2">
         <button
+          @click="toggleRecipeLinks"
+          :title="showRecipeLinks ? 'Rezept-Links ausblenden' : 'Rezept-Links einblenden'"
+          :class="[
+            'flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium transition-colors border',
+            showRecipeLinks
+              ? 'bg-primary-50 dark:bg-primary-900/30 border-primary-300 dark:border-primary-700 text-primary-700 dark:text-primary-300'
+              : 'bg-stone-100 dark:bg-stone-800 border-stone-300 dark:border-stone-600 text-stone-500 dark:text-stone-400'
+          ]"
+        >
+          <BookOpen v-if="showRecipeLinks" class="w-4 h-4" />
+          <BookX v-else class="w-4 h-4" />
+          <span class="hidden sm:inline">{{ showRecipeLinks ? 'Rezepte' : 'Rezepte' }}</span>
+        </button>
+        <button
           @click="generateList"
           :disabled="shoppingStore.loading"
           class="flex items-center gap-2 bg-primary-600 hover:bg-primary-700 disabled:opacity-50 px-4 py-2 rounded-xl font-medium text-white text-sm transition-colors"
@@ -46,6 +60,52 @@
         :style="{ width: `${progressPercent}%` }"
       />
     </div>
+
+    <!-- Manuell hinzufügen -->
+    <form
+      v-if="shoppingStore.activeList || !shoppingStore.loading"
+      @submit.prevent="addManualItem"
+      class="flex flex-wrap items-end gap-2 bg-white dark:bg-stone-900 p-4 border border-stone-200 dark:border-stone-800 rounded-xl"
+    >
+      <div class="flex-1 min-w-[160px]">
+        <label class="block mb-1 font-medium text-stone-500 dark:text-stone-400 text-xs">Artikel</label>
+        <input
+          v-model="newItem.name"
+          type="text"
+          placeholder="z.B. Toilettenpapier"
+          required
+          class="bg-stone-50 dark:bg-stone-800 px-3 py-2 border border-stone-300 focus:border-transparent dark:border-stone-600 rounded-lg focus:ring-2 focus:ring-primary-500 w-full text-stone-800 dark:text-stone-200 placeholder:text-stone-400 text-sm"
+        />
+      </div>
+      <div class="w-20">
+        <label class="block mb-1 font-medium text-stone-500 dark:text-stone-400 text-xs">Menge</label>
+        <input
+          v-model.number="newItem.amount"
+          type="number"
+          step="any"
+          min="0"
+          placeholder="1"
+          class="bg-stone-50 dark:bg-stone-800 px-3 py-2 border border-stone-300 focus:border-transparent dark:border-stone-600 rounded-lg focus:ring-2 focus:ring-primary-500 w-full text-stone-800 dark:text-stone-200 placeholder:text-stone-400 text-sm"
+        />
+      </div>
+      <div class="w-20">
+        <label class="block mb-1 font-medium text-stone-500 dark:text-stone-400 text-xs">Einheit</label>
+        <input
+          v-model="newItem.unit"
+          type="text"
+          placeholder="Stk"
+          class="bg-stone-50 dark:bg-stone-800 px-3 py-2 border border-stone-300 focus:border-transparent dark:border-stone-600 rounded-lg focus:ring-2 focus:ring-primary-500 w-full text-stone-800 dark:text-stone-200 placeholder:text-stone-400 text-sm"
+        />
+      </div>
+      <button
+        type="submit"
+        :disabled="!newItem.name.trim()"
+        class="flex items-center gap-1.5 bg-primary-600 hover:bg-primary-700 disabled:opacity-50 px-4 py-2 rounded-lg font-medium text-white text-sm transition-colors"
+      >
+        <Plus class="w-4 h-4" />
+        Hinzufügen
+      </button>
+    </form>
 
     <!-- Einkaufsliste -->
     <div v-if="shoppingStore.activeList" class="space-y-6">
@@ -86,11 +146,36 @@
                 <Check v-if="item.is_checked" class="w-3 h-3 text-white" />
               </button>
 
-              <!-- Artikelname -->
+              <!-- Artikelname + Rezept-Thumbnails + Vorrats-Hinweis -->
               <div class="flex-1 min-w-0">
-                <span :class="['text-sm', item.is_checked ? 'line-through text-stone-400' : 'text-stone-800 dark:text-stone-200']">
-                  {{ item.ingredient_name }}
-                </span>
+                <div class="flex flex-wrap items-center gap-2">
+                  <span :class="['text-sm', item.is_checked ? 'line-through text-stone-400' : 'text-stone-800 dark:text-stone-200']">
+                    {{ item.ingredient_name }}
+                  </span>
+                  <!-- Mini Rezept-Thumbnails -->
+                  <div v-if="showRecipeLinks && item.recipes?.length" class="flex -space-x-1.5">
+                    <router-link
+                      v-for="recipe in item.recipes"
+                      :key="recipe.id"
+                      :to="`/recipes/${recipe.id}`"
+                      :title="recipe.title"
+                      class="hover:z-10 relative bg-stone-200 dark:bg-stone-700 border-2 border-white dark:border-stone-900 rounded-full w-5 h-5 overflow-hidden hover:scale-125 transition-transform shrink-0"
+                    >
+                      <img
+                        v-if="recipe.image_url"
+                        :src="recipe.image_url"
+                        :alt="recipe.title"
+                        class="w-full h-full object-cover"
+                      />
+                      <span v-else class="flex justify-center items-center w-full h-full text-[8px]">🍽️</span>
+                    </router-link>
+                  </div>
+                </div>
+                <!-- Vorrats-Hinweis -->
+                <div v-if="item.pantry_deducted > 0" class="flex items-center gap-1 mt-0.5 text-emerald-600 dark:text-emerald-400 text-xs">
+                  <Package class="w-3 h-3" />
+                  {{ item.pantry_deducted }} {{ item.unit }} im Vorrat
+                </div>
                 <!-- REWE-Produkt -->
                 <div v-if="item.rewe_product" class="flex items-center gap-1 mt-0.5 text-red-500 text-xs">
                   🏪 {{ item.rewe_product.name }} – {{ formatPrice(item.rewe_product.price) }}
@@ -145,12 +230,22 @@ import { computed, ref, onMounted } from 'vue';
 import { useShoppingStore } from '@/stores/shopping.js';
 import { useMealPlanStore } from '@/stores/mealplan.js';
 import { useNotification } from '@/composables/useNotification.js';
-import { ListPlus, Check, ShoppingBag } from 'lucide-vue-next';
+import { ListPlus, Check, ShoppingBag, Plus, Package, BookOpen, BookX } from 'lucide-vue-next';
 
 const shoppingStore = useShoppingStore();
 const mealPlanStore = useMealPlanStore();
 const { showSuccess, showError } = useNotification();
 const reweLoading = ref(false);
+
+// Manuelles Hinzufügen
+const newItem = ref({ name: '', amount: null, unit: '' });
+
+// Rezept-Links ein-/ausblenden (persistent via localStorage)
+const showRecipeLinks = ref(localStorage.getItem('shopping_showRecipeLinks') !== 'false');
+function toggleRecipeLinks() {
+  showRecipeLinks.value = !showRecipeLinks.value;
+  localStorage.setItem('shopping_showRecipeLinks', showRecipeLinks.value);
+}
 
 const totalCount = computed(() => shoppingStore.activeList?.items?.length || 0);
 const checkedCount = computed(() => shoppingStore.activeList?.items?.filter(i => i.is_checked).length || 0);
@@ -256,6 +351,22 @@ function categoryIcon(cat) {
 
 function formatPrice(cents) {
   return (cents / 100).toLocaleString('de-DE', { style: 'currency', currency: 'EUR' });
+}
+
+async function addManualItem() {
+  const name = newItem.value.name.trim();
+  if (!name) return;
+  try {
+    await shoppingStore.addItem({
+      ingredient_name: name,
+      amount: newItem.value.amount || undefined,
+      unit: newItem.value.unit.trim() || undefined,
+    });
+    newItem.value = { name: '', amount: null, unit: '' };
+    showSuccess(`${name} hinzugefügt! ✏️`);
+  } catch {
+    showError('Artikel konnte nicht hinzugefügt werden.');
+  }
 }
 
 async function generateList() {

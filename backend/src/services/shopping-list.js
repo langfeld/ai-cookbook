@@ -57,12 +57,16 @@ export function generateShoppingList(userId, mealPlanId) {
         const existing = ingredientMap.get(key);
         existing.amount = (existing.amount || 0) + (normalized.amount || 0);
         existing.recipes.push(entry.recipe_title);
+        if (!existing.recipeIds.includes(entry.recipe_id)) {
+          existing.recipeIds.push(entry.recipe_id);
+        }
       } else {
         ingredientMap.set(key, {
           name: ing.name,
           amount: normalized.amount,
           unit: normalized.unit,
           recipes: [entry.recipe_title],
+          recipeIds: [entry.recipe_id],
           isOptional: ing.is_optional,
         });
       }
@@ -125,8 +129,8 @@ export function saveShoppingList(userId, mealPlanId, items, name = 'Einkaufslist
   );
   const insertItem = db.prepare(`
     INSERT INTO shopping_list_items
-    (shopping_list_id, ingredient_name, amount, unit, recipe_id, pantry_deducted)
-    VALUES (?, ?, ?, ?, ?, ?)
+    (shopping_list_id, ingredient_name, amount, unit, recipe_id, pantry_deducted, recipe_ids)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
   `);
 
   // Alte aktive Listen deaktivieren
@@ -139,7 +143,10 @@ export function saveShoppingList(userId, mealPlanId, items, name = 'Einkaufslist
 
     for (const item of items) {
       if (item.needsToBuy) {
-        insertItem.run(listId, item.name, item.amount, item.unit, null, item.pantryDeducted);
+        insertItem.run(
+          listId, item.name, item.amount, item.unit, null,
+          item.pantryDeducted, JSON.stringify(item.recipeIds || [])
+        );
       }
     }
 
