@@ -45,12 +45,34 @@ export default async function shoppingRoutes(fastify) {
     // Einkaufsliste generieren (mit Vorratsschrank-Abgleich)
     const shoppingData = generateShoppingList(userId, mealPlanId);
 
-    // Speichern
+    // Manuelle Items aus der aktuellen aktiven Liste sichern (bevor sie deaktiviert wird)
+    const oldList = db.prepare(
+      'SELECT id FROM shopping_lists WHERE user_id = ? AND is_active = 1 ORDER BY created_at DESC LIMIT 1'
+    ).get(userId);
+    let manualItems = [];
+    if (oldList) {
+      manualItems = db.prepare(
+        "SELECT ingredient_name, amount, unit, is_checked FROM shopping_list_items WHERE shopping_list_id = ? AND (recipe_ids IS NULL OR recipe_ids = '[]')"
+      ).all(oldList.id);
+    }
+
+    // Speichern (deaktiviert alte Liste, erstellt neue)
     const listId = saveShoppingList(userId, mealPlanId, shoppingData.items, name);
+
+    // Manuelle Items in die neue Liste übernehmen
+    if (manualItems.length > 0) {
+      const insertManual = db.prepare(
+        "INSERT INTO shopping_list_items (shopping_list_id, ingredient_name, amount, unit, is_checked, recipe_ids) VALUES (?, ?, ?, ?, ?, '[]')"
+      );
+      for (const item of manualItems) {
+        insertManual.run(listId, item.ingredient_name, item.amount, item.unit, item.is_checked);
+      }
+    }
 
     return {
       listId,
       ...shoppingData,
+      manualItemsKept: manualItems.length,
       message: 'Einkaufsliste generiert!',
     };
   });
