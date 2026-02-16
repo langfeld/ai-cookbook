@@ -2,22 +2,23 @@
  * ============================================
  * REWE Integration Routen
  * ============================================
- * Produktsuche und Preisabfrage bei REWE
+ * Einkaufslisten-Matching, Marktsuche und Produktlinks
  */
 
-import { searchProducts, findBestProduct, matchShoppingListWithRewe } from '../services/rewe-api.js';
+import { matchShoppingListWithRewe, searchProducts, scoreRelevance } from '../services/rewe-api.js';
 import db from '../config/database.js';
 
 export default async function reweRoutes(fastify) {
   fastify.addHook('onRequest', fastify.authenticate);
 
   /**
-   * GET /api/rewe/search
-   * Produkte bei REWE suchen
+   * GET /api/rewe/search-ingredient
+   * REWE-Produkte für eine Zutat suchen (für Produkt-Auswahl)
+   * Gibt bis zu 10 Produkte sortiert nach Preis zurück
    */
-  fastify.get('/search', {
+  fastify.get('/search-ingredient', {
     schema: {
-      description: 'REWE Produktsuche',
+      description: 'REWE-Produkte für Zutat suchen',
       tags: ['REWE'],
       security: [{ bearerAuth: [] }],
       querystring: {
@@ -25,49 +26,46 @@ export default async function reweRoutes(fastify) {
         required: ['q'],
         properties: {
           q: { type: 'string', minLength: 2 },
-          limit: { type: 'integer', default: 10 },
         },
       },
     },
   }, async (request) => {
-    const result = await searchProducts(request.query.q, {
-      limit: request.query.limit,
-    });
-    return result;
-  });
+    const query = request.query.q;
+    const { products, error } = await searchProducts(query, { limit: 10 });
 
-  /**
-   * POST /api/rewe/match-ingredient
-   * Bestes REWE-Produkt für eine Zutat finden
-   */
-  fastify.post('/match-ingredient', {
-    schema: {
-      description: 'Bestes REWE-Produkt für Zutat finden',
-      tags: ['REWE'],
-      security: [{ bearerAuth: [] }],
-      body: {
-        type: 'object',
-        required: ['ingredient', 'amount', 'unit'],
-        properties: {
-          ingredient: { type: 'string' },
-          amount: { type: 'number' },
-          unit: { type: 'string' },
-        },
-      },
-    },
-  }, async (request) => {
-    const { ingredient, amount, unit } = request.body;
-    const result = await findBestProduct(ingredient, amount, unit);
-    return result || { error: 'Kein passendes Produkt gefunden' };
+    if (error) {
+      return { products: [], error };
+    }
+
+    // Relevanz-Score berechnen und nach Relevanz (absteigend), dann Preis (aufsteigend) sortieren
+    const scored = products.map(p => ({
+      ...p,
+      relevance: scoreRelevance(p.name, query),
+    }));
+
+    const sorted = scored.sort((a, b) => {
+      // Relevanz-Gruppen (10er-Schritte): innerhalb gleicher Gruppe nach Preis
+      const groupA = Math.floor(a.relevance / 10);
+      const groupB = Math.floor(b.relevance / 10);
+      if (groupB !== groupA) return groupB - groupA;
+      // Innerhalb gleicher Relevanz: günstigste zuerst
+      if (!a.price && !b.price) return 0;
+      if (!a.price) return 1;
+      if (!b.price) return -1;
+      return a.price - b.price;
+    });
+
+    return { products: sorted };
   });
 
   /**
    * POST /api/rewe/match-shopping-list
    * Gesamte Einkaufsliste mit REWE-Produkten matchen
+   * Streamt Fortschritt als Server-Sent Events (SSE)
    */
   fastify.post('/match-shopping-list', {
     schema: {
-      description: 'Einkaufsliste mit REWE matchen',
+      description: 'Einkaufsliste mit REWE matchen (SSE-Stream)',
       tags: ['REWE'],
       security: [{ bearerAuth: [] }],
       body: {
@@ -92,22 +90,75 @@ export default async function reweRoutes(fastify) {
       return reply.status(404).send({ error: 'Keine offenen Items in der Einkaufsliste' });
     }
 
-    const results = await matchShoppingListWithRewe(items.map(i => ({
-      name: i.ingredient_name,
-      amount: i.amount,
-      unit: i.unit,
-    })));
+    // SSE-Stream einrichten
+    reply.raw.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+      'X-Accel-Buffering': 'no',   // nginx-Buffering verhindern
+    });
 
-    // Gesamtpreis berechnen
+    // Hilfsfunktion: SSE-Event senden
+    const sendEvent = (type, data) => {
+      reply.raw.write(`data: ${JSON.stringify({ type, ...data })}\n\n`);
+    };
+
+    // Start-Event
+    sendEvent('start', { total: items.length });
+
+    const results = await matchShoppingListWithRewe(
+      items.map(i => ({
+        name: i.ingredient_name,
+        amount: i.amount,
+        unit: i.unit,
+      })),
+      // onProgress-Callback → sendet SSE-Events
+      (progress) => {
+        sendEvent('progress', progress);
+      },
+    );
+
+    // Ergebnisse in die Datenbank schreiben
+    const updateStmt = db.prepare(`
+      UPDATE shopping_list_items
+      SET rewe_product_id = ?, rewe_product_name = ?, rewe_price = ?, rewe_package_size = ?
+      WHERE shopping_list_id = ? AND ingredient_name = ?
+    `);
+
+    const saveAll = db.transaction(() => {
+      for (let i = 0; i < results.length; i++) {
+        const match = results[i].reweMatch;
+        if (match?.product) {
+          updateStmt.run(
+            match.product.id || null,
+            match.product.name || null,
+            match.product.price || null,
+            match.product.packageSize || null,
+            listId,
+            items[i].ingredient_name,
+          );
+        }
+      }
+    });
+    saveAll();
+
+    // Gesamtpreis berechnen (in Cent)
     const totalEstimate = results.reduce((sum, r) => {
       return sum + (r.reweMatch?.product?.price || 0);
     }, 0);
 
-    return {
-      matches: results,
-      totalEstimate,
+    const matchedCount = results.filter(r => r.reweMatch).length;
+
+    // Abschluss-Event
+    sendEvent('done', {
       totalItems: results.length,
-    };
+      matchedCount,
+      totalEstimate,
+    });
+
+    reply.raw.end();
+    // Fastify soll die Response nicht nochmal senden
+    return reply;
   });
 
   /**

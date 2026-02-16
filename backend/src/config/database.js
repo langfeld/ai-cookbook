@@ -11,14 +11,17 @@ import { config } from './env.js';
 import { mkdirSync, existsSync } from 'fs';
 import { dirname } from 'path';
 
+// Pfad wird in env.js absolut aufgelöst (relativ zum backend/-Verzeichnis)
+const dbPath = config.database.path;
+
 // Verzeichnis für DB-Datei sicherstellen
-const dbDir = dirname(config.database.path);
+const dbDir = dirname(dbPath);
 if (!existsSync(dbDir)) {
   mkdirSync(dbDir, { recursive: true });
 }
 
 // Datenbank öffnen mit WAL-Modus für bessere Performance
-const db = new Database(config.database.path);
+const db = new Database(dbPath);
 db.pragma('journal_mode = WAL');
 db.pragma('foreign_keys = ON');
 

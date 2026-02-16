@@ -7,6 +7,7 @@
 
 import db from '../config/database.js';
 import { generateShoppingList, saveShoppingList, processPurchase } from '../services/shopping-list.js';
+import { buildReweProductUrl } from '../services/rewe-api.js';
 
 export default async function shoppingRoutes(fastify) {
   fastify.addHook('onRequest', fastify.authenticate);
@@ -116,13 +117,24 @@ export default async function shoppingRoutes(fastify) {
       }
     }
 
-    // Items mit Rezept-Details anreichern
+    // Items mit Rezept-Details und REWE-Daten anreichern
     const enrichedItems = items.map(item => {
       let recipeIds = [];
       try { recipeIds = JSON.parse(item.recipe_ids || '[]'); } catch { /* */ }
+
+      // REWE-Produkt als verschachteltes Objekt aufbauen (Frontend erwartet item.rewe_product)
+      const rewe_product = item.rewe_product_id ? {
+        id: item.rewe_product_id,
+        name: item.rewe_product_name,
+        price: item.rewe_price,           // Cent
+        packageSize: item.rewe_package_size,
+        url: buildReweProductUrl(item.rewe_product_name, item.rewe_product_id),
+      } : null;
+
       return {
         ...item,
         recipes: recipeIds.map(id => recipeLookup[id]).filter(Boolean),
+        rewe_product,
       };
     });
 
@@ -217,25 +229,71 @@ export default async function shoppingRoutes(fastify) {
   });
 
   /**
-   * PUT /api/shopping/item/:id/rewe
-   * REWE-Produkt einem Einkaufsitem zuordnen
+   * DELETE /api/shopping/item/:id
+   * Einzelnes Item von der Einkaufsliste löschen
    */
-  fastify.put('/item/:id/rewe', {
+  fastify.delete('/item/:id', {
     schema: {
-      description: 'REWE-Produkt zuordnen',
+      description: 'Item von Einkaufsliste löschen',
       tags: ['Einkaufsliste'],
       security: [{ bearerAuth: [] }],
     },
-  }, async (request) => {
-    const { rewe_product_id, rewe_product_name, rewe_price, rewe_package_size } = request.body;
-
-    db.prepare(`
-      UPDATE shopping_list_items
-      SET rewe_product_id=?, rewe_product_name=?, rewe_price=?, rewe_package_size=?
+  }, async (request, reply) => {
+    const result = db.prepare(`
+      DELETE FROM shopping_list_items
       WHERE id = ? AND shopping_list_id IN (SELECT id FROM shopping_lists WHERE user_id = ?)
-    `).run(rewe_product_id, rewe_product_name, rewe_price, rewe_package_size, request.params.id, request.user.id);
+    `).run(request.params.id, request.user.id);
 
-    return { message: 'REWE-Produkt zugeordnet' };
+    if (result.changes === 0) {
+      return reply.status(404).send({ error: 'Artikel nicht gefunden' });
+    }
+
+    return { message: 'Artikel gelöscht' };
+  });
+
+  /**
+   * PUT /api/shopping/item/:id/rewe-product
+   * REWE-Produkt manuell für ein Einkaufsitem auswählen/ändern
+   */
+  fastify.put('/item/:id/rewe-product', {
+    schema: {
+      description: 'REWE-Produkt für Item auswählen',
+      tags: ['Einkaufsliste'],
+      security: [{ bearerAuth: [] }],
+      body: {
+        type: 'object',
+        required: ['productId', 'productName', 'price'],
+        properties: {
+          productId: { type: 'string' },
+          productName: { type: 'string' },
+          price: { type: ['number', 'null'] },
+          packageSize: { type: 'string' },
+        },
+      },
+    },
+  }, async (request, reply) => {
+    const { productId, productName, price, packageSize } = request.body;
+
+    const result = db.prepare(`
+      UPDATE shopping_list_items
+      SET rewe_product_id = ?, rewe_product_name = ?, rewe_price = ?, rewe_package_size = ?
+      WHERE id = ? AND shopping_list_id IN (SELECT id FROM shopping_lists WHERE user_id = ?)
+    `).run(productId, productName, price, packageSize || null, request.params.id, request.user.id);
+
+    if (!result.changes) {
+      return reply.status(404).send({ error: 'Artikel nicht gefunden' });
+    }
+
+    return {
+      message: 'REWE-Produkt aktualisiert',
+      rewe_product: {
+        id: productId,
+        name: productName,
+        price,
+        packageSize: packageSize || null,
+        url: buildReweProductUrl(productName, productId),
+      },
+    };
   });
 
   /**

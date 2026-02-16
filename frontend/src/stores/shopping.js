@@ -7,12 +7,16 @@
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
 import { useApi } from '@/composables/useApi.js';
+import { useAuthStore } from '@/stores/auth.js';
 
 export const useShoppingStore = defineStore('shopping', () => {
   const currentList = ref(null);
   const items = ref([]);
   const reweMatches = ref([]);
   const loading = ref(false);
+
+  // REWE-Matching Fortschritt
+  const reweProgress = ref(null); // null = kein Matching aktiv
 
   const api = useApi();
 
@@ -27,6 +31,10 @@ export const useShoppingStore = defineStore('shopping', () => {
   // Geschätzter Gesamtpreis (REWE)
   const estimatedTotal = computed(() =>
     items.value.reduce((sum, i) => sum + (i.rewe_price || 0), 0)
+  );
+  // Items mit REWE-Produktzuordnung (für "Bei REWE bestellen")
+  const reweLinkedItems = computed(() =>
+    items.value.filter(i => i.rewe_product?.url && !i.is_checked)
   );
 
   /** Einkaufsliste aus Wochenplan generieren */
@@ -56,15 +64,65 @@ export const useShoppingStore = defineStore('shopping', () => {
     if (item) item.is_checked = item.is_checked ? 0 : 1;
   }
 
-  /** REWE-Produkte matchen */
+  /** REWE-Produkte matchen (mit SSE-Fortschritt) */
   async function matchWithRewe(listId) {
+    const authStore = useAuthStore();
+    const id = listId || currentList.value?.id;
+    if (!id) throw new Error('Keine aktive Einkaufsliste');
     loading.value = true;
+    reweProgress.value = { current: 0, total: 0, itemName: '', matchedCount: 0, matched: false, productName: null, price: null };
+
     try {
-      const data = await api.post('/rewe/match-shopping-list', { listId });
-      reweMatches.value = data.matches;
-      return data;
+      const response = await fetch('/api/rewe/match-shopping-list', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${authStore.token}`,
+        },
+        body: JSON.stringify({ listId: id }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`REWE-Matching fehlgeschlagen (${response.status})`);
+      }
+
+      // SSE-Stream lesen
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let doneData = null;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+
+        // SSE-Events parsen (Format: "data: {...}\n\n")
+        const events = buffer.split('\n\n');
+        buffer = events.pop() || ''; // Letztes (unvollständiges) Element behalten
+
+        for (const event of events) {
+          const line = event.trim();
+          if (!line.startsWith('data: ')) continue;
+          try {
+            const data = JSON.parse(line.slice(6));
+            if (data.type === 'progress') {
+              reweProgress.value = { ...data };
+            } else if (data.type === 'done') {
+              doneData = data;
+            }
+          } catch { /* ungültige JSON-Zeile ignorieren */ }
+        }
+      }
+
+      // Liste neu laden, damit die in der DB gespeicherten REWE-Preise angezeigt werden
+      await fetchActiveList();
+      return doneData || {};
     } finally {
       loading.value = false;
+      // Progress nach kurzem Delay ausblenden (damit man das Ergebnis noch sieht)
+      setTimeout(() => { reweProgress.value = null; }, 1500);
     }
   }
 
@@ -90,9 +148,41 @@ export const useShoppingStore = defineStore('shopping', () => {
     return data;
   }
 
+  /** Item von der Einkaufsliste löschen */
+  async function deleteItem(itemId) {
+    await api.del(`/shopping/item/${itemId}`);
+    items.value = items.value.filter(i => i.id !== itemId);
+  }
+
+  /** REWE-Produkte für eine Zutat suchen (für Produkt-Picker) */
+  async function searchReweProducts(query) {
+    return await api.get(`/rewe/search-ingredient?q=${encodeURIComponent(query)}`);
+  }
+
+  /** REWE-Produkt für ein Item manuell setzen/ändern */
+  async function setReweProduct(itemId, product) {
+    const data = await api.put(`/shopping/item/${itemId}/rewe-product`, {
+      productId: product.id,
+      productName: product.name,
+      price: product.price,
+      packageSize: product.packageSize,
+    });
+    // Lokales Item sofort aktualisieren
+    const item = items.value.find(i => i.id === itemId);
+    if (item) {
+      item.rewe_product_id = product.id;
+      item.rewe_product_name = product.name;
+      item.rewe_price = product.price;
+      item.rewe_package_size = product.packageSize;
+      item.rewe_product = data.rewe_product;
+    }
+    return data;
+  }
+
   return {
-    currentList, items, activeList, reweMatches, loading,
-    openItemsCount, estimatedTotal,
-    generateList, fetchActiveList, toggleItem, matchWithRewe, completePurchase, addItem,
+    currentList, items, activeList, reweMatches, loading, reweProgress,
+    openItemsCount, estimatedTotal, reweLinkedItems,
+    generateList, fetchActiveList, toggleItem, matchWithRewe, completePurchase, addItem, deleteItem,
+    searchReweProducts, setReweProduct,
   };
 });

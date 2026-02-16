@@ -6,6 +6,13 @@
  * Defaults werden für die Entwicklung gesetzt.
  */
 
+import { dirname, resolve } from 'path';
+import { fileURLToPath } from 'url';
+
+// Backend-Root-Verzeichnis (2 Ebenen über config/)
+const __filename = fileURLToPath(import.meta.url);
+const BACKEND_DIR = resolve(dirname(__filename), '..', '..');
+
 // Hilfsfunktion zum sicheren Lesen von Env-Vars
 const getEnv = (key, defaultValue = '') => process.env[key] || defaultValue;
 
@@ -51,12 +58,12 @@ export const config = {
 
   // --- Datenbank ---
   database: {
-    path: getEnv('DATABASE_PATH', './data/cookbook.db'),
+    path: resolve(BACKEND_DIR, getEnv('DATABASE_PATH', './data/cookbook.db')),
   },
 
   // --- Upload ---
   upload: {
     maxSize: parseInt(getEnv('MAX_UPLOAD_SIZE', '10'), 10) * 1024 * 1024, // in Bytes
-    path: getEnv('UPLOAD_PATH', './data/uploads'),
+    path: resolve(BACKEND_DIR, getEnv('UPLOAD_PATH', './data/uploads')),
   },
 };
