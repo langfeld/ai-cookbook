@@ -48,53 +48,60 @@
     </div>
 
     <!-- Einkaufsliste -->
-    <div v-if="shoppingStore.activeList" class="space-y-4">
-      <div v-for="(items, category) in groupedItems" :key="category">
-        <h3 class="flex items-center gap-2 mb-2 font-semibold text-stone-500 dark:text-stone-400 text-sm">
-          {{ categoryIcon(category) }} {{ category || 'Sonstiges' }}
-        </h3>
-        <div class="space-y-1">
-          <div
-            v-for="item in items"
-            :key="item.id"
-            :class="[
-              'flex items-center gap-3 p-3 rounded-lg transition-all',
-              item.is_checked
-                ? 'bg-stone-50 dark:bg-stone-800/50 opacity-60'
-                : 'bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-800'
-            ]"
-          >
-            <!-- Checkbox -->
-            <button
-              @click="toggleItem(item)"
+    <div v-if="shoppingStore.activeList" class="space-y-6">
+      <!-- Kategorien als Masonry-Layout auf breiten Screens -->
+      <div class="gap-6 space-y-6 lg:columns-2">
+        <div
+          v-for="(items, category) in groupedItems"
+          :key="category"
+          class="bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-800 rounded-xl overflow-hidden break-inside-avoid"
+        >
+          <!-- Kategorie-Header -->
+          <div class="flex justify-between items-center bg-stone-50 dark:bg-stone-800/60 px-4 py-2.5 border-stone-200 dark:border-stone-700 border-b">
+            <h3 class="flex items-center gap-2 font-semibold text-stone-600 dark:text-stone-300 text-sm">
+              {{ categoryIcon(category) }} {{ category || 'Sonstiges' }}
+            </h3>
+            <span class="text-stone-400 dark:text-stone-500 text-xs">{{ items.length }} Artikel</span>
+          </div>
+          <!-- Artikel-Liste -->
+          <div class="divide-y divide-stone-100 dark:divide-stone-800">
+            <div
+              v-for="item in items"
+              :key="item.id"
               :class="[
-                'w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-all',
-                item.is_checked
-                  ? 'bg-accent-500 border-accent-500'
-                  : 'border-stone-300 dark:border-stone-600 hover:border-accent-400'
+                'flex items-center gap-3 px-4 py-2.5 transition-all hover:bg-stone-50 dark:hover:bg-stone-800/30',
+                item.is_checked ? 'opacity-50' : ''
               ]"
             >
-              <Check v-if="item.is_checked" class="w-3 h-3 text-white" />
-            </button>
+              <!-- Checkbox -->
+              <button
+                @click="toggleItem(item)"
+                :class="[
+                  'w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-all',
+                  item.is_checked
+                    ? 'bg-accent-500 border-accent-500'
+                    : 'border-stone-300 dark:border-stone-600 hover:border-accent-400'
+                ]"
+              >
+                <Check v-if="item.is_checked" class="w-3 h-3 text-white" />
+              </button>
 
-            <!-- Artikelname -->
-            <div class="flex-1 min-w-0">
-              <div :class="['text-sm', item.is_checked ? 'line-through text-stone-400' : 'text-stone-800 dark:text-stone-200']">
-                {{ item.ingredient_name }}
-              </div>
-              <!-- REWE-Produkt -->
-              <div v-if="item.rewe_product" class="flex items-center gap-1 mt-0.5 text-red-500 text-xs">
-                🏪 {{ item.rewe_product.name }} – {{ formatPrice(item.rewe_product.price) }}
-                <span v-if="item.rewe_product.surplus" class="text-stone-400">
-                  ({{ item.rewe_product.surplus }} übrig)
+              <!-- Artikelname -->
+              <div class="flex-1 min-w-0">
+                <span :class="['text-sm', item.is_checked ? 'line-through text-stone-400' : 'text-stone-800 dark:text-stone-200']">
+                  {{ item.ingredient_name }}
                 </span>
+                <!-- REWE-Produkt -->
+                <div v-if="item.rewe_product" class="flex items-center gap-1 mt-0.5 text-red-500 text-xs">
+                  🏪 {{ item.rewe_product.name }} – {{ formatPrice(item.rewe_product.price) }}
+                </div>
               </div>
-            </div>
 
-            <!-- Menge -->
-            <span class="text-stone-500 dark:text-stone-400 text-sm shrink-0">
-              {{ item.amount }} {{ item.unit }}
-            </span>
+              <!-- Menge -->
+              <span class="font-medium tabular-nums text-stone-400 dark:text-stone-500 text-xs shrink-0">
+                {{ item.amount }} {{ item.unit }}
+              </span>
+            </div>
           </div>
         </div>
       </div>
