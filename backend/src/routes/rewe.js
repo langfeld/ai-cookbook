@@ -109,4 +109,78 @@ export default async function reweRoutes(fastify) {
       totalItems: results.length,
     };
   });
+
+  /**
+   * GET /api/rewe/markets
+   * REWE-Märkte in der Nähe einer PLZ suchen
+   * Nutzt die öffentliche REWE Shop-API (Marktauswahl nach PLZ)
+   */
+  fastify.get('/markets', {
+    schema: {
+      description: 'REWE-Märkte nach PLZ suchen',
+      tags: ['REWE'],
+      security: [{ bearerAuth: [] }],
+      querystring: {
+        type: 'object',
+        required: ['search'],
+        properties: {
+          search: { type: 'string', minLength: 3 },
+        },
+      },
+    },
+  }, async (request, reply) => {
+    const { search } = request.query;
+    // Nur Ziffern für die PLZ extrahieren
+    const zip = search.replace(/\D/g, '').slice(0, 5);
+    if (zip.length < 4) {
+      return reply.status(400).send({ markets: [], error: 'Bitte eine gültige PLZ eingeben (mind. 4 Ziffern).' });
+    }
+
+    const url = `https://www.rewe.de/shop/api/marketselection/zipcodes/${zip}/services/pickup`;
+
+    try {
+      const response = await fetch(url, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (compatible; AI-Cookbook/1.0)',
+          Accept: 'application/json',
+        },
+        signal: AbortSignal.timeout(8000),
+      });
+
+      if (!response.ok) {
+        return {
+          markets: [],
+          error: `REWE-API nicht erreichbar (Status ${response.status}). Bitte Markt-ID manuell eingeben.`,
+        };
+      }
+
+      const data = await response.json();
+
+      if (!Array.isArray(data) || data.length === 0) {
+        return { markets: [], error: 'Keine REWE-Märkte für diese PLZ gefunden.' };
+      }
+
+      // Nur echte Märkte (keine Abholstationen), maximal 20
+      const markets = data
+        .filter(m => !m.isPickupStation)
+        .slice(0, 20)
+        .map(m => ({
+          id: m.wwIdent,
+          name: m.companyName || m.displayName || 'REWE Markt',
+          displayName: m.displayName || 'REWE Markt',
+          street: m.street || '',
+          city: m.city || '',
+          zipCode: m.zipCode || '',
+          distance: m.distance || null, // in Metern
+        }));
+
+      return { markets };
+    } catch (err) {
+      console.error('REWE Marktsuche fehlgeschlagen:', err.message);
+      return {
+        markets: [],
+        error: 'Marktsuche fehlgeschlagen. Bitte versuche es erneut oder gib die Markt-ID manuell ein.',
+      };
+    }
+  });
 }

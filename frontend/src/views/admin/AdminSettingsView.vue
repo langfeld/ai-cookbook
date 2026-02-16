@@ -178,6 +178,68 @@
           <SettingsInput label="Postleitzahl" v-model="settingsMap.rewe_zip_code"
             placeholder="z.B. 50667" @save="saveSetting('rewe_zip_code', settingsMap.rewe_zip_code)" />
         </div>
+
+        <!-- Markt-Finder -->
+        <div class="mt-5 pt-5 border-stone-200 dark:border-stone-700 border-t">
+          <h3 class="flex items-center gap-2 mb-3 font-medium text-stone-700 dark:text-stone-300 text-sm">
+            <MapPin class="w-4 h-4 text-stone-400" />
+            Markt-Finder
+          </h3>
+          <div class="flex gap-2">
+            <input
+              v-model="marketSearch"
+              type="text"
+              placeholder="PLZ oder Ort eingeben…"
+              @keyup.enter="searchMarkets"
+              class="flex-1 bg-stone-50 dark:bg-stone-900 px-3 py-2 border border-stone-300 focus:border-transparent dark:border-stone-600 rounded-lg focus:ring-2 focus:ring-primary-500 text-stone-800 dark:text-stone-200 placeholder:text-stone-400 text-sm"
+            />
+            <button
+              @click="searchMarkets"
+              :disabled="!marketSearch.trim() || marketSearchLoading"
+              class="flex items-center gap-1.5 bg-red-600 hover:bg-red-700 disabled:opacity-50 px-4 py-2 rounded-lg font-medium text-white text-sm transition-colors"
+            >
+              <Search class="w-4 h-4" />
+              {{ marketSearchLoading ? 'Suche…' : 'Suchen' }}
+            </button>
+          </div>
+
+          <!-- Suchergebnisse -->
+          <div v-if="marketResults.length" class="space-y-1.5 mt-3 max-h-72 overflow-y-auto">
+            <button
+              v-for="market in marketResults"
+              :key="market.id"
+              @click="selectMarket(market)"
+              :class="[
+                'w-full text-left px-3 py-2.5 rounded-lg border transition-all text-sm',
+                settingsMap.rewe_market_id === String(market.id)
+                  ? 'bg-red-50 dark:bg-red-900/20 border-red-300 dark:border-red-700 ring-1 ring-red-300 dark:ring-red-700'
+                  : 'bg-stone-50 dark:bg-stone-900 border-stone-200 dark:border-stone-700 hover:border-red-300 dark:hover:border-red-600'
+              ]"
+            >
+              <div class="flex justify-between items-start gap-2">
+                <div class="min-w-0">
+                  <span class="font-medium text-stone-800 dark:text-stone-200">{{ market.name }}</span>
+                  <p class="mt-0.5 text-stone-500 dark:text-stone-400 text-xs">
+                    {{ market.street }}, {{ market.zipCode }} {{ market.city }}
+                  </p>
+                </div>
+                <div class="flex flex-col items-end gap-0.5 shrink-0">
+                  <span class="bg-stone-200 dark:bg-stone-700 px-2 py-0.5 rounded font-mono text-[10px] text-stone-500 dark:text-stone-400">
+                    ID: {{ market.id }}
+                  </span>
+                  <span v-if="market.distance != null" class="text-[10px] text-stone-400 dark:text-stone-500">
+                    {{ market.distance >= 1000 ? (market.distance / 1000).toFixed(1) + ' km' : market.distance + ' m' }}
+                  </span>
+                </div>
+              </div>
+            </button>
+          </div>
+
+          <!-- Keine Ergebnisse -->
+          <p v-if="marketSearchError" class="mt-3 text-amber-600 dark:text-amber-400 text-xs">
+            {{ marketSearchError }}
+          </p>
+        </div>
       </section>
 
       <!-- Kategorienverwaltung -->
@@ -258,6 +320,8 @@ import {
   ShoppingCart,
   Eye,
   EyeOff,
+  MapPin,
+  Search,
 } from 'lucide-vue-next';
 
 const api = useApi();
@@ -267,6 +331,12 @@ const loading = ref(true);
 const settingsMap = reactive({});
 const cleanupRunning = ref(false);
 const cleanupResult = ref(null);
+
+// Markt-Finder
+const marketSearch = ref('');
+const marketResults = ref([]);
+const marketSearchLoading = ref(false);
+const marketSearchError = ref('');
 
 const defaultCategories = [
   'Frühstück', 'Mittagessen', 'Abendessen', 'Snacks',
@@ -308,6 +378,38 @@ async function saveSetting(key, value) {
   } catch {
     // Fehler von useApi gehandelt
   }
+}
+
+async function searchMarkets() {
+  const q = marketSearch.value.trim();
+  if (!q) return;
+  marketSearchLoading.value = true;
+  marketSearchError.value = '';
+  marketResults.value = [];
+  try {
+    const data = await api.get(`/rewe/markets?search=${encodeURIComponent(q)}`);
+    if (data.markets?.length) {
+      marketResults.value = data.markets;
+    } else {
+      marketSearchError.value = data.error || 'Keine Märkte gefunden. Versuche eine andere PLZ.';
+    }
+  } catch {
+    marketSearchError.value = 'Suche fehlgeschlagen. Bitte versuche es erneut.';
+  } finally {
+    marketSearchLoading.value = false;
+  }
+}
+
+async function selectMarket(market) {
+  settingsMap.rewe_market_id = String(market.id);
+  if (market.zipCode) {
+    settingsMap.rewe_zip_code = market.zipCode;
+  }
+  await saveSetting('rewe_market_id', market.id);
+  if (market.zipCode) {
+    await saveSetting('rewe_zip_code', market.zipCode);
+  }
+  showSuccess(`${market.name} ausgewählt (ID: ${market.id})`);
 }
 
 async function runCleanup() {
