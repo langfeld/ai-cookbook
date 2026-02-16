@@ -185,7 +185,7 @@ function weightedRandomPick(recipes, context) {
 /**
  * Liefert bewertete Rezeptvorschläge für einen bestimmten Slot.
  */
-export function getSuggestions(userId, { dayIdx = 0, mealType = 'mittag', excludeRecipeIds = [], limit = 8 } = {}) {
+export function getSuggestions(userId, { dayIdx = 0, mealType = 'mittag', excludeRecipeIds = [], planId = null, limit = 8 } = {}) {
   const recipes = db.prepare(`
     SELECT r.*, GROUP_CONCAT(DISTINCT c.name) as category_names,
       (SELECT COUNT(*) FROM cooking_history ch WHERE ch.recipe_id = r.id) as cook_count,
@@ -204,6 +204,21 @@ export function getSuggestions(userId, { dayIdx = 0, mealType = 'mittag', exclud
   const pantrySet = new Set(pantryItems.map(p => p.ingredient_name.toLowerCase()));
   const excludeSet = new Set(excludeRecipeIds);
 
+  // Zutaten aller Rezepte im aktuellen Plan sammeln (für Einkaufsüberlappung)
+  let planIngredients = null;
+  if (planId) {
+    const planRecipeIds = db.prepare(
+      'SELECT DISTINCT recipe_id FROM meal_plan_entries WHERE meal_plan_id = ?'
+    ).all(planId).map(r => r.recipe_id);
+    if (planRecipeIds.length > 0) {
+      const placeholders = planRecipeIds.map(() => '?').join(',');
+      const ings = db.prepare(
+        `SELECT DISTINCT LOWER(name) as name FROM ingredients WHERE recipe_id IN (${placeholders})`
+      ).all(...planRecipeIds);
+      planIngredients = new Set(ings.map(i => i.name));
+    }
+  }
+
   const scored = recipes
     .filter(r => !excludeSet.has(r.id))
     .map(r => {
@@ -215,14 +230,73 @@ export function getSuggestions(userId, { dayIdx = 0, mealType = 'mittag', exclud
       const context = { dayIdx, mealType, usedRecipeIds: new Set(), usedIngredients: new Set(), pantrySet, previousMealCategory: null };
       const score = scoreRecipe(recipe, context);
 
-      // Kurzer Grund
-      const fitness = mealTypeFitness(recipe, mealType);
-      let reason = '';
-      if (fitness === 'match') reason = 'Passt zum Slot';
-      else if (recipe.is_favorite) reason = 'Favorit';
-      else if (!recipe.last_cooked) reason = 'Noch nie gekocht';
-      else if (recipe.cook_count <= 2) reason = 'Selten gekocht';
-      else reason = 'Gute Abwechslung';
+      // ── Detaillierte Hinweise sammeln ──
+      const hints = [];
+
+      // Mahlzeit-Typ-Passung
+      if (mealTypeFitness(recipe, mealType) === 'match') {
+        hints.push({ icon: '✅', text: 'Passt zum Slot' });
+      }
+
+      // Vorrats-Check
+      const pantryMatches = recipe.ingredientNames.filter(n => pantrySet.has(n));
+      if (pantryMatches.length > 0) {
+        hints.push({
+          icon: '🗄️',
+          text: `${pantryMatches.length} Zutat${pantryMatches.length > 1 ? 'en' : ''} im Vorrat`,
+        });
+      }
+
+      // Zutaten-Überlappung mit aktuell genutzten Rezepten des Plans
+      if (planIngredients && planIngredients.size > 0) {
+        const overlap = recipe.ingredientNames.filter(n => planIngredients.has(n));
+        if (overlap.length > 0) {
+          hints.push({
+            icon: '🛒',
+            text: `${overlap.length} von ${recipe.ingredientNames.length} Zutaten bei anderen Plan-Rezepten`,
+          });
+        }
+      }
+
+      // Kochhistorie
+      if (!recipe.last_cooked) {
+        hints.push({ icon: '🆕', text: 'Noch nie gekocht' });
+      } else {
+        const daysSince = Math.floor((Date.now() - new Date(recipe.last_cooked).getTime()) / 86_400_000);
+        if (daysSince >= 30) {
+          hints.push({ icon: '📅', text: `Seit ${daysSince} Tagen nicht gekocht` });
+        } else if (daysSince >= 14) {
+          hints.push({ icon: '📅', text: `Seit ${daysSince} Tagen nicht gekocht` });
+        }
+      }
+
+      if (recipe.cook_count > 0 && recipe.cook_count <= 2) {
+        hints.push({ icon: '🔍', text: `Erst ${recipe.cook_count}× gekocht` });
+      }
+
+      // Favorit
+      if (recipe.is_favorite) {
+        hints.push({ icon: '⭐', text: 'Favorit' });
+      }
+
+      // Bewertung
+      if (recipe.avg_rating >= 4) {
+        hints.push({ icon: '👍', text: `Bewertung: ${Number(recipe.avg_rating).toFixed(1)} ★` });
+      }
+
+      // Schwierigkeit passend zum Tag
+      const isWeekend = dayIdx >= 5;
+      if (recipe.difficulty === 'einfach' && !isWeekend) {
+        hints.push({ icon: '⚡', text: 'Schnell & einfach unter der Woche' });
+      }
+      if (recipe.total_time && recipe.total_time <= 30 && !isWeekend) {
+        hints.push({ icon: '⏱️', text: 'Unter 30 Minuten' });
+      }
+
+      // Fallback: mindestens ein Hint
+      if (hints.length === 0) {
+        hints.push({ icon: '🍽️', text: 'Gute Abwechslung' });
+      }
 
       return {
         id: recipe.id,
@@ -232,7 +306,7 @@ export function getSuggestions(userId, { dayIdx = 0, mealType = 'mittag', exclud
         difficulty: recipe.difficulty,
         is_favorite: recipe.is_favorite,
         score,
-        reason,
+        hints,
       };
     })
     .sort((a, b) => b.score - a.score)

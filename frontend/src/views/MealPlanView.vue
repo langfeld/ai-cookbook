@@ -54,14 +54,47 @@
         {{ weekLabel }}
       </span>
 
-      <!-- Ansicht-Toggle -->
-      <div class="flex bg-stone-100 dark:bg-stone-800 rounded-lg overflow-hidden">
-        <button @click="viewMode = 'week'" :class="viewToggleClass('week')">
-          <LayoutGrid class="w-4 h-4" /> <span class="hidden sm:inline">Woche</span>
-        </button>
-        <button @click="viewMode = 'day'" :class="viewToggleClass('day')">
-          <CalendarDays class="w-4 h-4" /> <span class="hidden sm:inline">Tag</span>
-        </button>
+      <!-- Ansicht-Toggle + Slot-Einstellungen -->
+      <div class="flex items-center gap-2">
+        <!-- Sichtbare Slots -->
+        <div class="relative">
+          <button @click="showSlotSettings = !showSlotSettings"
+            :class="[
+              'flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm transition-colors',
+              showSlotSettings
+                ? 'bg-primary-100 dark:bg-primary-900 text-primary-700 dark:text-primary-300'
+                : 'hover:bg-stone-100 dark:hover:bg-stone-800 text-stone-600 dark:text-stone-400'
+            ]">
+            <Settings class="w-4 h-4" />
+            <span class="hidden sm:inline">Slots</span>
+          </button>
+          <Transition name="fade">
+            <div v-if="showSlotSettings"
+              class="right-0 z-30 absolute bg-white dark:bg-stone-900 shadow-lg mt-2 p-3 border border-stone-200 dark:border-stone-700 rounded-xl w-52">
+              <p class="mb-2 font-medium text-stone-700 dark:text-stone-300 text-xs uppercase tracking-wide">Sichtbare Zeitslots</p>
+              <label v-for="mt in allMealTypes" :key="mt.key"
+                class="flex items-center gap-2 hover:bg-stone-50 dark:hover:bg-stone-800 px-2 py-1.5 rounded-lg transition-colors cursor-pointer">
+                <input type="checkbox" :value="mt.key" v-model="visibleSlots"
+                  class="rounded text-primary-600 accent-primary-600" />
+                <span class="text-sm">{{ mt.icon }} {{ mt.label }}</span>
+              </label>
+              <p v-if="visibleSlots.length === 0" class="mt-1 text-amber-600 text-xs">
+                Mindestens ein Slot sollte sichtbar sein
+              </p>
+            </div>
+          </Transition>
+          <!-- Backdrop zum Schließen -->
+          <div v-if="showSlotSettings" @click="showSlotSettings = false" class="z-20 fixed inset-0" />
+        </div>
+
+        <div class="flex bg-stone-100 dark:bg-stone-800 rounded-lg overflow-hidden">
+          <button @click="viewMode = 'week'" :class="viewToggleClass('week')">
+            <LayoutGrid class="w-4 h-4" /> <span class="hidden sm:inline">Woche</span>
+          </button>
+          <button @click="viewMode = 'day'" :class="viewToggleClass('day')">
+            <CalendarDays class="w-4 h-4" /> <span class="hidden sm:inline">Tag</span>
+          </button>
+        </div>
       </div>
     </div>
 
@@ -334,10 +367,20 @@
                     <div class="flex items-center gap-2 text-stone-400 text-xs">
                       <span v-if="s.total_time"><Clock class="inline w-3 h-3" /> {{ s.total_time }} min</span>
                       <span v-if="s.difficulty">{{ s.difficulty }}</span>
-                      <span class="text-primary-500">{{ s.reason }}</span>
+                    </div>
+                    <div v-if="s.hints?.length" class="flex flex-wrap gap-x-2.5 gap-y-0.5 mt-1">
+                      <span v-for="(h, hi) in s.hints.slice(0, 3)" :key="hi"
+                        class="text-[0.65rem] text-stone-500 dark:text-stone-400 whitespace-nowrap">
+                        {{ h.icon }} {{ h.text }}
+                      </span>
                     </div>
                   </div>
-                  <Star v-if="s.is_favorite" class="fill-amber-400 w-4 h-4 text-amber-400 shrink-0" />
+                  <div class="flex flex-col items-end gap-1 shrink-0">
+                    <Star v-if="s.is_favorite" class="fill-amber-400 w-4 h-4 text-amber-400" />
+                    <span class="bg-stone-100 dark:bg-stone-800 px-1.5 py-0.5 rounded font-mono text-[0.6rem] text-stone-400 dark:text-stone-500">
+                      {{ s.score }}
+                    </span>
+                  </div>
                 </button>
               </div>
             </div>
@@ -403,7 +446,7 @@ import { useNotification } from '@/composables/useNotification.js';
 import {
   Sparkles, ChevronLeft, ChevronRight, Check, Eye, RefreshCw,
   X, Clock, ChefHat, UtensilsCrossed, Plus, Star, Trash2,
-  LayoutGrid, CalendarDays,
+  LayoutGrid, CalendarDays, Settings,
 } from 'lucide-vue-next';
 
 const store = useMealPlanStore();
@@ -415,8 +458,25 @@ const viewMode = ref('week');
 const selectedDayIdx = ref(new Date().getDay() === 0 ? 6 : new Date().getDay() - 1); // heute
 const selectedMeal = ref(null);
 const showGenerateModal = ref(false);
-const genMealTypes = ref(['fruehstueck', 'mittag', 'abendessen']);
-const genPersons = ref(4);
+
+// Gespeicherte Präferenzen aus localStorage laden
+const STORAGE_KEY = 'mealplan-gen-prefs';
+const savedPrefs = (() => {
+  try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || {}; } catch { return {}; }
+})();
+const genMealTypes = ref(savedPrefs.mealTypes ?? ['fruehstueck', 'mittag', 'abendessen']);
+const genPersons = ref(savedPrefs.personCount ?? 4);
+const visibleSlots = ref(savedPrefs.visibleSlots ?? ['fruehstueck', 'mittag', 'abendessen', 'snack']);
+const showSlotSettings = ref(false);
+
+// Bei Änderung automatisch in localStorage speichern
+watch([genMealTypes, genPersons, visibleSlots], () => {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify({
+    mealTypes: genMealTypes.value,
+    personCount: genPersons.value,
+    visibleSlots: visibleSlots.value,
+  }));
+}, { deep: true });
 
 const swapModal = ref({ show: false, entry: null, suggestions: [], loading: false });
 const dragSource = ref(null);
@@ -429,10 +489,7 @@ const allMealTypes = [
   { key: 'abendessen', label: 'Abend', icon: '🌙' },
   { key: 'snack', label: 'Snack', icon: '🍎' },
 ];
-const mealTypes = computed(() => allMealTypes.filter(mt => {
-  // In der Wochenansicht alle anzeigen, in der Tagesansicht nur die mit Inhalt + alle
-  return true;
-}));
+const mealTypes = computed(() => allMealTypes.filter(mt => visibleSlots.value.includes(mt.key)));
 
 // ─── Computed ───
 const currentPlan = computed(() => store.currentPlan);
@@ -543,6 +600,7 @@ async function openSwapModal(entry) {
       dayIdx: entry.day_of_week,
       mealType: entry.meal_type,
       excludeRecipeIds: excludeIds,
+      planId: currentPlan.value?.id,
     });
     swapModal.value.suggestions = suggestions || [];
   } finally {

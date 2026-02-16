@@ -117,16 +117,17 @@ export default async function mealplanRoutes(fastify) {
           dayIdx: { type: 'integer', minimum: 0, maximum: 6 },
           mealType: { type: 'string', enum: ['fruehstueck', 'mittag', 'abendessen', 'snack'] },
           excludeRecipeIds: { type: 'string' },
+          planId: { type: 'integer' },
           limit: { type: 'integer', minimum: 1, maximum: 20, default: 8 },
         },
       },
     },
   }, async (request) => {
-    const { dayIdx = 0, mealType = 'mittag', limit = 8 } = request.query;
+    const { dayIdx = 0, mealType = 'mittag', limit = 8, planId } = request.query;
     const excludeRecipeIds = request.query.excludeRecipeIds
       ? request.query.excludeRecipeIds.split(',').map(Number).filter(Boolean)
       : [];
-    const suggestions = getSuggestions(request.user.id, { dayIdx, mealType, excludeRecipeIds, limit });
+    const suggestions = getSuggestions(request.user.id, { dayIdx, mealType, excludeRecipeIds, planId, limit });
     return { suggestions };
   });
 
