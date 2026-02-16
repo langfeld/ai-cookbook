@@ -1,36 +1,125 @@
 /**
  * ============================================
- * Wochenplan-Service (Intelligente Planung)
+ * Wochenplan-Service (Hybrid: Algorithmus + optionales KI-Reasoning)
  * ============================================
  *
- * Das Herzstück der Anwendung: Generiert intelligente Wochenpläne
- * unter Berücksichtigung von:
- * - Rezepte, die länger nicht gekocht wurden (Rotation)
- * - Zusammenpassende Zutaten für effizientes Einkaufen
- * - Ausgewogene Ernährung (Abwechslung bei Kategorien)
- * - Vorräte im Vorratsschrank
- * - Benutzerpräferenzen (Favoriten, Bewertungen)
+ * Generiert intelligente Wochenpläne mit einem Score-basierten Algorithmus:
+ * - Rezeptrotation (länger nicht gekocht → bevorzugt)
+ * - Favoritenbonus
+ * - Kategorie-Abwechslung (nicht 2× gleiche Kategorie hintereinander)
+ * - Schwierigkeitsgrad passend zum Wochentag (einfach unter der Woche)
+ * - Zutaten-Überlappung (Einkaufsoptimierung)
+ * - Vorräte im Vorratsschrank berücksichtigen
+ *
+ * Optional: KI generiert eine kurze Begründung zum Plan.
  */
 
-import { getAIProvider } from './ai/provider.js';
 import db from '../config/database.js';
 import { getWeekStart } from '../utils/helpers.js';
 
+const DAY_NAMES = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag'];
+
+// ============================================
+// Scoring-System
+// ============================================
+
 /**
- * Generiert einen intelligenten Wochenplan per KI
+ * Bewertet ein Rezept für einen bestimmten Slot im Wochenplan.
+ * Höherer Score = besser geeignet.
+ */
+function scoreRecipe(recipe, context) {
+  let score = 100;
+
+  // 1. Rotation: lange nicht gekocht = höherer Score (max +60)
+  if (recipe.last_cooked) {
+    const daysSince = Math.floor((Date.now() - new Date(recipe.last_cooked).getTime()) / 86_400_000);
+    score += Math.min(daysSince, 60);
+  } else {
+    score += 60; // Nie gekocht → maximaler Rotationsbonus
+  }
+
+  // 2. Selten gekocht (max +20)
+  if (recipe.cook_count === 0) {
+    score += 20;
+  } else if (recipe.cook_count <= 2) {
+    score += 10;
+  }
+
+  // 3. Favoriten bevorzugen
+  if (recipe.is_favorite) score += 25;
+
+  // 4. Gute Bewertung
+  if (recipe.avg_rating >= 4) score += 15;
+  else if (recipe.avg_rating >= 3) score += 5;
+
+  // 5. Duplikat-Vermeidung: schon diese Woche gewählt → praktisch ausschließen
+  if (context.usedRecipeIds.has(recipe.id)) score -= 500;
+
+  // 6. Kategorie-Abwechslung: gleiche Kategorie wie Vortag → Malus
+  if (context.previousMealCategory) {
+    const cats = (recipe.categories || '').split(',').map(c => c.trim().toLowerCase());
+    if (cats.some(c => c === context.previousMealCategory.toLowerCase())) {
+      score -= 30;
+    }
+  }
+
+  // 7. Schwierigkeit vs. Wochentag
+  const isWeekend = context.dayIdx >= 5; // Sa=5, So=6
+  if (recipe.difficulty === 'schwer') {
+    score += isWeekend ? 20 : -25;
+  } else if (recipe.difficulty === 'einfach') {
+    score += isWeekend ? -5 : 10;
+  }
+
+  // 8. Zeitaufwand: unter der Woche kürzere Rezepte bevorzugen
+  if (!isWeekend && recipe.total_time > 60) score -= 15;
+  if (!isWeekend && recipe.total_time <= 30) score += 10;
+
+  // 9. Zutaten-Überlappung mit bereits gewählten Rezepten (Einkaufsoptimierung)
+  if (context.usedIngredients.size > 0) {
+    const overlap = recipe.ingredientNames.filter(n => context.usedIngredients.has(n)).length;
+    score += overlap * 5;
+  }
+
+  // 10. Vorräte nutzen
+  for (const name of recipe.ingredientNames) {
+    if (context.pantrySet.has(name)) score += 8;
+  }
+
+  return Math.max(score, 1); // Mindestens 1
+}
+
+/**
+ * Gewichtete Zufallsauswahl: Rezepte mit höherem Score werden wahrscheinlicher gewählt.
+ */
+function weightedRandomPick(recipes, context) {
+  const scored = recipes.map(r => ({ recipe: r, score: scoreRecipe(r, context) }));
+  scored.sort((a, b) => b.score - a.score);
+
+  const totalWeight = scored.reduce((sum, s) => sum + s.score, 0);
+  let random = Math.random() * totalWeight;
+
+  for (const s of scored) {
+    random -= s.score;
+    if (random <= 0) return s;
+  }
+  return scored[scored.length - 1];
+}
+
+// ============================================
+// Plan-Generierung
+// ============================================
+
+/**
+ * Generiert einen Wochenplan per Scoring-Algorithmus.
  * @param {number} userId - Benutzer-ID
- * @param {object} options - Konfiguration für die Planung
- * @param {number} options.personCount - Anzahl Personen
- * @param {string[]} options.mealTypes - Gewünschte Mahlzeiten pro Tag
- * @param {string} options.weekStart - Start der Woche (YYYY-MM-DD)
- * @param {string[]} options.excludeRecipeIds - Auszuschließende Rezepte
- * @returns {Promise<object>} - Generierter Wochenplan
+ * @param {object} options - Konfiguration
+ * @returns {Promise<object>} - { plan, reasoning }
  */
 export async function generateWeekPlan(userId, options = {}) {
   const {
     personCount = 4,
     mealTypes = ['fruehstueck', 'mittag', 'abendessen'],
-    weekStart = getWeekStart(),
     excludeRecipeIds = [],
   } = options;
 
@@ -51,108 +140,132 @@ export async function generateWeekPlan(userId, options = {}) {
     ORDER BY r.last_cooked_at ASC NULLS FIRST, r.times_cooked ASC
   `).all(userId);
 
-  if (recipes.length < 5) {
+  if (recipes.length < 3) {
     throw new Error(
-      'Mindestens 5 Rezepte werden für eine sinnvolle Wochenplanung benötigt. ' +
-      `Aktuell: ${recipes.length} Rezepte.`
+      `Mindestens 3 Rezepte werden für eine Wochenplanung benötigt. Aktuell: ${recipes.length} Rezepte.`
     );
   }
 
-  // --- 2. Vorräte laden (für die Einkaufsoptimierung) ---
-  const pantryItems = db.prepare(`
-    SELECT ingredient_name, amount, unit
-    FROM pantry
-    WHERE user_id = ? AND amount > 0
-  `).all(userId);
-
-  // --- 3. Zutaten der Rezepte laden ---
+  // --- 2. Zutaten pro Rezept laden ---
   const recipeData = recipes.map(recipe => {
     const ingredients = db.prepare(
-      'SELECT name, amount, unit FROM ingredients WHERE recipe_id = ?'
+      'SELECT name FROM ingredients WHERE recipe_id = ?'
     ).all(recipe.id);
 
     return {
-      id: recipe.id,
-      title: recipe.title,
+      ...recipe,
       categories: recipe.category_names || '',
-      difficulty: recipe.difficulty,
-      total_time: recipe.total_time,
-      servings: recipe.servings,
-      cook_count: recipe.cook_count,
-      last_cooked: recipe.last_cooked,
-      avg_rating: recipe.avg_rating,
-      is_favorite: recipe.is_favorite,
-      ingredients: ingredients.map(i => `${i.amount || ''} ${i.unit || ''} ${i.name}`.trim()),
+      ingredientNames: ingredients.map(i => i.name.toLowerCase()),
     };
   });
 
-  // --- 4. KI-basierte Wochenplanung ---
-  const ai = getAIProvider();
-  const dayNames = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag'];
-  const mealTypeLabels = {
-    fruehstueck: 'Frühstück',
-    mittag: 'Mittagessen',
-    abendessen: 'Abendessen',
-    snack: 'Snack',
-  };
+  // --- 3. Vorräte laden ---
+  const pantryItems = db.prepare(
+    'SELECT ingredient_name FROM pantry WHERE user_id = ? AND amount > 0'
+  ).all(userId);
+  const pantrySet = new Set(pantryItems.map(p => p.ingredient_name.toLowerCase()));
 
-  const prompt = `
-Du bist ein intelligenter Wochenplaner für Mahlzeiten. Erstelle einen optimalen Wochenplan.
+  // --- 4. Algorithmische Planung ---
+  const plan = [];
+  const usedRecipeIds = new Set();
+  const usedIngredients = new Set();
+  const reasons = [];
 
-VERFÜGBARE REZEPTE (mit Zutaten und Kochhistorie):
-${recipeData.map(r => `
-  [ID: ${r.id}] "${r.title}"
-    Kategorien: ${r.categories}
-    Schwierigkeit: ${r.difficulty}, Zeit: ${r.total_time}min, Portionen: ${r.servings}
-    Gekocht: ${r.cook_count}x, Zuletzt: ${r.last_cooked || 'nie'}
-    Bewertung: ${r.avg_rating ? r.avg_rating + '/5' : 'keine'} ${r.is_favorite ? '⭐ Favorit' : ''}
-    Zutaten: ${r.ingredients.join(', ')}
-`).join('\n')}
+  // Tracking: letzte Kategorie pro Mahlzeit-Typ (für Abwechslung)
+  const lastCategoryByMeal = {};
 
-VORRÄTE IM VORRATSSCHRANK:
-${pantryItems.length ? pantryItems.map(p => `${p.amount} ${p.unit || ''} ${p.ingredient_name}`).join(', ') : 'Keine Vorräte'}
+  for (let dayIdx = 0; dayIdx < 7; dayIdx++) {
+    const dayMeals = [];
 
-ANFORDERUNGEN:
-- Woche: ${dayNames.join(', ')} (7 Tage)
-- Mahlzeiten pro Tag: ${mealTypes.map(t => mealTypeLabels[t]).join(', ')}
-- Personen: ${personCount}
-- Bevorzuge Rezepte, die LÄNGER NICHT GEKOCHT wurden
-- WICHTIG: Wähle Rezepte, deren Zutaten gut zusammenpassen (gemeinsame Grundzutaten)
-- Vermeide das gleiche Rezept mehrfach in einer Woche
-- Achte auf Abwechslung (nicht 3x Pasta hintereinander)
-- Berücksichtige die Vorräte beim Planen
-- An Wochenenden (Sa/So) dürfen aufwendigere Rezepte geplant werden
+    for (const mealType of mealTypes) {
+      const context = {
+        dayIdx,
+        usedRecipeIds,
+        usedIngredients,
+        pantrySet,
+        previousMealCategory: lastCategoryByMeal[mealType] || null,
+      };
 
-Antworte als JSON:
-{
-  "plan": [
-    {
-      "day": 0,
-      "day_name": "Montag",
-      "meals": [
-        {
-          "meal_type": "fruehstueck|mittag|abendessen|snack",
-          "recipe_id": 123,
-          "recipe_title": "...",
-          "servings": ${personCount}
-        }
-      ]
+      const pick = weightedRandomPick(recipeData, context);
+      const recipe = pick.recipe;
+
+      // Gewähltes Rezept tracken
+      usedRecipeIds.add(recipe.id);
+      recipe.ingredientNames.forEach(n => usedIngredients.add(n));
+      const firstCat = (recipe.categories || '').split(',')[0]?.trim() || '';
+      lastCategoryByMeal[mealType] = firstCat;
+
+      dayMeals.push({
+        meal_type: mealType,
+        recipe_id: recipe.id,
+        recipe_title: recipe.title,
+        servings: personCount,
+      });
+
+      // Grund sammeln
+      if (pick.score >= 180) {
+        reasons.push(`\u201E${recipe.title}\u201C (${DAY_NAMES[dayIdx]}): lange nicht gekocht`);
+      } else if (recipe.is_favorite) {
+        reasons.push(`\u201E${recipe.title}\u201C (${DAY_NAMES[dayIdx]}): Favorit`);
+      }
     }
-  ],
-  "reasoning": "Kurze Erklärung der Planung und warum diese Kombination gut ist",
-  "shared_ingredients": ["Zutat1", "Zutat2"],
-  "estimated_total_cost": "grobe Schätzung"
-}
-`;
 
-  const result = await ai.chatJSON(prompt, { temperature: 0.6, maxTokens: 4096 });
-  return result;
+    plan.push({
+      day: dayIdx,
+      day_name: DAY_NAMES[dayIdx],
+      meals: dayMeals,
+    });
+  }
+
+  // --- 5. Reasoning zusammenbauen ---
+  const totalMeals = plan.reduce((sum, d) => sum + d.meals.length, 0);
+  const uniqueRecipes = new Set(plan.flatMap(d => d.meals.map(m => m.recipe_id))).size;
+  const pantryUsed = [...usedIngredients].filter(i => pantrySet.has(i));
+
+  let reasoning = `Plan: ${totalMeals} Mahlzeiten aus ${uniqueRecipes} verschiedenen Rezepten.`;
+  if (pantryUsed.length) {
+    reasoning += ` ${pantryUsed.length} Zutat(en) aus dem Vorrat berücksichtigt.`;
+  }
+  if (reasons.length) {
+    reasoning += ' ' + reasons.slice(0, 5).join('; ') + '.';
+  }
+
+  // --- 6. Optional: KI-Reasoning (nicht-blockierend) ---
+  try {
+    const { getAIProvider } = await import('./ai/provider.js');
+    const ai = getAIProvider();
+    if (ai?.apiKey) {
+      const titles = plan.flatMap(d =>
+        d.meals.map(m => `${d.day_name} ${m.meal_type}: ${m.recipe_title}`)
+      ).join('\n');
+      const aiReasoning = await ai.chat(
+        `Erkläre in 2-3 Sätzen auf Deutsch, warum dieser Wochenplan ausgewogen ist:\n${titles}`,
+        { maxTokens: 200 }
+      );
+      if (aiReasoning && aiReasoning.length > 10) {
+        reasoning = aiReasoning.trim();
+      }
+    }
+  } catch {
+    // KI nicht verfügbar – algorithmisches Reasoning verwenden
+  }
+
+  return { plan, reasoning };
 }
+
+// ============================================
+// Speichern & Laden
+// ============================================
 
 /**
  * Speichert einen generierten Wochenplan in der Datenbank
  */
 export function saveMealPlan(userId, weekStart, planData) {
+  const plan = planData.plan;
+  if (!Array.isArray(plan) || plan.length === 0) {
+    throw new Error('Kein gültiger Wochenplan zum Speichern vorhanden.');
+  }
+
   const insertPlan = db.prepare(
     'INSERT INTO meal_plans (user_id, week_start) VALUES (?, ?)'
   );
@@ -163,9 +276,12 @@ export function saveMealPlan(userId, weekStart, planData) {
   const transaction = db.transaction(() => {
     const { lastInsertRowid: planId } = insertPlan.run(userId, weekStart);
 
-    for (const day of planData.plan) {
-      for (const meal of day.meals) {
-        insertEntry.run(planId, meal.recipe_id, day.day, meal.meal_type, meal.servings || 4);
+    for (const day of plan) {
+      const dayNum = day.day ?? plan.indexOf(day);
+      const meals = Array.isArray(day.meals) ? day.meals : [];
+      for (const meal of meals) {
+        if (!meal.recipe_id) continue;
+        insertEntry.run(planId, meal.recipe_id, dayNum, meal.meal_type, meal.servings || 4);
       }
     }
 

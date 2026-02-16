@@ -25,12 +25,13 @@ export const useMealPlanStore = defineStore('mealplan', () => {
     snack: '🍿 Snack',
   };
 
-  /** Wochenplan per KI generieren */
+  /** Wochenplan generieren (Algorithmus + optionales KI-Reasoning) */
   async function generatePlan(options = {}) {
     generating.value = true;
     try {
       const data = await api.post('/mealplan/generate', options);
-      currentPlan.value = data;
+      // Plan aus der DB laden für konsistente Datenstruktur mit entries
+      await fetchCurrentPlan();
       return data;
     } finally {
       generating.value = false;

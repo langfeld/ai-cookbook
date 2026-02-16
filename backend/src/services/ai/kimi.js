@@ -26,27 +26,32 @@ export class KimiProvider extends BaseAIProvider {
    * Sendet eine Chat-Anfrage an die Kimi API
    */
   async chat(prompt, options = {}) {
+    const body = {
+      model: this.model,
+      messages: [
+        {
+          role: 'system',
+          content:
+            'Du bist ein hilfreicher Kochassistent. Du antwortest immer auf Deutsch und bist Experte für Rezepte, Zutaten, Kochtechniken und Wochenplanung.',
+        },
+        {
+          role: 'user',
+          content: prompt,
+        },
+      ],
+      max_tokens: options.maxTokens ?? 4096,
+    };
+
+    // Kimi K2.5 erlaubt nur temperature=1, daher nicht setzen
+    if (options.json) body.response_format = { type: 'json_object' };
+
     const response = await fetch(`${this.baseUrl}/chat/completions`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${this.apiKey}`,
       },
-      body: JSON.stringify({
-        model: this.model,
-        messages: [
-          {
-            role: 'system',
-            content:
-              'Du bist ein hilfreicher Kochassistent. Du antwortest immer auf Deutsch und bist Experte für Rezepte, Zutaten, Kochtechniken und Wochenplanung.',
-          },
-          {
-            role: 'user',
-            content: prompt,
-          },
-        ],
-        max_tokens: options.maxTokens ?? 4096,
-      }),
+      body: JSON.stringify(body),
     });
 
     if (!response.ok) {
@@ -72,27 +77,32 @@ export class KimiProvider extends BaseAIProvider {
     });
     contentParts.push({ type: 'text', text: prompt });
 
+    const body = {
+      model: this.model,
+      messages: [
+        {
+          role: 'system',
+          content:
+            'Du bist ein hilfreicher Kochassistent. Analysiere Bilder von Rezepten und extrahiere alle relevanten Informationen. Wenn mehrere Bilder gesendet werden, gehören sie zum selben Rezept (z.B. Vorder- und Rückseite einer Rezeptkarte). Kombiniere die Informationen zu einem einzigen vollständigen Rezept. Antworte immer auf Deutsch.',
+        },
+        {
+          role: 'user',
+          content: contentParts,
+        },
+      ],
+      max_tokens: options.maxTokens ?? 4096,
+    };
+
+    // Kimi K2.5 erlaubt nur temperature=1, daher nicht setzen
+    if (options.json) body.response_format = { type: 'json_object' };
+
     const response = await fetch(`${this.baseUrl}/chat/completions`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${this.apiKey}`,
       },
-      body: JSON.stringify({
-        model: this.model,
-        messages: [
-          {
-            role: 'system',
-            content:
-              'Du bist ein hilfreicher Kochassistent. Analysiere Bilder von Rezepten und extrahiere alle relevanten Informationen. Wenn mehrere Bilder gesendet werden, gehören sie zum selben Rezept (z.B. Vorder- und Rückseite einer Rezeptkarte). Kombiniere die Informationen zu einem einzigen vollständigen Rezept. Antworte immer auf Deutsch.',
-          },
-          {
-            role: 'user',
-            content: contentParts,
-          },
-        ],
-        max_tokens: options.maxTokens ?? 4096,
-      }),
+      body: JSON.stringify(body),
     });
 
     if (!response.ok) {

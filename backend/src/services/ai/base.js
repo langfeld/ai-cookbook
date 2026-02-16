@@ -50,7 +50,7 @@ export class BaseAIProvider {
   async chatJSON(prompt, options = {}) {
     const response = await this.chat(
       prompt + '\n\nAntworte ausschließlich mit validem JSON, ohne Markdown-Formatierung oder andere Zeichen.',
-      options
+      { ...options, json: true }
     );
     return this.parseJSON(response);
   }
@@ -62,7 +62,7 @@ export class BaseAIProvider {
     const response = await this.chatWithImage(
       prompt + '\n\nAntworte ausschließlich mit validem JSON, ohne Markdown-Formatierung oder andere Zeichen.',
       image,
-      options
+      { ...options, json: true }
     );
     return this.parseJSON(response);
   }
@@ -74,7 +74,7 @@ export class BaseAIProvider {
     const response = await this.chatWithImages(
       prompt + '\n\nAntworte ausschließlich mit validem JSON, ohne Markdown-Formatierung oder andere Zeichen.',
       images,
-      options
+      { ...options, json: true }
     );
     return this.parseJSON(response);
   }
@@ -148,6 +148,7 @@ export class BaseAIProvider {
       return JSON.parse(candidate);
     } catch {}
 
+    console.error('[AI] JSON-Parsing fehlgeschlagen. Vollständige KI-Antwort:\n', text);
     throw new Error(`Konnte kein JSON aus KI-Antwort extrahieren: ${text.substring(0, 300)}...`);
   }
 }

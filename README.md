@@ -1,6 +1,6 @@
 # AI Cookbook 🍳🤖
 
-Eine KI-gestützte Rezeptverwaltung mit intelligentem Wochenplaner, Einkaufsliste und REWE-Integration.
+Eine KI-gestützte Rezeptverwaltung mit intelligentem Wochenplaner (Score-Algorithmus + optionales KI-Reasoning), Einkaufsliste und REWE-Integration.
 
 ![Vue 3](https://img.shields.io/badge/Vue-3.5-4FC08D?logo=vuedotjs&logoColor=white)
 ![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-4-06B6D4?logo=tailwindcss&logoColor=white)
@@ -24,7 +24,8 @@ Eine KI-gestützte Rezeptverwaltung mit intelligentem Wochenplaner, Einkaufslist
 - **Favoriten** — Lieblingsrezepte markieren und filtern
 
 ### 📅 Wochenplaner
-- **KI-optimierte Planung** — Berücksichtigt Kochhistorie, Rezeptvielfalt und Zutatensynergien
+- **Score-basierter Algorithmus** — Berücksichtigt Kochhistorie, Rezeptrotation, Favoriten, Schwierigkeitsgrad, Zutatensynergien und Vorräte
+- **Optionales KI-Reasoning** — Falls KI verfügbar, generiert sie eine kurze Begründung zum Plan (kein Pflichtfeature)
 - **4 Mahlzeiten/Tag** — Frühstück, Mittag, Abendessen, Snack
 - **Horizontal scrollbares 7-Tage-Raster** — Auch auf Mobile voll nutzbar
 
@@ -216,7 +217,7 @@ ai-cookbook/
 │       │   ├── auth.js         # Registrierung, Login, Token-Refresh
 │       │   ├── recipes.js      # CRUD + Foto-Import + Text-Import + Export/Import
 │       │   ├── categories.js   # Kategorien CRUD
-│       │   ├── mealplan.js     # Wochenplaner + KI-Generierung
+│       │   ├── mealplan.js     # Wochenplaner (Algorithmus + optionales KI-Reasoning)
 │       │   ├── shopping.js     # Einkaufsliste + REWE-Matching
 │       │   ├── pantry.js       # Vorratsschrank CRUD + Verbrauch
 │       │   ├── rewe.js         # REWE Produktsuche
@@ -225,7 +226,8 @@ ai-cookbook/
 │       │   ├── ai/
 │       │   │   ├── base.js     # BaseAIProvider (Chat, JSON-Parse, Bildanalyse)
 │       │   │   ├── kimi.js     # Kimi K2.5 Provider (api.moonshot.ai)
-│       │   │   └── index.js    # Provider-Factory
+│       │   │   └── provider.js # Provider-Factory
+│       │   ├── meal-planner.js # Wochenplan-Algorithmus (Score-basiert + opt. KI-Reasoning)
 │       │   └── recipe-parser.js # Multi-Bild-Rezeptanalyse
 │       └── utils/
 │
@@ -292,7 +294,7 @@ ai-cookbook/
 ### Wochenplaner (`/api/mealplan`)
 | Methode | Pfad | Beschreibung |
 |---------|------|-------------|
-| `POST` | `/generate` | KI-Wochenplan generieren |
+| `POST` | `/generate` | Wochenplan generieren (Algorithmus + optionales KI-Reasoning) |
 | `GET` | `/` | Aktuellen Plan abrufen |
 | `GET` | `/history` | Vergangene Pläne |
 | `PUT` | `/:planId/entry/:entryId` | Eintrag bearbeiten |

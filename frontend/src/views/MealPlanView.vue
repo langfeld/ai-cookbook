@@ -2,10 +2,9 @@
   ============================================
   MealPlanView - Wochenplaner
   ============================================
-  KI-gestützter Wochenplaner mit:
+  Hybrid-Wochenplaner (Algorithmus + optionales KI-Reasoning):
   - 7-Tage-Raster (Frühstück, Mittagessen, Abendessen, Snacks)
-  - KI-Generierung basierend auf vorhandenen Rezepten
-  - Drag-and-Drop-Umplanung (vereinfacht)
+  - Score-basierte Rezeptauswahl (Rotation, Favoriten, Abwechslung)
   - Als-gekocht-Markierung
 -->
 <template>
@@ -14,16 +13,16 @@
     <div class="flex sm:flex-row flex-col justify-between items-start sm:items-center gap-4">
       <div>
         <h1 class="font-display font-bold text-stone-800 dark:text-stone-100 text-2xl">🗓️ Wochenplaner</h1>
-        <p class="text-stone-500 dark:text-stone-400 text-sm">KI-optimierter Essensplan für die Woche</p>
+        <p class="text-stone-500 dark:text-stone-400 text-sm">Intelligenter Essensplan für die Woche</p>
       </div>
       <div class="flex gap-2">
         <button
           @click="generatePlan"
-          :disabled="mealPlanStore.loading"
+          :disabled="mealPlanStore.generating"
           class="flex items-center gap-2 bg-primary-600 hover:bg-primary-700 disabled:opacity-50 px-4 py-2 rounded-xl font-medium text-white text-sm transition-colors"
         >
-          <Sparkles class="w-4 h-4" :class="{ 'animate-pulse': mealPlanStore.loading }" />
-          {{ mealPlanStore.loading ? 'Plan wird erstellt...' : 'Neuen Plan generieren' }}
+          <Sparkles class="w-4 h-4" :class="{ 'animate-pulse': mealPlanStore.generating }" />
+          {{ mealPlanStore.generating ? 'Plan wird erstellt...' : 'Neuen Plan generieren' }}
         </button>
       </div>
     </div>
@@ -91,15 +90,15 @@
     </div>
 
     <!-- Kein Plan vorhanden -->
-    <div v-else-if="!mealPlanStore.loading" class="py-16 text-center">
+    <div v-else-if="!mealPlanStore.loading && !mealPlanStore.generating" class="py-16 text-center">
       <div class="mb-4 text-6xl">📋</div>
       <h2 class="mb-2 font-semibold text-stone-700 dark:text-stone-300 text-xl">Noch kein Wochenplan</h2>
       <p class="mx-auto mb-6 max-w-md text-stone-500 dark:text-stone-400">
-        Lass die KI einen intelligenten Essensplan erstellen, basierend auf deinen Rezepten und was du zuletzt gekocht hast.
+        Erstelle einen intelligenten Essensplan basierend auf deinen Rezepten, Kochhistorie und Vorräten.
       </p>
       <button
         @click="generatePlan"
-        :disabled="mealPlanStore.loading"
+        :disabled="mealPlanStore.generating"
         class="bg-primary-600 hover:bg-primary-700 px-6 py-3 rounded-xl font-medium text-white transition-colors"
       >
         <Sparkles class="inline mr-2 w-4 h-4" />
@@ -124,7 +123,7 @@
           <span class="text-stone-700 dark:text-stone-300 text-sm">
             KW {{ plan.week_number }} – {{ plan.year }}
           </span>
-          <span class="text-stone-400 text-xs">{{ plan.entries_count }} Mahlzeiten</span>
+          <span class="text-stone-400 text-xs">{{ plan.meal_count }} Mahlzeiten</span>
         </div>
       </div>
     </div>
@@ -143,9 +142,9 @@ const { showSuccess } = useNotification();
 const weekOffset = ref(0);
 
 const mealTypes = [
-  { key: 'breakfast', label: 'Frühstück', icon: '🌅' },
-  { key: 'lunch', label: 'Mittag', icon: '☀️' },
-  { key: 'dinner', label: 'Abend', icon: '🌙' },
+  { key: 'fruehstueck', label: 'Frühstück', icon: '🌅' },
+  { key: 'mittag', label: 'Mittag', icon: '☀️' },
+  { key: 'abendessen', label: 'Abend', icon: '🌙' },
   { key: 'snack', label: 'Snack', icon: '🍎' },
 ];
 
@@ -201,7 +200,7 @@ async function generatePlan() {
 
 async function markMealCooked(meal) {
   try {
-    await mealPlanStore.markCooked(meal.id);
+    await mealPlanStore.markCooked(meal.meal_plan_id, meal.id);
     showSuccess('Mahlzeit als gekocht markiert! ✅');
   } catch {
     // Fehler wird von useApi angezeigt

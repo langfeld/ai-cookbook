@@ -2,7 +2,7 @@
  * ============================================
  * Wochenplan-Routen
  * ============================================
- * KI-gestützte Wochenplanung und manuelle Bearbeitung
+ * Algorithmische Wochenplanung mit optionalem KI-Reasoning
  */
 
 import db from '../config/database.js';
@@ -14,11 +14,11 @@ export default async function mealplanRoutes(fastify) {
 
   /**
    * POST /api/mealplan/generate
-   * KI-gestützten Wochenplan generieren
+   * Wochenplan algorithmisch generieren (+ optionales KI-Reasoning)
    */
   fastify.post('/generate', {
     schema: {
-      description: 'Wochenplan per KI generieren',
+      description: 'Wochenplan generieren (Algorithmus + KI-Reasoning)',
       tags: ['Wochenplan'],
       security: [{ bearerAuth: [] }],
       body: {
@@ -43,7 +43,7 @@ export default async function mealplanRoutes(fastify) {
         weekStart: request.body?.weekStart || getWeekStart(),
       };
 
-      // KI-Wochenplan generieren
+      // Wochenplan algorithmisch generieren
       const planData = await generateWeekPlan(userId, options);
 
       // Plan speichern
