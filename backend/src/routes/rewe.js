@@ -127,8 +127,18 @@ export default async function reweRoutes(fastify) {
       (progress) => {
         sendEvent('progress', progress);
       },
-      // Optionen: gespeicherte Präferenzen mitgeben
-      { preferences },
+      // Optionen: gespeicherte Präferenzen + Preis-Update-Callback mitgeben
+      {
+        preferences,
+        onPriceUpdate: (productId, ingredientName, newPrice, packageSize) => {
+          // Preis in der Präferenz-Tabelle aktualisieren
+          db.prepare(`
+            UPDATE rewe_product_preferences
+            SET rewe_price = ?, rewe_package_size = COALESCE(?, rewe_package_size), updated_at = CURRENT_TIMESTAMP
+            WHERE user_id = ? AND ingredient_name = ?
+          `).run(newPrice, packageSize || null, request.user.id, ingredientName.toLowerCase().trim());
+        },
+      },
     );
 
     // Ergebnisse in die Datenbank schreiben

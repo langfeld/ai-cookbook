@@ -337,9 +337,10 @@ function formatPrice(priceCents) {
  *   progress: { current, total, itemName, matched, productName, price }
  * @param {object} [options] - Optionale Einstellungen
  * @param {Map} [options.preferences] - Map<ingredientName, { rewe_product_id, rewe_product_name, rewe_price, rewe_package_size }>
+ * @param {function} [options.onPriceUpdate] - Callback wenn sich ein Preis geändert hat: (productId, ingredientName, newPrice, packageSize)
  */
 export async function matchShoppingListWithRewe(shoppingItems, onProgress, options = {}) {
-  const { preferences } = options;
+  const { preferences, onPriceUpdate } = options;
   const results = [];
   const BATCH_SIZE = 10;
   const DELAY_BETWEEN = 500;       // ms zwischen einzelnen Anfragen
@@ -353,28 +354,44 @@ export async function matchShoppingListWithRewe(shoppingItems, onProgress, optio
     let match = null;
     let fromPreference = false;
 
-    // 1. Gespeicherte Präferenz prüfen (spart API-Call!)
+    // 1. Gespeicherte Präferenz prüfen → gezielt nach dem Produkt suchen
     const pref = preferences?.get(item.name.toLowerCase().trim());
     if (pref) {
-      const parsedSize = parsePackageSize(pref.rewe_product_name);
-      match = {
-        product: {
-          id: pref.rewe_product_id,
-          name: pref.rewe_product_name,
-          price: pref.rewe_price,
-          priceFormatted: formatPrice(pref.rewe_price),
-          packageSize: pref.rewe_package_size || parsedSize.raw || '',
-          productUrl: buildReweProductUrl(pref.rewe_product_name, pref.rewe_product_id),
-          parsedAmount: parsedSize.amount,
-          parsedUnit: parsedSize.unit,
-        },
-        neededAmount: item.amount,
-        unit: item.unit,
-        fromPreference: true,
-      };
-      fromPreference = true;
-      matchedCount++;
-      console.log(`  ★ ${item.name} → ${pref.rewe_product_name} (gespeicherte Präferenz)`);
+      // Trotzdem API abfragen um aktuellen Preis / Verfügbarkeit zu prüfen
+      const { products } = await searchProducts(item.name);
+      const found = products.find(p => p.id === pref.rewe_product_id);
+
+      if (found) {
+        // Gemerktes Produkt ist noch verfügbar → mit aktuellem Preis verwenden
+        match = {
+          product: found,
+          neededAmount: item.amount,
+          unit: item.unit,
+          fromPreference: true,
+        };
+        fromPreference = true;
+        matchedCount++;
+
+        // Preis in Präferenz-Tabelle aktualisieren (falls sich etwas geändert hat)
+        if (found.price !== pref.rewe_price && onPriceUpdate) {
+          onPriceUpdate(pref.rewe_product_id, item.name, found.price, found.packageSize);
+        }
+
+        const priceChange = found.price !== pref.rewe_price
+          ? ` (Preis: ${formatPrice(pref.rewe_price)} → ${formatPrice(found.price)})`
+          : '';
+        console.log(`  ★ ${item.name} → ${found.name} (gemerkt${priceChange})`);
+      } else {
+        // Produkt nicht mehr verfügbar → Fallback auf normales Scoring
+        console.log(`  ⚠ ${item.name}: Gemerktes Produkt "${pref.rewe_product_name}" nicht mehr verfügbar → suche Alternative…`);
+        match = await findBestProduct(item.name, item.amount, item.unit);
+        if (match) {
+          matchedCount++;
+          console.log(`  ✓ ${item.name} → ${match.product.name} (${match.product.priceFormatted || '?'}) [Ersatz]`);
+        } else {
+          console.log(`  ✗ ${item.name} → kein Treffer`);
+        }
+      }
     } else {
       // 2. Kein gespeichertes Produkt → REWE API abfragen
       match = await findBestProduct(item.name, item.amount, item.unit);
@@ -406,8 +423,8 @@ export async function matchShoppingListWithRewe(shoppingItems, onProgress, optio
       });
     }
 
-    // Rate-Limiting: Pause nur bei API-Calls (Präferenzen brauchen keine Pause)
-    if (!fromPreference && i < shoppingItems.length - 1) {
+    // Rate-Limiting: Pause zwischen Anfragen
+    if (i < shoppingItems.length - 1) {
       // Größere Pause nach jedem Batch
       if ((i + 1) % BATCH_SIZE === 0) {
         console.log(`  ⏳ Batch-Pause (${DELAY_BETWEEN_BATCHES}ms)…`);
@@ -420,7 +437,7 @@ export async function matchShoppingListWithRewe(shoppingItems, onProgress, optio
 
   const prefCount = results.filter(r => r.reweMatch?.fromPreference).length;
   const apiCount = matchedCount - prefCount;
-  console.log(`REWE-Matching fertig: ${matchedCount}/${results.length} zugeordnet (${prefCount} aus Präferenzen, ${apiCount} via API)`);
+  console.log(`REWE-Matching fertig: ${matchedCount}/${results.length} zugeordnet (${prefCount} gemerkte Produkte, ${apiCount} neu gematcht)`);
 
   return results;
 }
