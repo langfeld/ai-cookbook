@@ -5,7 +5,7 @@
  * Einkaufslisten-Matching, Marktsuche und Produktlinks
  */
 
-import { matchShoppingListWithRewe, searchProducts, scoreRelevance } from '../services/rewe-api.js';
+import { matchShoppingListWithRewe, searchProducts, scoreRelevance, buildReweProductUrl } from '../services/rewe-api.js';
 import db from '../config/database.js';
 
 export default async function reweRoutes(fastify) {
@@ -316,4 +316,226 @@ export default async function reweRoutes(fastify) {
     ).run(request.user.id);
     return { message: `${result.changes} Präferenz(en) gelöscht`, deleted: result.changes };
   });
+
+  /**
+   * GET /api/rewe/cart-script
+   * Generiert ein JavaScript-Bookmarklet/Script, das auf shop.rewe.de
+   * alle gematchten Produkte automatisch in den Warenkorb legt.
+   *
+   * "Trick 17": Das Script läuft im Kontext von rewe.de und nutzt
+   * deren interne Cart-API – kein CORS-Problem!
+   */
+  fastify.get('/cart-script', {
+    schema: {
+      description: 'REWE Warenkorb-Script generieren (Bookmarklet)',
+      tags: ['REWE'],
+      security: [{ bearerAuth: [] }],
+    },
+  }, async (request) => {
+    const userId = request.user.id;
+
+    // Aktive Liste mit REWE-Produkt-IDs laden
+    const activeList = db.prepare(
+      'SELECT id FROM shopping_lists WHERE user_id = ? AND is_active = 1'
+    ).get(userId);
+
+    if (!activeList) {
+      return { error: 'Keine aktive Einkaufsliste.' };
+    }
+
+    const items = db.prepare(`
+      SELECT ingredient_name, rewe_product_id, rewe_product_name, rewe_price
+      FROM shopping_list_items
+      WHERE shopping_list_id = ? AND is_checked = 0 AND rewe_product_id IS NOT NULL
+    `).all(activeList.id);
+
+    if (!items.length) {
+      return { error: 'Keine REWE-Produkte zugeordnet.' };
+    }
+
+    // Produkt-Daten für das Script aufbereiten (inkl. URL für Fallback)
+    const products = items.map(i => ({
+      id: String(i.rewe_product_id),
+      name: i.rewe_product_name || i.ingredient_name,
+      price: i.rewe_price,
+      url: buildReweProductUrl(i.rewe_product_name || i.ingredient_name, i.rewe_product_id),
+    }));
+
+    // JavaScript-Script generieren, das auf rewe.de läuft
+    const script = generateReweCartScript(products);
+
+    return {
+      products,
+      script,
+      productCount: products.length,
+      instructions: [
+        '1. Öffne www.rewe.de/shop und logge dich ein',
+        '2. Wähle deinen Markt / Liefergebiet aus',
+        '3. Öffne die Browser-Konsole (F12 → Konsole)',
+        '4. Füge das Script ein und drücke Enter',
+        '5. Die Produkte werden automatisch in den Warenkorb gelegt',
+      ],
+    };
+  });
+}
+
+/**
+ * Generiert ein JavaScript-Script für die REWE-Website.
+ * 
+ * Strategie (basierend auf Reverse-Engineering der REWE-Website):
+ * 1. Für jedes Produkt: Produktseite fetchen (GET /shop/p/{productId})
+ * 2. Aus dem HTML die marktspezifische "listingId" extrahieren (data-listingid Attribut)
+ * 3. POST /shop/api/baskets/listings/{listingId} mit {"quantity":1,"includeTimeslot":false,"context":"product-detail"}
+ *
+ * Das funktioniert, weil:
+ * - Die Produkt-ID (z.B. 7077421) ≠ Listing-ID (z.B. 8-TCBKSCKJ-f38af4b3-...)
+ * - Die Listing-ID ist marktspezifisch und steht im HTML als data-listingid
+ * - Das Script auf rewe.de läuft → Same-Origin → kein CORS
+ * - Die Cookies des eingeloggten Users werden automatisch mitgesendet
+ */
+function generateReweCartScript(products) {
+  const productsJson = JSON.stringify(products);
+
+  return `(async function() {
+  /* AI Cookbook → REWE Warenkorb v3 */
+  if (!location.hostname.includes('rewe.de')) {
+    alert('Dieses Script muss auf www.rewe.de ausgeführt werden!');
+    return;
+  }
+
+  const products = ${productsJson};
+  const log = (msg, ok) => console.log('%c🛒 ' + msg, 'color:' + (ok === false ? '#dc2626' : ok === true ? '#16a34a' : '#cc0000') + ';font-weight:bold');
+  const wait = (ms) => new Promise(r => setTimeout(r, ms));
+
+  log('AI Cookbook: ' + products.length + ' Produkte in den Warenkorb legen...');
+
+  /* ──── Fortschritts-Banner ──── */
+  const oldBanner = document.getElementById('ai-cookbook-banner');
+  if (oldBanner) oldBanner.remove();
+
+  const banner = document.createElement('div');
+  banner.id = 'ai-cookbook-banner';
+  banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:999999;background:#cc0000;color:white;padding:14px 24px;font-family:system-ui,sans-serif;font-size:14px;text-align:center;box-shadow:0 4px 12px rgba(0,0,0,0.3);display:flex;align-items:center;justify-content:center;gap:12px';
+  const bannerText = document.createElement('span');
+  bannerText.textContent = '🛒 Starte...';
+  banner.appendChild(bannerText);
+  document.body.appendChild(banner);
+
+  const update = (text, bg) => {
+    bannerText.textContent = text;
+    if (bg) banner.style.background = bg;
+  };
+
+  let added = 0, failed = 0, skipped = 0;
+  const errors = [];
+
+  for (let i = 0; i < products.length; i++) {
+    const p = products[i];
+    update('🛒 ' + (i+1) + '/' + products.length + ': ' + p.name + '...');
+
+    try {
+      /* Schritt 1: Produktseite abrufen, um die Listing-ID zu finden */
+      log('Lade Produktseite: /shop/p/' + p.id);
+      const pageRes = await fetch('/shop/p/' + p.id, {
+        credentials: 'include',
+        headers: { 'Accept': 'text/html' }
+      });
+
+      if (!pageRes.ok) {
+        failed++;
+        const err = 'Produktseite nicht erreichbar (Status ' + pageRes.status + ')';
+        log('❌ ' + p.name + ': ' + err, false);
+        errors.push({ name: p.name, error: err });
+        await wait(300);
+        continue;
+      }
+
+      const html = await pageRes.text();
+
+      /* Schritt 2: Listing-ID aus dem HTML extrahieren */
+      /* Suche: data-listingid="..." im HTML */
+      const listingMatch = html.match(/data-listingid="([^"]+)"/);
+
+      if (!listingMatch) {
+        /* Fallback: Vielleicht im JSON-LD oder Script-Tags */
+        const jsonMatch = html.match(/"listingId"\\s*:\\s*"([^"]+)"/);
+        if (!jsonMatch) {
+          failed++;
+          const err = 'Keine Listing-ID gefunden (Markt nicht ausgewählt?)';
+          log('❌ ' + p.name + ': ' + err, false);
+          errors.push({ name: p.name, error: err });
+          await wait(300);
+          continue;
+        }
+        var listingId = jsonMatch[1];
+      } else {
+        var listingId = listingMatch[1];
+      }
+
+      log('  Listing-ID: ' + listingId);
+
+      /* Schritt 3: Produkt in den Warenkorb legen */
+      const cartRes = await fetch('/shop/api/baskets/listings/' + encodeURIComponent(listingId), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          quantity: 1,
+          includeTimeslot: false,
+          context: 'product-detail'
+        }),
+        credentials: 'include'
+      });
+
+      if (cartRes.ok) {
+        added++;
+        log('✅ ' + p.name + ' → Warenkorb!', true);
+      } else {
+        /* Bei 409 (Conflict) ist das Produkt evtl. schon im Warenkorb */
+        if (cartRes.status === 409) {
+          skipped++;
+          log('⚠️ ' + p.name + ' (bereits im Warenkorb)', true);
+        } else {
+          failed++;
+          let errDetail = 'Status ' + cartRes.status;
+          try { const errBody = await cartRes.json(); errDetail = errBody.message || errBody.error || errDetail; } catch(e) {}
+          log('❌ ' + p.name + ': ' + errDetail, false);
+          errors.push({ name: p.name, error: errDetail });
+        }
+      }
+    } catch(e) {
+      failed++;
+      log('❌ ' + p.name + ': ' + e.message, false);
+      errors.push({ name: p.name, error: e.message });
+    }
+
+    /* Kleine Pause, um REWE nicht zu überlasten */
+    await wait(500);
+  }
+
+  /* ──── Ergebnis ──── */
+  const total = added + skipped;
+  const emoji = total > 0 ? '✅' : '❌';
+  let resultMsg = emoji + ' ' + added + ' von ' + products.length + ' Produkten hinzugefügt';
+  if (skipped) resultMsg += ', ' + skipped + ' waren schon drin';
+  if (failed) resultMsg += ', ' + failed + ' fehlgeschlagen';
+
+  update(resultMsg + '  ', total > 0 ? '#16a34a' : '#dc2626');
+
+  const closeBtn = document.createElement('button');
+  closeBtn.textContent = 'OK';
+  closeBtn.style.cssText = 'background:white;color:inherit;border:none;padding:6px 16px;border-radius:6px;cursor:pointer;font-weight:bold;font-size:13px';
+  closeBtn.onclick = () => banner.remove();
+  banner.appendChild(closeBtn);
+
+  log('');
+  log('═══════════════════════════════════');
+  log('Ergebnis: ' + added + ' hinzugefügt, ' + skipped + ' übersprungen, ' + failed + ' fehlgeschlagen');
+  if (errors.length) {
+    log('Fehler bei:');
+    errors.forEach(e => log('  • ' + e.name + ': ' + e.error, false));
+  }
+  if (total > 0) log('Lade die Seite neu (F5) um deinen Warenkorb zu sehen!');
+  log('═══════════════════════════════════');
+})();`
+;
 }

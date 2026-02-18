@@ -294,7 +294,27 @@
             Geschätzte Kosten: {{ formatPrice(estimatedTotal) }}
           </span>
         </div>
-        <div class="flex gap-2">
+        <div class="flex flex-wrap gap-2">
+          <!-- An Bring! senden -->
+          <button
+            v-if="shoppingStore.bringStatus?.connected && shoppingStore.openItemsCount > 0"
+            @click="sendToBring"
+            :disabled="shoppingStore.bringSending"
+            class="flex items-center gap-2 bg-teal-600 hover:bg-teal-700 disabled:opacity-50 px-5 py-3 rounded-xl font-medium text-white transition-colors"
+          >
+            <Loader2 v-if="shoppingStore.bringSending" class="w-4 h-4 animate-spin" />
+            <Send v-else class="w-4 h-4" />
+            An Bring! senden
+          </button>
+          <button
+            v-else-if="!shoppingStore.bringStatus?.connected"
+            @click="showBringModal = true"
+            class="flex items-center gap-2 bg-teal-600 hover:bg-teal-700 px-5 py-3 rounded-xl font-medium text-white transition-colors"
+          >
+            <Link2 class="w-4 h-4" />
+            Bring! verbinden
+          </button>
+
           <!-- Bei REWE bestellen -->
           <button
             v-if="shoppingStore.reweLinkedItems.length"
@@ -361,16 +381,28 @@
               </div>
 
               <!-- Panel Footer -->
-              <div class="bg-stone-50 dark:bg-stone-800/50 px-5 py-4 border-stone-200 dark:border-stone-700 border-t">
+              <div class="space-y-3 bg-stone-50 dark:bg-stone-800/50 px-5 py-4 border-stone-200 dark:border-stone-700 border-t">
+                <!-- REWE Warenkorb-Script (Trick 17) -->
+                <button
+                  @click="loadCartScript"
+                  :disabled="cartScriptLoading"
+                  class="flex justify-center items-center gap-2 bg-red-600 hover:bg-red-700 disabled:opacity-50 py-3 rounded-xl w-full font-medium text-white transition-colors"
+                >
+                  <Loader2 v-if="cartScriptLoading" class="w-4 h-4 animate-spin" />
+                  <Terminal v-else class="w-4 h-4" />
+                  Automatisch in den REWE-Warenkorb legen
+                </button>
+
+                <!-- Fallback: Alle Tabs öffnen -->
                 <button
                   @click="openAllReweProducts"
-                  class="flex justify-center items-center gap-2 bg-red-600 hover:bg-red-700 py-3 rounded-xl w-full font-medium text-white transition-colors"
+                  class="flex justify-center items-center gap-2 bg-stone-200 hover:bg-stone-300 dark:bg-stone-700 dark:hover:bg-stone-600 py-2.5 rounded-xl w-full font-medium text-stone-700 dark:text-stone-300 text-sm transition-colors"
                 >
-                  <ShoppingCart class="w-4 h-4" />
-                  Alle {{ shoppingStore.reweLinkedItems.length }} Produkte bei REWE öffnen
+                  <ExternalLink class="w-3.5 h-3.5" />
+                  Oder: Alle {{ shoppingStore.reweLinkedItems.length }} Produkte als Tabs öffnen
                 </button>
-                <p class="mt-2 text-[10px] text-stone-400 dark:text-stone-500 text-center">
-                  Die Produkte werden in neuen Tabs geöffnet. Füge sie dort in deinen REWE-Warenkorb.
+                <p class="text-[10px] text-stone-400 dark:text-stone-500 text-center">
+                  Das Script legt Produkte automatisch in deinen REWE-Warenkorb. Die Tab-Variante öffnet jedes Produkt einzeln.
                 </p>
               </div>
             </div>
@@ -505,6 +537,185 @@
           </div>
         </Transition>
       </Teleport>
+
+      <!-- Bring! Verbinden / Verwalten Modal -->
+      <Teleport to="body">
+        <Transition name="fade">
+          <div v-if="showBringModal" class="z-50 fixed inset-0 flex justify-center items-end sm:items-center bg-black/50 p-4" @click.self="showBringModal = false">
+            <div class="bg-white dark:bg-stone-900 shadow-2xl rounded-2xl w-full max-w-md overflow-hidden">
+
+              <!-- Header -->
+              <div class="flex justify-between items-center px-5 py-4 border-stone-200 dark:border-stone-700 border-b">
+                <div>
+                  <h2 class="font-display font-bold text-stone-800 dark:text-stone-100 text-lg">
+                    🛍️ Bring! Einkaufsliste
+                  </h2>
+                  <p class="mt-0.5 text-stone-500 dark:text-stone-400 text-xs">
+                    Sende deine Einkaufsliste direkt an die Bring!-App.
+                  </p>
+                </div>
+                <button @click="showBringModal = false" class="hover:bg-stone-100 dark:hover:bg-stone-800 p-1.5 rounded-lg text-stone-400 transition-colors">
+                  <X class="w-5 h-5" />
+                </button>
+              </div>
+
+              <!-- Verbunden: Status + Listen-Auswahl -->
+              <div v-if="shoppingStore.bringStatus?.connected" class="space-y-4 p-5">
+                <div class="flex items-center gap-3 bg-teal-50 dark:bg-teal-900/20 px-4 py-3 border border-teal-200 dark:border-teal-800 rounded-xl">
+                  <div class="flex justify-center items-center bg-teal-500 rounded-full w-8 h-8 text-white shrink-0">
+                    <Check class="w-4 h-4" />
+                  </div>
+                  <div class="min-w-0">
+                    <p class="font-medium text-teal-800 dark:text-teal-300 text-sm">Verbunden</p>
+                    <p class="text-teal-600 dark:text-teal-400 text-xs truncate">{{ shoppingStore.bringStatus.email }}</p>
+                  </div>
+                </div>
+
+                <!-- Listenauswahl -->
+                <div>
+                  <label class="block mb-1.5 font-medium text-stone-600 dark:text-stone-400 text-sm">
+                    Bring!-Liste
+                  </label>
+                  <div class="relative">
+                    <select
+                      v-model="selectedBringList"
+                      @change="changeBringList"
+                      class="bg-stone-50 dark:bg-stone-800 px-3 py-2.5 pr-10 border border-stone-300 dark:border-stone-600 rounded-lg w-full text-stone-800 dark:text-stone-200 text-sm appearance-none"
+                    >
+                      <option v-for="list in shoppingStore.bringLists" :key="list.uuid" :value="list.uuid">
+                        {{ list.name }}
+                      </option>
+                    </select>
+                    <ChevronDown class="top-1/2 right-3 absolute w-4 h-4 text-stone-400 -translate-y-1/2 pointer-events-none" />
+                  </div>
+                </div>
+
+                <!-- Senden-Button -->
+                <button
+                  @click="sendToBring"
+                  :disabled="shoppingStore.bringSending || shoppingStore.openItemsCount === 0"
+                  class="flex justify-center items-center gap-2 bg-teal-600 hover:bg-teal-700 disabled:opacity-50 py-3 rounded-xl w-full font-medium text-white transition-colors"
+                >
+                  <Loader2 v-if="shoppingStore.bringSending" class="w-4 h-4 animate-spin" />
+                  <Send v-else class="w-4 h-4" />
+                  {{ shoppingStore.openItemsCount }} Artikel senden
+                </button>
+
+                <!-- Trennen -->
+                <button
+                  @click="disconnectBring"
+                  class="flex justify-center items-center gap-2 hover:bg-red-50 dark:hover:bg-red-900/20 py-2 rounded-lg w-full text-red-500 text-sm transition-colors"
+                >
+                  <Unlink class="w-3.5 h-3.5" />
+                  Verbindung trennen
+                </button>
+              </div>
+
+              <!-- Nicht verbunden: Login-Formular -->
+              <form v-else @submit.prevent="connectBring" class="space-y-4 p-5">
+                <p class="text-stone-500 dark:text-stone-400 text-sm">
+                  Melde dich mit deinem Bring!-Account an, um Einkaufslisten direkt an die App zu senden.
+                </p>
+                <div>
+                  <label class="block mb-1 font-medium text-stone-600 dark:text-stone-400 text-sm">E-Mail</label>
+                  <input
+                    v-model="bringEmail"
+                    type="email"
+                    placeholder="deine@email.de"
+                    required
+                    autocomplete="email"
+                    class="bg-stone-50 dark:bg-stone-800 px-3 py-2.5 border border-stone-300 focus:border-transparent dark:border-stone-600 rounded-lg focus:ring-2 focus:ring-teal-500 w-full text-stone-800 dark:text-stone-200 placeholder:text-stone-400 text-sm"
+                  />
+                </div>
+                <div>
+                  <label class="block mb-1 font-medium text-stone-600 dark:text-stone-400 text-sm">Passwort</label>
+                  <input
+                    v-model="bringPassword"
+                    type="password"
+                    placeholder="Bring!-Passwort"
+                    required
+                    autocomplete="current-password"
+                    class="bg-stone-50 dark:bg-stone-800 px-3 py-2.5 border border-stone-300 focus:border-transparent dark:border-stone-600 rounded-lg focus:ring-2 focus:ring-teal-500 w-full text-stone-800 dark:text-stone-200 placeholder:text-stone-400 text-sm"
+                  />
+                </div>
+                <button
+                  type="submit"
+                  :disabled="bringConnecting || !bringEmail.trim() || !bringPassword"
+                  class="flex justify-center items-center gap-2 bg-teal-600 hover:bg-teal-700 disabled:opacity-50 py-3 rounded-xl w-full font-medium text-white transition-colors"
+                >
+                  <Loader2 v-if="bringConnecting" class="w-4 h-4 animate-spin" />
+                  <LogIn v-else class="w-4 h-4" />
+                  Verbinden
+                </button>
+                <p class="text-[10px] text-stone-400 dark:text-stone-500 text-center">
+                  🔒 Dein Passwort wird verschlüsselt gespeichert und nur zur Kommunikation mit Bring! verwendet.
+                </p>
+              </form>
+            </div>
+          </div>
+        </Transition>
+      </Teleport>
+
+      <!-- REWE Warenkorb-Script Modal -->
+      <Teleport to="body">
+        <Transition name="fade">
+          <div v-if="showCartScript" class="z-50 fixed inset-0 flex justify-center items-end sm:items-center bg-black/50 p-4" @click.self="showCartScript = false">
+            <div class="flex flex-col bg-white dark:bg-stone-900 shadow-2xl rounded-2xl w-full max-w-lg max-h-[80vh] overflow-hidden">
+              <!-- Header -->
+              <div class="flex justify-between items-center px-5 py-4 border-stone-200 dark:border-stone-700 border-b">
+                <div>
+                  <h2 class="font-display font-bold text-stone-800 dark:text-stone-100 text-lg">🛒 REWE Warenkorb-Script</h2>
+                  <p class="mt-0.5 text-stone-500 dark:text-stone-400 text-xs">Automatisch Produkte in den Warenkorb legen</p>
+                </div>
+                <button @click="showCartScript = false" class="hover:bg-stone-100 dark:hover:bg-stone-800 p-1.5 rounded-lg text-stone-400 transition-colors">
+                  <X class="w-5 h-5" />
+                </button>
+              </div>
+
+              <!-- Anleitung -->
+              <div class="flex-1 space-y-4 p-5 overflow-y-auto">
+                <div class="bg-amber-50 dark:bg-amber-900/20 px-4 py-3 border border-amber-200 dark:border-amber-800 rounded-xl text-amber-800 dark:text-amber-300 text-sm">
+                  <p class="mb-1 font-semibold">⚡ So funktioniert's:</p>
+                  <ol class="space-y-1.5 text-xs list-decimal list-inside">
+                    <li>Öffne <a href="https://www.rewe.de/shop/" target="_blank" rel="noopener" class="font-medium underline hover:no-underline">www.rewe.de/shop</a> und logge dich ein</li>
+                    <li>Wähle deinen Markt bzw. dein Liefergebiet aus</li>
+                    <li>Öffne die Browser-Konsole: <kbd class="bg-amber-200/60 dark:bg-amber-800/60 px-1 py-0.5 rounded font-mono text-[11px]">F12</kbd> → Tab „Konsole"</li>
+                    <li>Kopiere das Script unten und füge es in die Konsole ein</li>
+                    <li>Drücke <kbd class="bg-amber-200/60 dark:bg-amber-800/60 px-1 py-0.5 rounded font-mono text-[11px]">Enter</kbd> und warte kurz</li>
+                  </ol>
+                </div>
+
+                <div class="bg-blue-50 dark:bg-blue-900/20 px-4 py-3 border border-blue-200 dark:border-blue-800 rounded-xl text-blue-800 dark:text-blue-300 text-xs">
+                  <p class="font-semibold mb-1">💡 Wie funktioniert das Script?</p>
+                  <p>Das Script lädt für jedes Produkt die Produktseite, ermittelt daraus die marktspezifische <em>Listing-ID</em> und fügt es direkt über die REWE Basket-API in deinen Warenkorb ein. Falls die Listing-ID nicht gefunden wird, öffnet sich ein Popup als Fallback.</p>
+                </div>
+
+                <!-- Script zum Kopieren -->
+                <div class="relative">
+                  <pre class="bg-stone-900 dark:bg-stone-950 p-4 rounded-xl max-h-48 overflow-auto font-mono text-[11px] text-green-400 break-all leading-relaxed whitespace-pre-wrap select-all">{{ cartScript }}</pre>
+                  <button
+                    @click="copyCartScript"
+                    :class="[
+                      'absolute top-2 right-2 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all',
+                      cartScriptCopied
+                        ? 'bg-green-600 text-white'
+                        : 'bg-stone-700 hover:bg-stone-600 text-stone-300'
+                    ]"
+                  >
+                    <ClipboardCopy class="w-3.5 h-3.5" />
+                    {{ cartScriptCopied ? 'Kopiert!' : 'Kopieren' }}
+                  </button>
+                </div>
+
+                <p class="text-[10px] text-stone-400 dark:text-stone-500 text-center">
+                  ⚠️ Experimentelles Feature – funktioniert nur auf www.rewe.de (eingeloggt, Markt gewählt).
+                  Das Script nutzt die REWE Basket-API mit Listing-IDs. Keine Garantie.
+                </p>
+              </div>
+            </div>
+          </div>
+        </Transition>
+      </Teleport>
     </div>
 
     <!-- Keine Liste vorhanden -->
@@ -524,11 +735,11 @@
 </template>
 
 <script setup>
-import { computed, ref, onMounted } from 'vue';
+import { computed, ref, onMounted, watch } from 'vue';
 import { useShoppingStore } from '@/stores/shopping.js';
 import { useMealPlanStore } from '@/stores/mealplan.js';
 import { useNotification } from '@/composables/useNotification.js';
-import { ListPlus, Check, ShoppingBag, Plus, Package, BookOpen, BookX, ExternalLink, ShoppingCart, X, ArrowRightLeft, Search, Tag, Trash2, Star, Heart, Archive } from 'lucide-vue-next';
+import { ListPlus, Check, ShoppingBag, Plus, Package, BookOpen, BookX, ExternalLink, ShoppingCart, X, ArrowRightLeft, Search, Tag, Trash2, Star, Heart, Archive, Send, Link2, Unlink, ClipboardCopy, LogIn, LogOut, ChevronDown, Loader2, Terminal } from 'lucide-vue-next';
 
 const shoppingStore = useShoppingStore();
 const mealPlanStore = useMealPlanStore();
@@ -537,6 +748,20 @@ const reweLoading = ref(false);
 
 // REWE-Bestell-Panel
 const showRewePanel = ref(false);
+
+// Bring! Integration
+const showBringModal = ref(false);
+const bringEmail = ref('');
+const bringPassword = ref('');
+const bringConnecting = ref(false);
+const bringListsLoading = ref(false);
+const selectedBringList = ref('');
+
+// REWE Warenkorb-Script
+const showCartScript = ref(false);
+const cartScript = ref('');
+const cartScriptLoading = ref(false);
+const cartScriptCopied = ref(false);
 
 // REWE-Produkt-Picker
 const pickerItem = ref(null);        // Das Shopping-Item, für das der Picker offen ist
@@ -810,7 +1035,109 @@ async function selectProduct(product) {
 
 onMounted(() => {
   shoppingStore.fetchActiveList();
+  shoppingStore.fetchBringStatus();
 });
+
+// Bring!-Listen laden, wenn Modal geöffnet wird
+watch(showBringModal, async (open) => {
+  if (open && shoppingStore.bringStatus?.connected) {
+    bringListsLoading.value = true;
+    try {
+      await shoppingStore.fetchBringLists();
+      selectedBringList.value = shoppingStore.bringStatus.list?.uuid || shoppingStore.bringLists[0]?.uuid || '';
+    } catch { /* ignore */ }
+    bringListsLoading.value = false;
+  }
+});
+
+// ============================================
+// Bring! Funktionen
+// ============================================
+
+async function connectBring() {
+  bringConnecting.value = true;
+  try {
+    const data = await shoppingStore.connectBring(bringEmail.value.trim(), bringPassword.value);
+    bringPassword.value = '';
+    // Listen setzen
+    if (data.availableLists?.length) {
+      selectedBringList.value = data.list?.uuid || data.availableLists[0].uuid;
+    }
+    showSuccess(`Bring! verbunden! 🎉 Liste: ${data.list?.name || 'Einkaufsliste'}`);
+  } catch {
+    showError('Bring!-Login fehlgeschlagen. Bitte prüfe deine Zugangsdaten.');
+  } finally {
+    bringConnecting.value = false;
+  }
+}
+
+async function sendToBring() {
+  try {
+    const listUuid = selectedBringList.value || shoppingStore.bringStatus?.list?.uuid;
+    const result = await shoppingStore.sendToBring(listUuid);
+    showSuccess(`${result.sentCount} Artikel an Bring! gesendet! 📲`);
+    if (result.errors?.length) {
+      showError(`${result.errors.length} Artikel konnten nicht gesendet werden.`);
+    }
+    showBringModal.value = false;
+  } catch {
+    showError('Senden an Bring! fehlgeschlagen.');
+  }
+}
+
+async function changeBringList() {
+  const list = shoppingStore.bringLists.find(l => l.uuid === selectedBringList.value);
+  if (list) {
+    try {
+      await shoppingStore.setBringList(list.uuid, list.name);
+      showSuccess(`Standard-Liste: ${list.name}`);
+    } catch {
+      showError('Liste konnte nicht geändert werden.');
+    }
+  }
+}
+
+async function disconnectBring() {
+  try {
+    await shoppingStore.disconnectBring();
+    showSuccess('Bring!-Verbindung getrennt.');
+  } catch {
+    showError('Fehler beim Trennen.');
+  }
+}
+
+// ============================================
+// REWE Warenkorb-Script
+// ============================================
+
+async function loadCartScript() {
+  cartScriptLoading.value = true;
+  try {
+    const data = await shoppingStore.getReweCartScript();
+    if (data.error) {
+      showError(data.error);
+      return;
+    }
+    cartScript.value = data.script;
+    showCartScript.value = true;
+    showRewePanel.value = false;
+  } catch {
+    showError('Script konnte nicht generiert werden.');
+  } finally {
+    cartScriptLoading.value = false;
+  }
+}
+
+async function copyCartScript() {
+  try {
+    await navigator.clipboard.writeText(cartScript.value);
+    cartScriptCopied.value = true;
+    setTimeout(() => { cartScriptCopied.value = false; }, 2000);
+    showSuccess('Script kopiert! Jetzt in die REWE-Konsole einfügen.');
+  } catch {
+    showError('Kopieren fehlgeschlagen.');
+  }
+}
 </script>
 
 <style scoped>

@@ -293,6 +293,21 @@ export function initializeDatabase() {
     );
     CREATE INDEX IF NOT EXISTS idx_rewe_prefs_user ON rewe_product_preferences(user_id);
     CREATE INDEX IF NOT EXISTS idx_rewe_prefs_ingredient ON rewe_product_preferences(user_id, ingredient_name);
+
+    -- ============================================
+    -- Bring! Einkaufslisten-Verbindung
+    -- ============================================
+    CREATE TABLE IF NOT EXISTS bring_settings (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL UNIQUE,
+      email TEXT NOT NULL,
+      password_encrypted TEXT NOT NULL,       -- AES-256-GCM verschlüsselt
+      default_list_uuid TEXT,                 -- Standard-Bring!-Liste
+      default_list_name TEXT,                 -- Name der Liste (zur Anzeige)
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
   `);
 
   // ============================================

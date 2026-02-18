@@ -201,10 +201,82 @@ export const useShoppingStore = defineStore('shopping', () => {
     return await api.del('/rewe/preferences');
   }
 
+  // ============================================
+  // Bring! Integration
+  // ============================================
+
+  const bringStatus = ref(null);       // { connected, email, list } oder null
+  const bringLists = ref([]);          // Verfügbare Bring!-Listen
+  const bringSending = ref(false);     // Wird gerade gesendet?
+
+  /** Bring!-Status laden */
+  async function fetchBringStatus() {
+    try {
+      bringStatus.value = await api.get('/bring/status');
+    } catch {
+      bringStatus.value = { connected: false };
+    }
+    return bringStatus.value;
+  }
+
+  /** Bring!-Account verbinden */
+  async function connectBring(email, password, listUuid, listName) {
+    const data = await api.post('/bring/connect', { email, password, listUuid, listName });
+    bringStatus.value = { connected: true, email, list: data.list };
+    bringLists.value = data.availableLists || [];
+    return data;
+  }
+
+  /** Bring!-Listen laden */
+  async function fetchBringLists() {
+    const data = await api.get('/bring/lists');
+    bringLists.value = data.lists || [];
+    return data;
+  }
+
+  /** Standard-Liste ändern */
+  async function setBringList(listUuid, listName) {
+    await api.put('/bring/list', { listUuid, listName });
+    if (bringStatus.value) {
+      bringStatus.value.list = { uuid: listUuid, name: listName };
+    }
+  }
+
+  /** Einkaufsliste an Bring! senden */
+  async function sendToBring(listUuid) {
+    bringSending.value = true;
+    try {
+      return await api.post('/bring/send', { listUuid });
+    } finally {
+      bringSending.value = false;
+    }
+  }
+
+  /** Bring!-Verbindung trennen */
+  async function disconnectBring() {
+    await api.del('/bring/disconnect');
+    bringStatus.value = { connected: false };
+    bringLists.value = [];
+  }
+
+  // ============================================
+  // REWE Warenkorb-Script (Bookmarklet)
+  // ============================================
+
+  /** REWE-Warenkorb-Script abrufen */
+  async function getReweCartScript() {
+    return await api.get('/rewe/cart-script');
+  }
+
   return {
     currentList, items, activeList, reweMatches, loading, reweProgress,
     openItemsCount, estimatedTotal, reweLinkedItems,
     generateList, fetchActiveList, toggleItem, matchWithRewe, completePurchase, addItem, deleteItem, moveToPantry,
     searchReweProducts, setReweProduct, fetchPreferences, deletePreference, clearAllPreferences,
+    // Bring!
+    bringStatus, bringLists, bringSending,
+    fetchBringStatus, connectBring, fetchBringLists, setBringList, sendToBring, disconnectBring,
+    // REWE Script
+    getReweCartScript,
   };
 });

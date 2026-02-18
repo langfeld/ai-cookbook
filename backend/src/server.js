@@ -29,6 +29,7 @@ import pantryRoutes from './routes/pantry.js';
 import reweRoutes from './routes/rewe.js';
 import adminRoutes from './routes/admin.js';
 import ingredientIconRoutes from './routes/ingredient-icons.js';
+import bringRoutes from './routes/bring.js';
 
 // Upload-Verzeichnisse sicherstellen (inkl. Unterordner)
 const uploadPath = resolve(config.upload.path);
@@ -183,6 +184,7 @@ await app.register(pantryRoutes, { prefix: '/api/pantry' });
 await app.register(reweRoutes, { prefix: '/api/rewe' });
 await app.register(adminRoutes, { prefix: '/api/admin' });
 await app.register(ingredientIconRoutes, { prefix: '/api/ingredient-icons' });
+await app.register(bringRoutes, { prefix: '/api/bring' });
 
 // ============================================
 // Health Check Endpoint
