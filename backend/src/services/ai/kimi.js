@@ -60,7 +60,12 @@ export class KimiProvider extends BaseAIProvider {
     }
 
     const data = await response.json();
-    return data.choices[0].message.content;
+    const message = data.choices[0].message;
+    // Kimi K2.5 ist ein Reasoning-Modell: Die Antwort steht in `content`,
+    // das interne Denken in `reasoning_content`. Falls `content` leer ist
+    // (z.B. weil max_tokens für das Reasoning aufgebraucht wurden),
+    // verwenden wir `reasoning_content` als Fallback.
+    return message.content || message.reasoning_content || '';
   }
 
   /**
@@ -111,6 +116,7 @@ export class KimiProvider extends BaseAIProvider {
     }
 
     const data = await response.json();
-    return data.choices[0].message.content;
+    const message = data.choices[0].message;
+    return message.content || message.reasoning_content || '';
   }
 }

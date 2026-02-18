@@ -13,6 +13,8 @@ import { useApi } from '@/composables/useApi.js';
 export const useMealPlanStore = defineStore('mealplan', () => {
   const currentPlan = ref(null);
   const reasoning = ref(null);
+  const reasoningSource = ref(null); // 'ai' | 'algorithm' | null
+  const reasoningLoading = ref(false); // Lädt KI-Reasoning im Hintergrund?
   const planHistory = ref([]);
   const loading = ref(false);
   const generating = ref(false);
@@ -29,13 +31,37 @@ export const useMealPlanStore = defineStore('mealplan', () => {
   /** Wochenplan generieren */
   async function generatePlan(options = {}) {
     generating.value = true;
+    reasoning.value = null;
+    reasoningSource.value = null;
     try {
       const data = await api.post('/mealplan/generate', options);
       currentPlan.value = data.plan;
-      reasoning.value = data.reasoning || null;
       return data;
     } finally {
       generating.value = false;
+    }
+  }
+
+  /** KI-Reasoning für einen Plan per Polling abrufen */
+  async function pollReasoning(planId, { maxAttempts = 20, interval = 2000 } = {}) {
+    reasoningLoading.value = true;
+    reasoning.value = null;
+    reasoningSource.value = null;
+    try {
+      for (let i = 0; i < maxAttempts; i++) {
+        const data = await api.get(`/mealplan/reasoning/${planId}`);
+        if (data.status === 'ready') {
+          reasoning.value = data.reasoning;
+          reasoningSource.value = data.reasoningSource || 'ai';
+          return data;
+        }
+        // Noch nicht fertig → warten und nochmal
+        await new Promise(r => setTimeout(r, interval));
+      }
+      // Timeout → kein Reasoning
+      console.warn('KI-Reasoning Timeout nach', maxAttempts, 'Versuchen');
+    } finally {
+      reasoningLoading.value = false;
     }
   }
 
@@ -46,7 +72,7 @@ export const useMealPlanStore = defineStore('mealplan', () => {
       const params = weekStart ? `?weekStart=${weekStart}` : '';
       const data = await api.get(`/mealplan${params}`);
       currentPlan.value = data.plan;
-      reasoning.value = data.plan?.reasoning || null;
+      // Reasoning wird NICHT beim Laden gesetzt – nur nach frischer Generierung
       return data;
     } finally {
       loading.value = false;
@@ -146,9 +172,9 @@ export const useMealPlanStore = defineStore('mealplan', () => {
   }
 
   return {
-    currentPlan, reasoning, planHistory, loading, generating,
+    currentPlan, reasoning, reasoningSource, reasoningLoading, planHistory, loading, generating,
     mealTypeLabels,
-    generatePlan, fetchCurrentPlan, fetchHistory,
+    generatePlan, pollReasoning, fetchCurrentPlan, fetchHistory,
     fetchSuggestions, markCooked, swapRecipe, addEntry, addRecipeToPlan, moveEntry, removeEntry, deletePlan,
   };
 });

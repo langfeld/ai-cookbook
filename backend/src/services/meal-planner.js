@@ -457,49 +457,56 @@ export async function generateWeekPlan(userId, options = {}) {
     });
   }
 
-  // --- 5. Reasoning zusammenbauen ---
-  const totalMeals = plan.reduce((sum, d) => sum + d.meals.length, 0);
-  const uniqueRecipes = new Set(plan.flatMap(d => d.meals.map(m => m.recipe_id))).size;
-  const pantryUsed = [...usedIngredients].filter(i => pantrySet.has(i));
+  // Reasoning wird separat generiert (async, nicht blockierend)
+  return { plan };
+}
 
-  // Prüfen welche Mahlzeit-Typen übersprungen wurden (keine passenden Rezepte)
-  const skippedTypes = mealTypes.filter(mt => recipesPerMealType[mt].length === 0);
-  const MEAL_TYPE_LABELS = { fruehstueck: 'Frühstück', mittag: 'Mittagessen', abendessen: 'Abendessen', snack: 'Snacks' };
+/**
+ * Generiert KI-Reasoning für einen bestehenden Plan (async).
+ * Gibt { reasoning, reasoningSource } zurück.
+ */
+export async function generateReasoning(plan) {
+  let reasoning = null;
+  let reasoningSource = null;
 
-  let reasoning = `Plan: ${totalMeals} Mahlzeiten aus ${uniqueRecipes} verschiedenen Rezepten.`;
-  if (skippedTypes.length) {
-    reasoning += ` ${skippedTypes.map(t => MEAL_TYPE_LABELS[t] || t).join(', ')} übersprungen (keine passenden Rezepte vorhanden).`;
-  }
-  if (pantryUsed.length) {
-    reasoning += ` ${pantryUsed.length} Zutat(en) aus dem Vorrat berücksichtigt.`;
-  }
-  if (reasons.length) {
-    reasoning += ' ' + reasons.slice(0, 5).join('; ') + '.';
-  }
-
-  // --- 6. Optional: KI-Reasoning (nur wenn vom Benutzer aktiviert) ---
-  if (enableAiReasoning) {
-    try {
-      const { getAIProvider } = await import('./ai/provider.js');
-      const ai = getAIProvider();
-      if (ai?.apiKey) {
-        const titles = plan.flatMap(d =>
-          d.meals.map(m => `${d.day_name} ${m.meal_type}: ${m.recipe_title}`)
-        ).join('\n');
-        const aiReasoning = await ai.chat(
-          `Erkläre in 2-3 Sätzen auf Deutsch, warum dieser Wochenplan ausgewogen ist:\n${titles}`,
-          { maxTokens: 200 }
-        );
-        if (aiReasoning && aiReasoning.length > 10) {
-          reasoning = aiReasoning.trim();
-        }
+  // Zuerst KI versuchen
+  try {
+    const { getAIProvider } = await import('./ai/provider.js');
+    const ai = getAIProvider();
+    if (ai?.apiKey) {
+      const titles = plan.flatMap(d =>
+        (d.meals || d.entries?.filter(e => e.day_of_week === d.day) || [])
+          .map(m => `${d.day_name || ''} ${m.meal_type}: ${m.recipe_title}`)
+      ).join('\n');
+      console.log('🤖 KI-Reasoning wird angefragt...');
+      const aiReasoning = await ai.chat(
+        `Antworte kurz und direkt in 2-3 Sätzen auf Deutsch. Erkläre warum dieser Wochenplan ausgewogen ist:\n${titles}`,
+        { maxTokens: 2048 }
+      );
+      if (aiReasoning && aiReasoning.length > 10) {
+        reasoning = aiReasoning.trim();
+        reasoningSource = 'ai';
+        console.log('✅ KI-Reasoning erhalten');
+      } else {
+        console.warn('⚠️ KI-Antwort zu kurz oder leer, Fallback auf Algorithmus');
       }
-    } catch {
-      // KI nicht verfügbar – algorithmisches Reasoning verwenden
+    } else {
+      console.warn('⚠️ KI-Provider hat keinen API-Key, Fallback auf Algorithmus');
     }
+  } catch (err) {
+    console.warn('⚠️ KI-Reasoning fehlgeschlagen, Fallback auf Algorithmus:', err.message);
   }
 
-  return { plan, reasoning };
+  // Algorithmischer Fallback
+  if (!reasoning) {
+    const allMeals = plan.flatMap(d => d.meals || []);
+    const totalMeals = allMeals.length;
+    const uniqueRecipes = new Set(allMeals.map(m => m.recipe_id)).size;
+    reasoning = `Plan: ${totalMeals} Mahlzeiten aus ${uniqueRecipes} verschiedenen Rezepten.`;
+    reasoningSource = 'algorithm';
+  }
+
+  return { reasoning, reasoningSource };
 }
 
 // ============================================

@@ -110,17 +110,44 @@
 
     <!-- KI-/Algorithmus-Reasoning -->
     <Transition name="fade">
-      <div v-if="store.reasoning && currentPlan" class="relative bg-linear-to-r from-primary-50 dark:from-primary-950/50 to-transparent px-4 py-3 border border-primary-200 dark:border-primary-800 rounded-xl">
+      <!-- Lade-Zustand: Reasoning wird im Hintergrund geladen -->
+      <div v-if="store.reasoningLoading && !store.reasoning && currentPlan" key="reasoning-loading"
+           class="relative bg-linear-to-r from-primary-50 dark:from-primary-950/50 to-transparent px-4 py-3 border border-primary-200 dark:border-primary-800 rounded-xl">
         <div class="flex items-start gap-3">
           <div class="flex justify-center items-center bg-primary-100 dark:bg-primary-900 rounded-lg w-8 h-8 shrink-0">
-            <Sparkles class="w-4 h-4 text-primary-600 dark:text-primary-400" />
+            <div class="border-2 border-primary-200 border-t-primary-600 rounded-full w-4 h-4 animate-spin" />
           </div>
           <div class="flex-1 min-w-0">
-            <p class="mb-0.5 font-medium text-primary-800 dark:text-primary-200 text-xs uppercase tracking-wide">Plan-Begründung</p>
+            <p class="mb-0.5 font-medium text-primary-800 dark:text-primary-200 text-xs uppercase tracking-wide">KI-Begründung</p>
+            <div class="space-y-1.5">
+              <div class="bg-primary-100 dark:bg-primary-900/50 rounded w-4/5 h-3 animate-pulse" />
+              <div class="bg-primary-100 dark:bg-primary-900/50 rounded w-3/5 h-3 animate-pulse" />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Fertiges Reasoning -->
+      <div v-else-if="store.reasoning && currentPlan" key="reasoning-ready" class="relative px-4 py-3 border rounded-xl"
+           :class="store.reasoningSource === 'ai'
+             ? 'bg-linear-to-r from-primary-50 dark:from-primary-950/50 to-transparent border-primary-200 dark:border-primary-800'
+             : 'bg-linear-to-r from-stone-50 dark:from-stone-900/50 to-transparent border-stone-200 dark:border-stone-700'">
+        <div class="flex items-start gap-3">
+          <div class="flex justify-center items-center rounded-lg w-8 h-8 shrink-0"
+               :class="store.reasoningSource === 'ai' ? 'bg-primary-100 dark:bg-primary-900' : 'bg-stone-100 dark:bg-stone-800'">
+            <Sparkles v-if="store.reasoningSource === 'ai'" class="w-4 h-4 text-primary-600 dark:text-primary-400" />
+            <Info v-else class="w-4 h-4 text-stone-500 dark:text-stone-400" />
+          </div>
+          <div class="flex-1 min-w-0">
+            <p class="mb-0.5 font-medium text-xs uppercase tracking-wide"
+               :class="store.reasoningSource === 'ai' ? 'text-primary-800 dark:text-primary-200' : 'text-stone-600 dark:text-stone-400'">
+              {{ store.reasoningSource === 'ai' ? 'KI-Begründung' : 'Plan-Zusammenfassung' }}
+              <span v-if="store.reasoningSource === 'algorithm'" class="opacity-70 font-normal normal-case tracking-normal">(KI nicht verfügbar)</span>
+            </p>
             <p class="text-stone-700 dark:text-stone-300 text-sm leading-relaxed">{{ store.reasoning }}</p>
           </div>
-          <button @click="store.reasoning = null" class="hover:bg-primary-100 dark:hover:bg-primary-900 p-1 rounded-lg transition-colors shrink-0" title="Schließen">
-            <X class="w-4 h-4 text-primary-400" />
+          <button @click="store.reasoning = null" class="hover:bg-stone-100 dark:hover:bg-stone-800 p-1 rounded-lg transition-colors shrink-0" title="Schließen">
+            <X class="w-4 h-4 text-stone-400" />
           </button>
         </div>
       </div>
@@ -579,7 +606,7 @@ import { useNotification } from '@/composables/useNotification.js';
 import {
   Sparkles, ChevronLeft, ChevronRight, Check, Eye, RefreshCw,
   X, Clock, ChefHat, UtensilsCrossed, Plus, Star, Trash2,
-  LayoutGrid, CalendarDays, Settings, Settings2, FolderOpen,
+  LayoutGrid, CalendarDays, Settings, Settings2, FolderOpen, Info,
 } from 'lucide-vue-next';
 
 const store = useMealPlanStore();
@@ -725,8 +752,13 @@ async function doGenerate() {
       options.collectionIds = genCollectionIds.value;
       options.deduplicateCollections = genDeduplicate.value;
     }
-    await store.generatePlan(options);
+    const data = await store.generatePlan(options);
     showSuccess('Wochenplan erstellt! 🗓️');
+
+    // KI-Reasoning im Hintergrund polled (blockiert UI nicht)
+    if (genAiReasoning.value && data.planId) {
+      store.pollReasoning(data.planId);
+    }
   } catch {
     // Fehler von useApi
   }

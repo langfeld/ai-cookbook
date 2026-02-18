@@ -7,7 +7,7 @@
  */
 
 import db from '../config/database.js';
-import { generateWeekPlan, saveMealPlan, getMealPlan, getSuggestions } from '../services/meal-planner.js';
+import { generateWeekPlan, generateReasoning, saveMealPlan, getMealPlan, getSuggestions } from '../services/meal-planner.js';
 import { getWeekStart } from '../utils/helpers.js';
 
 export default async function mealplanRoutes(fastify) {
@@ -69,15 +69,47 @@ export default async function mealplanRoutes(fastify) {
       // Gespeicherten Plan mit vollständigen Entries zurückgeben
       const savedPlan = getMealPlan(userId, weekStart);
 
+      // KI-Reasoning async im Hintergrund starten (blockiert Antwort nicht)
+      if (options.enableAiReasoning) {
+        generateReasoning(planData.plan).then(({ reasoning, reasoningSource }) => {
+          db.prepare('UPDATE meal_plans SET reasoning = ? WHERE id = ?').run(reasoning, planId);
+          console.log(`📝 Reasoning für Plan ${planId} gespeichert (${reasoningSource})`);
+        }).catch(err => {
+          console.warn('⚠️ Hintergrund-Reasoning fehlgeschlagen:', err.message);
+        });
+      }
+
       return {
         planId,
         plan: savedPlan,
-        reasoning: planData.reasoning,
         message: 'Wochenplan erfolgreich generiert!',
       };
     } catch (error) {
       return reply.status(400).send({ error: error.message });
     }
+  });
+
+  // ─────────────────────────────────────────────
+  // GET /reasoning/:planId – KI-Reasoning abrufen
+  // ─────────────────────────────────────────────
+  fastify.get('/reasoning/:planId', {
+    schema: {
+      description: 'KI-Reasoning für einen Plan abrufen (Polling)',
+      tags: ['Wochenplan'],
+      security: [{ bearerAuth: [] }],
+      params: {
+        type: 'object',
+        properties: { planId: { type: 'integer' } },
+        required: ['planId'],
+      },
+    },
+  }, async (request) => {
+    const plan = db.prepare(
+      'SELECT reasoning FROM meal_plans WHERE id = ? AND user_id = ?'
+    ).get(request.params.planId, request.user.id);
+    if (!plan) return { reasoning: null, status: 'not_found' };
+    if (!plan.reasoning) return { reasoning: null, status: 'pending' };
+    return { reasoning: plan.reasoning, status: 'ready', reasoningSource: 'ai' };
   });
 
   // ─────────────────────────────────────────────
