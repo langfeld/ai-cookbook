@@ -71,6 +71,13 @@ export const usePantryStore = defineStore('pantry', () => {
     items.value = items.value.filter(i => i.id !== id);
   }
 
+  /** Mehrere Vorräte auf einmal löschen */
+  async function deleteItemsBatch(ids) {
+    const data = await api.post('/pantry/batch-delete', { ids });
+    await fetchItems();
+    return data;
+  }
+
   /** Vorräte importieren (JSON oder CSV) */
   async function importItems(file) {
     const formData = new FormData();
@@ -82,6 +89,6 @@ export const usePantryStore = defineStore('pantry', () => {
 
   return {
     items, categories, expiringCount, loading, groupedItems,
-    fetchItems, addItem, updateItem, useAmount, removeItem, importItems,
+    fetchItems, addItem, updateItem, useAmount, removeItem, deleteItemsBatch, importItems,
   };
 });

@@ -331,6 +331,39 @@ export default async function pantryRoutes(fastify) {
   });
 
   /**
+   * POST /api/pantry/batch-delete
+   * Mehrere Vorräte auf einmal löschen (alle Benutzer)
+   */
+  fastify.post('/batch-delete', {
+    schema: {
+      description: 'Mehrere Vorräte löschen',
+      tags: ['Vorratsschrank'],
+      security: [{ bearerAuth: [] }],
+      body: {
+        type: 'object',
+        required: ['ids'],
+        properties: {
+          ids: { type: 'array', items: { type: 'integer' }, minItems: 1 },
+        },
+      },
+    },
+  }, async (request) => {
+    const { ids } = request.body;
+    const userId = request.user.id;
+
+    // Nur Items des eigenen Benutzers löschen
+    const placeholders = ids.map(() => '?').join(',');
+    const result = db.prepare(
+      `DELETE FROM pantry WHERE id IN (${placeholders}) AND user_id = ?`
+    ).run(...ids, userId);
+
+    return {
+      message: `${result.changes} Vorrat${result.changes !== 1 ? 'e' : ''} entfernt`,
+      deletedCount: result.changes,
+    };
+  });
+
+  /**
    * POST /api/pantry/:id/use
    * Menge aus dem Vorratsschrank verwenden/abziehen
    */

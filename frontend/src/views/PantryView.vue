@@ -18,6 +18,21 @@
         </p>
       </div>
       <div class="flex gap-2">
+        <!-- Auswahl-Modus -->
+        <button
+          @click="toggleSelectMode"
+          :class="[
+            'flex items-center gap-2 px-3 py-2 rounded-xl border text-sm font-medium transition-colors',
+            selectMode
+              ? 'bg-red-50 dark:bg-red-900/20 border-red-300 dark:border-red-700 text-red-700 dark:text-red-300'
+              : 'bg-white dark:bg-stone-800 border-stone-200 dark:border-stone-700 text-stone-700 dark:text-stone-300 hover:bg-stone-50 dark:hover:bg-stone-700'
+          ]"
+        >
+          <CheckSquare v-if="selectMode" class="w-4 h-4" />
+          <Square v-else class="w-4 h-4" />
+          <span class="hidden sm:inline">{{ selectMode ? 'Abbrechen' : 'Auswählen' }}</span>
+        </button>
+
         <!-- Export-Dropdown -->
         <div class="relative" ref="exportDropdownRef">
           <button
@@ -113,8 +128,27 @@
           <div
             v-for="item in items"
             :key="item.id"
-            class="bg-white dark:bg-stone-900 p-4 border border-stone-200 hover:border-primary-300 dark:border-stone-800 dark:hover:border-primary-700 rounded-xl transition-colors"
+            class="relative bg-white dark:bg-stone-900 p-4 border border-stone-200 dark:border-stone-800 rounded-xl transition-colors"
+            :class="{
+              'cursor-pointer hover:border-red-300 dark:hover:border-red-700': selectMode,
+              'hover:border-primary-300 dark:hover:border-primary-700': !selectMode,
+              'ring-2 ring-red-500 ring-offset-2 dark:ring-offset-stone-950': selectMode && selectedIds.has(item.id),
+            }"
+            @click="selectMode ? toggleSelect(item.id) : null"
           >
+            <!-- Auswahl-Checkbox Overlay -->
+            <div v-if="selectMode" class="top-3 left-3 z-10 absolute">
+              <div
+                :class="[
+                  'w-6 h-6 rounded-md border-2 flex items-center justify-center transition-all shadow-sm',
+                  selectedIds.has(item.id)
+                    ? 'bg-red-500 border-red-500 text-white'
+                    : 'bg-white/90 dark:bg-stone-800/90 border-stone-300 dark:border-stone-600'
+                ]"
+              >
+                <Check v-if="selectedIds.has(item.id)" class="w-4 h-4" />
+              </div>
+            </div>
             <div class="flex justify-between items-start">
               <div>
                 <h4 class="flex items-center gap-1.5 font-medium text-stone-800 dark:text-stone-200 text-sm">
@@ -130,7 +164,7 @@
                   Immer verfügbar
                 </p>
               </div>
-              <div class="flex gap-1">
+              <div v-if="!selectMode" class="flex gap-1">
                 <button
                   v-if="!item.is_permanent"
                   @click="openUseModal(item)"
@@ -271,6 +305,46 @@
       </div>
     </Teleport>
 
+    <!-- Floating Aktionsleiste bei Auswahl -->
+    <Teleport to="body">
+      <Transition name="slide-up">
+        <div
+          v-if="selectMode && selectedIds.size > 0"
+          class="right-0 bottom-0 left-0 z-40 fixed flex justify-center items-center gap-4 bg-white/95 dark:bg-stone-900/95 shadow-[0_-4px_24px_rgba(0,0,0,0.12)] backdrop-blur-sm px-6 py-4 border-stone-200 dark:border-stone-700 border-t"
+        >
+          <div class="flex items-center gap-2 text-stone-600 dark:text-stone-300 text-sm">
+            <CheckSquare class="w-4 h-4" />
+            <span class="font-medium">{{ selectedIds.size }}</span> ausgewählt
+          </div>
+          <button
+            @click="selectAll"
+            class="hover:bg-stone-100 dark:hover:bg-stone-800 px-3 py-1.5 border border-stone-300 dark:border-stone-600 rounded-lg text-stone-600 dark:text-stone-300 text-sm transition-colors"
+          >
+            Alle ({{ allFilteredItems.length }})
+          </button>
+          <button
+            @click="showBatchDeleteConfirm = true"
+            class="flex items-center gap-2 bg-red-600 hover:bg-red-700 px-4 py-1.5 rounded-lg font-medium text-white text-sm transition-colors"
+          >
+            <Trash2 class="w-4 h-4" />
+            Löschen ({{ selectedIds.size }})
+          </button>
+        </div>
+      </Transition>
+    </Teleport>
+
+    <!-- Bestätigungs-Dialog für Batch-Löschen -->
+    <ConfirmDialog
+      v-model="showBatchDeleteConfirm"
+      variant="danger"
+      :title="`${selectedIds.size} Artikel entfernen?`"
+      :message="`${selectedIds.size} Artikel werden unwiderruflich aus dem Vorratsschrank entfernt.`"
+      confirm-text="Endgültig entfernen"
+      cancel-text="Abbrechen"
+      :loading="batchDeleting"
+      @confirm="executeBatchDelete"
+    />
+
     <!-- Import-Vorschau-Modal -->
     <Teleport to="body">
       <div v-if="importPreview" class="z-50 fixed inset-0 flex justify-center items-center bg-black/50 p-4" @click.self="cancelImport">
@@ -342,7 +416,8 @@
 import { ref, reactive, computed, onMounted, onUnmounted } from 'vue';
 import { usePantryStore } from '@/stores/pantry.js';
 import { useNotification } from '@/composables/useNotification.js';
-import { Plus, Minus, Trash2, AlertTriangle, Download, Upload, FileSpreadsheet, FileJson, Loader2, Infinity } from 'lucide-vue-next';
+import { Plus, Minus, Trash2, AlertTriangle, Download, Upload, FileSpreadsheet, FileJson, Loader2, Infinity, Check, CheckSquare, Square } from 'lucide-vue-next';
+import ConfirmDialog from '@/components/ui/ConfirmDialog.vue';
 
 const pantryStore = usePantryStore();
 const { showSuccess, showError } = useNotification();
@@ -356,6 +431,12 @@ const importResult = ref(null);
 const importing = ref(false);
 const importFile = ref(null);
 const useModal = reactive({ show: false, item: null, amount: 0 });
+
+// Mehrfachauswahl
+const selectMode = ref(false);
+const selectedIds = ref(new Set());
+const showBatchDeleteConfirm = ref(false);
+const batchDeleting = ref(false);
 
 const addForm = reactive({
   name: '',
@@ -451,6 +532,48 @@ async function removeItem(item) {
     showSuccess(`${item.ingredient_name} entfernt`);
   } catch {
     // Fehler wird von useApi angezeigt
+  }
+}
+
+// Alle gefilterten Items (für "Alle auswählen")
+const allFilteredItems = computed(() => {
+  const query = search.value.toLowerCase();
+  return pantryStore.items.filter(i => !query || i.ingredient_name.toLowerCase().includes(query));
+});
+
+// Auswahl-Modus
+function toggleSelectMode() {
+  selectMode.value = !selectMode.value;
+  selectedIds.value = new Set();
+}
+
+function toggleSelect(id) {
+  const s = new Set(selectedIds.value);
+  if (s.has(id)) {
+    s.delete(id);
+  } else {
+    s.add(id);
+  }
+  selectedIds.value = s;
+}
+
+function selectAll() {
+  selectedIds.value = new Set(allFilteredItems.value.map(i => i.id));
+}
+
+async function executeBatchDelete() {
+  batchDeleting.value = true;
+  try {
+    const ids = [...selectedIds.value];
+    const result = await pantryStore.deleteItemsBatch(ids);
+    showSuccess(`${result.deletedCount} Artikel entfernt! 🗑️`);
+    showBatchDeleteConfirm.value = false;
+    selectMode.value = false;
+    selectedIds.value = new Set();
+  } catch {
+    showError('Löschen fehlgeschlagen.');
+  } finally {
+    batchDeleting.value = false;
   }
 }
 
