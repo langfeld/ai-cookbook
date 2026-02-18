@@ -761,4 +761,178 @@ export default async function adminRoutes(fastify) {
       errors: errors.length ? errors : undefined,
     };
   });
+
+  // ============================================
+  // ADMIN VORRATSSCHRANK EXPORT / IMPORT
+  // ============================================
+
+  /**
+   * GET /api/admin/export/pantry
+   * Alle Vorräte aller Benutzer als JSON exportieren
+   * ?user_id=123 — Nur Vorräte eines bestimmten Users
+   */
+  fastify.get('/export/pantry', {
+    schema: {
+      description: 'Alle Vorräte exportieren (Admin)',
+      tags: ['Admin'],
+      security: [{ bearerAuth: [] }],
+      querystring: {
+        type: 'object',
+        properties: {
+          user_id: { type: 'integer' },
+        },
+      },
+    },
+  }, async (request, reply) => {
+    const filterUserId = request.query.user_id;
+
+    let items;
+    if (filterUserId) {
+      items = db.prepare(`
+        SELECT p.*, u.username as owner
+        FROM pantry p JOIN users u ON p.user_id = u.id
+        WHERE p.user_id = ?
+        ORDER BY u.username, p.category, p.ingredient_name
+      `).all(filterUserId);
+    } else {
+      items = db.prepare(`
+        SELECT p.*, u.username as owner
+        FROM pantry p JOIN users u ON p.user_id = u.id
+        ORDER BY u.username, p.category, p.ingredient_name
+      `).all();
+    }
+
+    const exportData = {
+      version: '1.0',
+      exported_at: new Date().toISOString(),
+      source: 'AI Cookbook (Admin-Export)',
+      type: 'pantry',
+      item_count: items.length,
+      items: items.map(i => ({
+        ingredient_name: i.ingredient_name,
+        amount: i.amount,
+        unit: i.unit,
+        category: i.category,
+        expiry_date: i.expiry_date,
+        notes: i.notes,
+        owner: i.owner,
+      })),
+    };
+
+    const suffix = filterUserId ? `-user-${filterUserId}` : '-alle';
+    reply.header('Content-Type', 'application/json');
+    reply.header('Content-Disposition', `attachment; filename="admin-vorrat-export${suffix}-${new Date().toISOString().split('T')[0]}.json"`);
+    return exportData;
+  });
+
+  /**
+   * POST /api/admin/import/pantry
+   * Vorräte aus JSON importieren und einem Benutzer zuweisen (Admin)
+   */
+  fastify.post('/import/pantry', {
+    schema: {
+      description: 'Vorräte importieren und einem Benutzer zuweisen (Admin)',
+      tags: ['Admin'],
+      security: [{ bearerAuth: [] }],
+    },
+  }, async (request, reply) => {
+    let importData;
+    let targetUserId;
+
+    const contentType = request.headers['content-type'] || '';
+
+    if (contentType.includes('multipart')) {
+      const parts = request.parts();
+      for await (const part of parts) {
+        if (part.type === 'file') {
+          const buffer = await part.toBuffer();
+          try {
+            importData = JSON.parse(buffer.toString('utf-8'));
+          } catch {
+            return reply.status(400).send({ error: 'Ungültiges JSON-Format in der Datei.' });
+          }
+        } else if (part.fieldname === 'user_id') {
+          targetUserId = parseInt(part.value, 10);
+        }
+      }
+    } else {
+      importData = request.body?.data || request.body;
+      targetUserId = request.body?.user_id;
+    }
+
+    if (!importData?.items || !Array.isArray(importData.items)) {
+      return reply.status(400).send({ error: 'Ungültiges Export-Format. Erwartet: { items: [...] }' });
+    }
+
+    if (importData.items.length === 0) {
+      return reply.status(400).send({ error: 'Keine Vorräte zum Importieren gefunden.' });
+    }
+
+    if (importData.items.length > 2000) {
+      return reply.status(400).send({ error: 'Maximal 2000 Vorräte pro Admin-Import erlaubt.' });
+    }
+
+    const userId = targetUserId || request.user.id;
+    const targetUser = db.prepare('SELECT id, username FROM users WHERE id = ?').get(userId);
+    if (!targetUser) {
+      return reply.status(404).send({ error: 'Ziel-Benutzer nicht gefunden.' });
+    }
+
+    let imported = 0;
+    let updated = 0;
+    let skipped = 0;
+    const errors = [];
+
+    const findExisting = db.prepare(
+      'SELECT * FROM pantry WHERE user_id = ? AND LOWER(ingredient_name) = LOWER(?)'
+    );
+    const insertItem = db.prepare(
+      'INSERT INTO pantry (user_id, ingredient_name, amount, unit, category, expiry_date, notes) VALUES (?, ?, ?, ?, ?, ?, ?)'
+    );
+    const updateAmount = db.prepare(
+      'UPDATE pantry SET amount = amount + ?, unit = COALESCE(?, unit), category = COALESCE(?, category), expiry_date = COALESCE(?, expiry_date), notes = COALESCE(?, notes), updated_at = CURRENT_TIMESTAMP WHERE id = ?'
+    );
+
+    const transaction = db.transaction(() => {
+      for (const item of importData.items) {
+        try {
+          const name = String(item.ingredient_name || item.name || '').trim();
+          if (!name) { skipped++; continue; }
+
+          const amount = parseFloat(item.amount) || 0;
+          if (amount <= 0) { skipped++; continue; }
+
+          const unit = String(item.unit || 'Stk.').trim();
+          const category = String(item.category || 'Sonstiges').trim();
+          const expiry_date = item.expiry_date || null;
+          const notes = item.notes || null;
+
+          const existing = findExisting.get(userId, name);
+          if (existing) {
+            updateAmount.run(amount, unit, category, expiry_date, notes, existing.id);
+            updated++;
+          } else {
+            insertItem.run(userId, name, amount, unit, category, expiry_date, notes);
+            imported++;
+          }
+        } catch (err) {
+          skipped++;
+          errors.push(`Fehler bei "${item.ingredient_name || '?'}": ${err.message}`);
+        }
+      }
+    });
+
+    transaction();
+
+    logAdminAction(request.user.id, 'Vorräte importiert', `${imported} neu, ${updated} aktualisiert für ${targetUser.username}`);
+
+    return {
+      message: `${imported} neu importiert, ${updated} aktualisiert, ${skipped} übersprungen für "${targetUser.username}".`,
+      imported,
+      updated,
+      skipped,
+      target_user: targetUser.username,
+      errors: errors.length ? errors : undefined,
+    };
+  });
 }

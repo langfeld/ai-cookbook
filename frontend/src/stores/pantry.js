@@ -71,8 +71,17 @@ export const usePantryStore = defineStore('pantry', () => {
     items.value = items.value.filter(i => i.id !== id);
   }
 
+  /** Vorräte importieren (JSON oder CSV) */
+  async function importItems(file) {
+    const formData = new FormData();
+    formData.append('file', file);
+    const data = await api.upload('/pantry/import', formData);
+    await fetchItems();
+    return data;
+  }
+
   return {
     items, categories, expiringCount, loading, groupedItems,
-    fetchItems, addItem, updateItem, useAmount, removeItem,
+    fetchItems, addItem, updateItem, useAmount, removeItem, importItems,
   };
 });

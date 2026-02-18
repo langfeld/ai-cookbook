@@ -17,13 +17,62 @@
           {{ pantryStore.items.length }} Artikel vorrätig
         </p>
       </div>
-      <button
-        @click="showAddModal = true"
-        class="flex items-center gap-2 bg-primary-600 hover:bg-primary-700 px-4 py-2 rounded-xl font-medium text-white text-sm transition-colors"
-      >
-        <Plus class="w-4 h-4" />
-        Vorrat hinzufügen
-      </button>
+      <div class="flex gap-2">
+        <!-- Export-Dropdown -->
+        <div class="relative" ref="exportDropdownRef">
+          <button
+            @click="showExportMenu = !showExportMenu"
+            :disabled="!pantryStore.items.length"
+            class="flex items-center gap-2 bg-white hover:bg-stone-50 dark:bg-stone-800 dark:hover:bg-stone-700 disabled:opacity-40 px-4 py-2 border border-stone-200 dark:border-stone-700 rounded-xl font-medium text-stone-700 dark:text-stone-300 text-sm transition-colors disabled:cursor-not-allowed"
+          >
+            <Download class="w-4 h-4" />
+            Export
+          </button>
+          <div
+            v-if="showExportMenu"
+            class="right-0 z-10 absolute bg-white dark:bg-stone-800 shadow-lg mt-1 border border-stone-200 dark:border-stone-700 rounded-xl w-48 overflow-hidden"
+          >
+            <button
+              @click="exportPantry('csv')"
+              class="flex items-center gap-2 hover:bg-stone-50 dark:hover:bg-stone-700 px-4 py-2.5 w-full text-stone-700 dark:text-stone-300 text-sm text-left"
+            >
+              <FileSpreadsheet class="w-4 h-4 text-green-600" />
+              Als CSV (Excel)
+            </button>
+            <button
+              @click="exportPantry('json')"
+              class="flex items-center gap-2 hover:bg-stone-50 dark:hover:bg-stone-700 px-4 py-2.5 w-full text-stone-700 dark:text-stone-300 text-sm text-left"
+            >
+              <FileJson class="w-4 h-4 text-blue-600" />
+              Als JSON (Backup)
+            </button>
+          </div>
+        </div>
+
+        <!-- Import-Button -->
+        <button
+          @click="$refs.importFileInput.click()"
+          class="flex items-center gap-2 bg-white hover:bg-stone-50 dark:bg-stone-800 dark:hover:bg-stone-700 px-4 py-2 border border-stone-200 dark:border-stone-700 rounded-xl font-medium text-stone-700 dark:text-stone-300 text-sm transition-colors"
+        >
+          <Upload class="w-4 h-4" />
+          Import
+        </button>
+        <input
+          ref="importFileInput"
+          type="file"
+          accept=".json,.csv,application/json,text/csv"
+          class="hidden"
+          @change="handleImportFile"
+        />
+
+        <button
+          @click="showAddModal = true"
+          class="flex items-center gap-2 bg-primary-600 hover:bg-primary-700 px-4 py-2 rounded-xl font-medium text-white text-sm transition-colors"
+        >
+          <Plus class="w-4 h-4" />
+          Vorrat hinzufügen
+        </button>
+      </div>
     </div>
 
     <!-- Ablaufende Artikel Warnung -->
@@ -198,20 +247,91 @@
         </div>
       </div>
     </Teleport>
+
+    <!-- Import-Vorschau-Modal -->
+    <Teleport to="body">
+      <div v-if="importPreview" class="z-50 fixed inset-0 flex justify-center items-center bg-black/50 p-4" @click.self="cancelImport">
+        <div class="flex flex-col space-y-4 bg-white dark:bg-stone-900 p-6 rounded-2xl w-full max-w-lg max-h-[80vh] overflow-hidden animate-slide-up">
+          <h2 class="font-semibold text-stone-800 dark:text-stone-100 text-lg">
+            📥 Import-Vorschau
+          </h2>
+          <p class="text-stone-500 dark:text-stone-400 text-sm">
+            {{ importPreview.items.length }} Artikel gefunden
+            <span v-if="importPreview.source"> · Quelle: {{ importPreview.source }}</span>
+          </p>
+
+          <!-- Vorschau-Liste -->
+          <div class="flex-1 space-y-1 p-3 border border-stone-200 dark:border-stone-700 rounded-lg max-h-60 overflow-y-auto">
+            <div
+              v-for="(item, i) in importPreview.items.slice(0, 30)"
+              :key="i"
+              class="flex justify-between items-center py-1 border-stone-100 dark:border-stone-800 last:border-0 border-b text-sm"
+            >
+              <span class="text-stone-700 dark:text-stone-300 truncate">{{ item.ingredient_name }}</span>
+              <span class="ml-2 text-stone-400 dark:text-stone-500 shrink-0">
+                {{ item.amount }} {{ item.unit }}
+                <span v-if="item.category && item.category !== 'Sonstiges'" class="text-xs"> · {{ item.category }}</span>
+              </span>
+            </div>
+            <p v-if="importPreview.items.length > 30" class="pt-1 text-stone-400 text-xs italic">
+              ... und {{ importPreview.items.length - 30 }} weitere
+            </p>
+          </div>
+
+          <!-- Import-Ergebnis -->
+          <div v-if="importResult" :class="[
+            'p-3 rounded-lg text-sm',
+            importResult.skipped > 0
+              ? 'bg-amber-50 dark:bg-amber-900/20 text-amber-800 dark:text-amber-300'
+              : 'bg-green-50 dark:bg-green-900/20 text-green-800 dark:text-green-300'
+          ]">
+            <p class="font-medium">{{ importResult.message }}</p>
+            <ul v-if="importResult.errors?.length" class="space-y-1 mt-2 text-xs">
+              <li v-for="(err, i) in importResult.errors.slice(0, 5)" :key="i">⚠️ {{ err }}</li>
+            </ul>
+          </div>
+
+          <div class="flex gap-2 pt-2">
+            <button
+              v-if="!importResult"
+              @click="executeImport"
+              :disabled="importing"
+              class="flex flex-1 justify-center items-center gap-2 bg-primary-600 hover:bg-primary-700 disabled:opacity-50 py-2 rounded-lg font-medium text-white text-sm"
+            >
+              <Loader2 v-if="importing" class="w-4 h-4 animate-spin" />
+              <Upload v-else class="w-4 h-4" />
+              {{ importing ? 'Importiere...' : `${importPreview.items.length} Artikel importieren` }}
+            </button>
+            <button
+              @click="cancelImport"
+              class="px-4 py-2 border border-stone-300 dark:border-stone-600 rounded-lg text-stone-700 dark:text-stone-300 text-sm"
+            >
+              {{ importResult ? 'Schließen' : 'Abbrechen' }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted } from 'vue';
+import { ref, reactive, computed, onMounted, onUnmounted } from 'vue';
 import { usePantryStore } from '@/stores/pantry.js';
 import { useNotification } from '@/composables/useNotification.js';
-import { Plus, Minus, Trash2, AlertTriangle } from 'lucide-vue-next';
+import { Plus, Minus, Trash2, AlertTriangle, Download, Upload, FileSpreadsheet, FileJson, Loader2 } from 'lucide-vue-next';
 
 const pantryStore = usePantryStore();
-const { showSuccess } = useNotification();
+const { showSuccess, showError } = useNotification();
 
 const search = ref('');
 const showAddModal = ref(false);
+const showExportMenu = ref(false);
+const exportDropdownRef = ref(null);
+const importPreview = ref(null);
+const importResult = ref(null);
+const importing = ref(false);
+const importFile = ref(null);
 const useModal = reactive({ show: false, item: null, amount: 0 });
 
 const addForm = reactive({
@@ -311,7 +431,191 @@ async function removeItem(item) {
 
 onMounted(() => {
   pantryStore.fetchItems();
+  document.addEventListener('click', closeExportMenu);
 });
+
+onUnmounted(() => {
+  document.removeEventListener('click', closeExportMenu);
+});
+
+/** Export-Menü schließen bei Klick außerhalb */
+function closeExportMenu(e) {
+  if (exportDropdownRef.value && !exportDropdownRef.value.contains(e.target)) {
+    showExportMenu.value = false;
+  }
+}
+
+// ============================================
+// IMPORT
+// ============================================
+
+/** Datei ausgewählt → Vorschau generieren */
+function handleImportFile(event) {
+  const file = event.target.files[0];
+  event.target.value = ''; // Reset, damit gleiche Datei erneut wählbar
+  if (!file) return;
+
+  if (!file.name.endsWith('.json') && !file.name.endsWith('.csv')) {
+    showError('Bitte eine JSON- oder CSV-Datei auswählen.');
+    return;
+  }
+
+  importFile.value = file;
+  importResult.value = null;
+
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const text = e.target.result;
+      let items;
+
+      if (file.name.endsWith('.json')) {
+        const parsed = JSON.parse(text);
+        items = Array.isArray(parsed) ? parsed : parsed.items;
+      } else {
+        // CSV parsen
+        items = parseCsvImport(text);
+      }
+
+      if (!items?.length) {
+        showError('Keine Artikel in der Datei gefunden.');
+        return;
+      }
+
+      importPreview.value = {
+        items,
+        source: file.name,
+      };
+    } catch {
+      showError('Datei konnte nicht gelesen werden. Bitte Format prüfen.');
+    }
+  };
+  reader.readAsText(file, 'utf-8');
+}
+
+/** CSV-Text für Vorschau parsen */
+function parseCsvImport(text) {
+  const clean = text.replace(/^\uFEFF/, '').trim();
+  const lines = clean.split(/\r?\n/).filter(l => l.trim());
+  if (lines.length < 2) return null;
+
+  const delimiter = lines[0].includes(';') ? ';' : ',';
+  const headers = lines[0].split(delimiter).map(h => h.replace(/^"|"$/g, '').trim().toLowerCase());
+
+  const nameIdx = headers.findIndex(h => ['zutat', 'ingredient_name', 'name', 'artikel'].includes(h));
+  const amountIdx = headers.findIndex(h => ['menge', 'amount', 'anzahl'].includes(h));
+  const unitIdx = headers.findIndex(h => ['einheit', 'unit'].includes(h));
+  const catIdx = headers.findIndex(h => ['kategorie', 'category'].includes(h));
+  const expiryIdx = headers.findIndex(h => ['mhd', 'expiry_date', 'ablaufdatum'].includes(h));
+  const notesIdx = headers.findIndex(h => ['notizen', 'notes', 'bemerkung'].includes(h));
+
+  if (nameIdx === -1) return null;
+
+  const items = [];
+  for (let i = 1; i < lines.length; i++) {
+    const cols = lines[i].split(delimiter).map(c => c.replace(/^"|"$/g, '').trim());
+    const name = cols[nameIdx];
+    if (!name) continue;
+    items.push({
+      ingredient_name: name,
+      amount: parseFloat(cols[amountIdx]) || 1,
+      unit: cols[unitIdx] || 'Stk.',
+      category: cols[catIdx] || 'Sonstiges',
+      expiry_date: cols[expiryIdx] || null,
+      notes: cols[notesIdx] || null,
+    });
+  }
+  return items;
+}
+
+/** Import ausführen */
+async function executeImport() {
+  if (!importFile.value) return;
+  importing.value = true;
+  try {
+    const result = await pantryStore.importItems(importFile.value);
+    importResult.value = result;
+    showSuccess(result.message);
+  } catch {
+    // Fehler wird von useApi angezeigt
+  } finally {
+    importing.value = false;
+  }
+}
+
+/** Import abbrechen / schließen */
+function cancelImport() {
+  importPreview.value = null;
+  importResult.value = null;
+  importFile.value = null;
+  importing.value = false;
+}
+
+/** Vorratsschrank exportieren (CSV oder JSON) */
+function exportPantry(format) {
+  showExportMenu.value = false;
+  const items = pantryStore.items;
+  if (!items.length) return;
+
+  const today = new Date().toISOString().slice(0, 10);
+  let content, mimeType, extension;
+
+  if (format === 'csv') {
+    // CSV mit Semikolon (deutscher Excel-Standard), BOM für korrekte Umlaute
+    const header = 'Zutat;Menge;Einheit;Kategorie;MHD;Notizen';
+    const rows = items.map(i => [
+      csvEscape(i.ingredient_name),
+      i.amount ?? '',
+      csvEscape(i.unit || ''),
+      csvEscape(i.category || 'Sonstiges'),
+      i.expiry_date || '',
+      csvEscape(i.notes || ''),
+    ].join(';'));
+    content = '\uFEFF' + [header, ...rows].join('\r\n');
+    mimeType = 'text/csv;charset=utf-8';
+    extension = 'csv';
+  } else {
+    // JSON (schönes Format für Backup/Import)
+    const exportData = {
+      exportedAt: new Date().toISOString(),
+      itemCount: items.length,
+      items: items.map(i => ({
+        ingredient_name: i.ingredient_name,
+        amount: i.amount,
+        unit: i.unit,
+        category: i.category || 'Sonstiges',
+        expiry_date: i.expiry_date || null,
+        notes: i.notes || null,
+      })),
+    };
+    content = JSON.stringify(exportData, null, 2);
+    mimeType = 'application/json;charset=utf-8';
+    extension = 'json';
+  }
+
+  // Download auslösen
+  const blob = new Blob([content], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `vorratsschrank-${today}.${extension}`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+
+  showSuccess(`Vorratsschrank als ${extension.toUpperCase()} exportiert (${items.length} Artikel)`);
+}
+
+/** CSV-Feld escapen (Semikolons, Anführungszeichen, Zeilenumbrüche) */
+function csvEscape(value) {
+  if (!value) return '';
+  const str = String(value);
+  if (str.includes(';') || str.includes('"') || str.includes('\n')) {
+    return '"' + str.replace(/"/g, '""') + '"';
+  }
+  return str;
+}
 </script>
 
 <style scoped>

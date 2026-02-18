@@ -8,6 +8,78 @@
 
 import db from '../config/database.js';
 
+/**
+ * CSV- oder JSON-Import-Daten parsen
+ */
+function parseImportData(text, filename = '') {
+  // BOM entfernen
+  const clean = text.replace(/^\uFEFF/, '').trim();
+
+  // JSON probieren
+  if (clean.startsWith('{') || clean.startsWith('[')) {
+    try {
+      const parsed = JSON.parse(clean);
+      if (Array.isArray(parsed)) return parsed;
+      if (parsed.items && Array.isArray(parsed.items)) return parsed.items;
+      return null;
+    } catch { /* kein JSON */ }
+  }
+
+  // CSV parsen (Semikolon oder Komma)
+  const lines = clean.split(/\r?\n/).filter(l => l.trim());
+  if (lines.length < 2) return null;
+
+  const delimiter = lines[0].includes(';') ? ';' : ',';
+  const headers = lines[0].split(delimiter).map(h => h.replace(/^"|"$/g, '').trim().toLowerCase());
+
+  // Header-Mapping
+  const nameIdx = headers.findIndex(h => ['zutat', 'ingredient_name', 'name', 'artikel'].includes(h));
+  const amountIdx = headers.findIndex(h => ['menge', 'amount', 'anzahl'].includes(h));
+  const unitIdx = headers.findIndex(h => ['einheit', 'unit'].includes(h));
+  const catIdx = headers.findIndex(h => ['kategorie', 'category'].includes(h));
+  const expiryIdx = headers.findIndex(h => ['mhd', 'expiry_date', 'ablaufdatum', 'haltbar'].includes(h));
+  const notesIdx = headers.findIndex(h => ['notizen', 'notes', 'bemerkung'].includes(h));
+
+  if (nameIdx === -1) return null;
+
+  const items = [];
+  for (let i = 1; i < lines.length; i++) {
+    const cols = parseCsvLine(lines[i], delimiter);
+    const name = cols[nameIdx]?.trim();
+    if (!name) continue;
+    items.push({
+      ingredient_name: name,
+      amount: parseFloat(cols[amountIdx]) || 1,
+      unit: cols[unitIdx]?.trim() || 'Stk.',
+      category: cols[catIdx]?.trim() || 'Sonstiges',
+      expiry_date: cols[expiryIdx]?.trim() || null,
+      notes: cols[notesIdx]?.trim() || null,
+    });
+  }
+  return items;
+}
+
+/** CSV-Zeile parsen (berücksichtigt Anführungszeichen) */
+function parseCsvLine(line, delimiter = ';') {
+  const result = [];
+  let current = '';
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (inQuotes) {
+      if (ch === '"' && line[i + 1] === '"') { current += '"'; i++; }
+      else if (ch === '"') { inQuotes = false; }
+      else { current += ch; }
+    } else {
+      if (ch === '"') { inQuotes = true; }
+      else if (ch === delimiter) { result.push(current); current = ''; }
+      else { current += ch; }
+    }
+  }
+  result.push(current);
+  return result;
+}
+
 export default async function pantryRoutes(fastify) {
   fastify.addHook('onRequest', fastify.authenticate);
 
@@ -152,6 +224,105 @@ export default async function pantryRoutes(fastify) {
 
     if (result.changes === 0) return reply.status(404).send({ error: 'Vorrat nicht gefunden' });
     return { message: 'Vorrat entfernt' };
+  });
+
+  /**
+   * POST /api/pantry/import
+   * Vorräte aus JSON oder CSV importieren
+   */
+  fastify.post('/import', {
+    schema: {
+      description: 'Vorräte importieren (JSON oder CSV)',
+      tags: ['Vorratsschrank'],
+      security: [{ bearerAuth: [] }],
+    },
+  }, async (request, reply) => {
+    const userId = request.user.id;
+    let items;
+
+    // JSON-Body oder Multipart akzeptieren
+    const contentType = request.headers['content-type'] || '';
+
+    if (contentType.includes('multipart')) {
+      const parts = request.parts();
+      for await (const part of parts) {
+        if (part.type === 'file') {
+          const buffer = await part.toBuffer();
+          const text = buffer.toString('utf-8');
+          items = parseImportData(text, part.filename);
+        }
+      }
+    } else {
+      // Direkt JSON-Body
+      const body = request.body;
+      if (body?.items && Array.isArray(body.items)) {
+        items = body.items;
+      } else {
+        return reply.status(400).send({ error: 'Ungültiges Format. Erwartet: { items: [...] }' });
+      }
+    }
+
+    if (!items || !Array.isArray(items) || items.length === 0) {
+      return reply.status(400).send({ error: 'Keine Artikel zum Importieren gefunden.' });
+    }
+
+    if (items.length > 1000) {
+      return reply.status(400).send({ error: 'Maximal 1000 Artikel pro Import erlaubt.' });
+    }
+
+    let imported = 0;
+    let updated = 0;
+    let skipped = 0;
+    const errors = [];
+
+    const findExisting = db.prepare(
+      'SELECT * FROM pantry WHERE user_id = ? AND LOWER(ingredient_name) = LOWER(?)'
+    );
+    const insertItem = db.prepare(
+      'INSERT INTO pantry (user_id, ingredient_name, amount, unit, category, expiry_date, notes) VALUES (?, ?, ?, ?, ?, ?, ?)'
+    );
+    const updateAmount = db.prepare(
+      'UPDATE pantry SET amount = amount + ?, unit = COALESCE(?, unit), category = COALESCE(?, category), expiry_date = COALESCE(?, expiry_date), notes = COALESCE(?, notes), updated_at = CURRENT_TIMESTAMP WHERE id = ?'
+    );
+
+    const transaction = db.transaction(() => {
+      for (const item of items) {
+        try {
+          const name = String(item.ingredient_name || item.name || '').trim();
+          if (!name) { skipped++; continue; }
+
+          const amount = parseFloat(item.amount) || 0;
+          if (amount <= 0) { skipped++; errors.push(`Übersprungen: "${name}" (ungültige Menge)`); continue; }
+
+          const unit = String(item.unit || 'Stk.').trim();
+          const category = String(item.category || 'Sonstiges').trim();
+          const expiry_date = item.expiry_date || null;
+          const notes = item.notes || null;
+
+          const existing = findExisting.get(userId, name);
+          if (existing) {
+            updateAmount.run(amount, unit, category, expiry_date, notes, existing.id);
+            updated++;
+          } else {
+            insertItem.run(userId, name, amount, unit, category, expiry_date, notes);
+            imported++;
+          }
+        } catch (err) {
+          skipped++;
+          errors.push(`Fehler: "${item.ingredient_name || item.name || '?'}": ${err.message}`);
+        }
+      }
+    });
+
+    transaction();
+
+    return {
+      message: `${imported} neu importiert, ${updated} aktualisiert, ${skipped} übersprungen.`,
+      imported,
+      updated,
+      skipped,
+      errors: errors.length ? errors : undefined,
+    };
   });
 
   /**

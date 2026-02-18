@@ -139,6 +139,23 @@
           Export / Import öffnen
         </button>
       </div>
+
+      <!-- Vorratsschrank Export / Import -->
+      <div class="bg-white dark:bg-stone-800 mt-4 sm:mt-6 p-4 sm:p-5 border border-stone-200 dark:border-stone-700 rounded-xl">
+        <h2 class="mb-4 font-display font-semibold text-stone-800 dark:text-stone-100 text-lg">
+          🗄️ Vorratsschrank Export / Import
+        </h2>
+        <p class="mb-4 text-stone-500 dark:text-stone-400 text-sm">
+          Exportiere alle Vorräte aller Benutzer als JSON-Backup oder importiere Vorräte aus einer Export-Datei.
+        </p>
+        <button
+          @click="showPantryExportImport = true"
+          class="flex items-center gap-2 bg-primary-600 hover:bg-primary-700 px-4 py-2.5 rounded-lg font-medium text-white text-sm transition-colors"
+        >
+          <ArrowDownUp class="w-4 h-4" />
+          Export / Import öffnen
+        </button>
+      </div>
     </template>
 
     <!-- Export/Import Modal -->
@@ -149,6 +166,14 @@
       @close="showExportImport = false"
       @imported="handleImported"
     />
+
+    <!-- Pantry Export/Import Modal -->
+    <PantryImportExportModal
+      v-if="showPantryExportImport"
+      :users="adminUsers"
+      @close="showPantryExportImport = false"
+      @imported="handlePantryImported"
+    />
   </div>
 </template>
 
@@ -156,6 +181,7 @@
 import { ref, computed, onMounted } from 'vue';
 import { useApi } from '@/composables/useApi.js';
 import RecipeImportExportModal from '@/components/recipes/RecipeImportExportModal.vue';
+import PantryImportExportModal from '@/components/pantry/PantryImportExportModal.vue';
 import {
   Users,
   BookOpen,
@@ -173,6 +199,7 @@ const loading = ref(true);
 const stats = ref(null);
 const logs = ref([]);
 const showExportImport = ref(false);
+const showPantryExportImport = ref(false);
 const adminUsers = ref([]);
 
 const statCards = computed(() => {
@@ -211,7 +238,10 @@ function logDotColor(action) {
 
 function handleImported(data) {
   showExportImport.value = false;
-  // Success-Notification wird bereits im Modal angezeigt
+}
+
+function handlePantryImported(data) {
+  showPantryExportImport.value = false;
 }
 
 onMounted(async () => {
