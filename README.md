@@ -1,6 +1,6 @@
 # AI Cookbook 🍳🤖
 
-Eine KI-gestützte Rezeptverwaltung mit intelligentem Wochenplaner (Score-Algorithmus + optionales KI-Reasoning), Einkaufsliste und REWE-Integration.
+Eine KI-gestützte Rezeptverwaltung mit intelligentem Wochenplaner (Score-Algorithmus + optionales KI-Reasoning), Einkaufsliste mit REWE-Integration, Vorratsschrank und umfangreichem Admin-Bereich.
 
 ![Vue 3](https://img.shields.io/badge/Vue-3.5-4FC08D?logo=vuedotjs&logoColor=white)
 ![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-4-06B6D4?logo=tailwindcss&logoColor=white)
@@ -18,6 +18,7 @@ Eine KI-gestützte Rezeptverwaltung mit intelligentem Wochenplaner (Score-Algori
 - **Export/Import** — Rezepte als JSON exportieren und importieren (inkl. optionaler Bildeinbettung als Base64). Ideal für Backups, Migration oder zum Teilen
 - **Bildzuschnitt** — Integrierter Cropper mit Seitenverhältnissen (4:3, 1:1, 16:9, Frei) und Drehen
 - **Kategorien** — Frei anlegbare Kategorien mit Icons und Farben
+- **Zutaten-Icons** — Emoji-Zuordnungen für Zutaten (z. B. 🍅 Tomate, 🧄 Knoblauch). Über Admin-Bereich verwaltbar mit Emoji-Picker
 - **Farbige Zutatenerkennung** — Zutaten werden in Kochschritten farblich hervorgehoben (Fleisch 🔴, Gemüse 🟢, Milch 🔵, Gewürze 🟡)
 - **Portionsrechner** — Zutatenmengen dynamisch umrechnen
 - **Kochhistorie** — Protokoll, wann welches Rezept zuletzt gekocht wurde
@@ -30,17 +31,31 @@ Eine KI-gestützte Rezeptverwaltung mit intelligentem Wochenplaner (Score-Algori
 - **Horizontal scrollbares 7-Tage-Raster** — Auch auf Mobile voll nutzbar
 
 ### 🛒 Einkaufsliste
-- **Automatisch generiert** — Aus dem Wochenplan, gruppiert nach Abteilungen
-- **Vorratsabgleich** — Vorhandene Vorräte werden abgezogen
-- **REWE-Integration** — Produktzuordnung und Preisanzeige
+- **Automatisch generiert** — Aus dem Wochenplan, mit intelligenter Duplikat-Konsolidierung und Einheiten-Normalisierung
+- **Vorratsabgleich** — Vorhandene Vorräte werden automatisch abgezogen (mit Anzeige, was abgezogen wurde)
+- **Gruppierung nach Abteilungen** — Items werden nach Supermarkt-Abteilungen sortiert (Obst & Gemüse, Milchprodukte, Fleisch & Fisch, etc.)
+- **Manuelles Hinzufügen/Löschen** — Eigene Artikel ergänzen oder entfernen
+- **In Vorratsschrank verschieben** — Einzelne Artikel direkt vom Einkaufszettel in den Vorratsschrank übertragen
+- **Rezept-Verknüpfung** — Zu jedem Artikel sehen, aus welchem Rezept er stammt (mit Thumbnail, ein-/ausblendbar)
 - **Fortschrittsbalken** — Visueller Einkaufsfortschritt
-- **Einkauf abschließen** → Gekaufte Artikel landen im Vorratsschrank
+- **Einkauf abschließen** → Abgehakte Artikel landen automatisch im Vorratsschrank
 
-### 🏪 Vorratsschrank
+### 🏪 REWE-Integration
+- **Automatisches Produkt-Matching** — Alle Zutaten werden per SSE-Stream mit Live-Fortschrittsanzeige REWE-Produkten zugeordnet
+- **Relevanz-Scoring** — Intelligenter Algorithmus mit Compound-Wort-Erkennung (z. B. „Knoblauch" in „Knoblauchzehe"), Flavor-Filter (Saft, Bonbon, Duschgel etc.) und Preis-Sortierung
+- **Produkt-Picker** — Alternatives REWE-Produkt suchen und auswählen (mit Suchfeld, Relevanz-Badge, Preis)
+- **Produkt-Präferenzen** — Manuell gewählte Produkte werden gespeichert und beim nächsten Matching automatisch bevorzugt (mit Preisaktualität)
+- **Preisübersicht** — Geschätzte Gesamtkosten, Einzelpreise pro Artikel
+- **REWE-Bestell-Panel** — Alle zugeordneten Produkte auf einen Blick, mit Link zum REWE-Onlineshop
+- **Marktsuche** — REWE-Markt per PLZ finden, konfigurierbar über Admin-Einstellungen
+
+### 🗄️ Vorratsschrank
 - **Kategorie-Gruppierung** — Übersichtlich nach Lebensmittelgruppen
-- **Ablaufdaten** — MHD-Tracking mit Warnungen bei bald ablaufenden Artikeln
+- **Ablaufdaten** — MHD-Tracking mit Warnungen bei bald ablaufenden Artikeln (Badge in der Navigation)
 - **Verbrauchsfunktion** — Teilmengen entnehmen
-- **Automatischer Nachschub** — Überschüsse aus Einkäufen werden erfasst
+- **Automatischer Nachschub** — Überschüsse aus Einkäufen und verschobene Artikel werden erfasst
+- **Export** — Vorräte als CSV oder JSON exportieren
+- **Import** — Vorräte aus CSV oder JSON importieren (mit Dateivorschau, Zusammenführung bestehender Einträge)
 
 ### 🎨 Design & UX
 - **Dark Mode / Light Mode** — Umschaltbar, klassenbasiert
@@ -52,9 +67,11 @@ Eine KI-gestützte Rezeptverwaltung mit intelligentem Wochenplaner (Score-Algori
 ### 🛡️ Admin-Bereich
 - **Dashboard** — Systemstatistiken (Benutzer, Rezepte, KI-Imports, Speicherverbrauch), beliebteste Rezepte, Admin-Aktivitätslog
 - **Benutzerverwaltung** — Alle Benutzer anzeigen/suchen, Rollen ändern (Admin/User), Konten sperren/entsperren, Passwort zurücksetzen, Benutzer löschen
-- **Systemeinstellungen** — Registrierung aktivieren/deaktivieren, Wartungsmodus, KI-Anbieter wählen, Upload-Größe konfigurieren
+- **Systemeinstellungen** — Registrierung aktivieren/deaktivieren, Wartungsmodus, KI-Anbieter wählen, Upload-Größe konfigurieren, REWE-Markt-ID/PLZ
+- **Zutaten-Icons** — Keyword→Emoji-Mappings verwalten (Hinzufügen, Bearbeiten, Löschen), integrierter Emoji-Picker, Tabs für Mappings/verwendete/fehlende Zutaten
 - **Datei-Bereinigung** — Verwaiste Upload-Dateien automatisch erkennen und entfernen
-- **Admin Export/Import** — Alle Rezepte (oder pro Benutzer) als JSON exportieren/importieren, mit Benutzer-Zuweisung beim Import
+- **Rezept Export/Import** — Alle Rezepte (oder pro Benutzer) als JSON exportieren/importieren, mit Benutzer-Zuweisung beim Import
+- **Vorratsschrank Export/Import** — Vorräte aller Benutzer exportieren (oder nach Benutzer filtern), importieren mit Zielbenutzer-Auswahl
 - **Aktivitätslog** — Alle Admin-Aktionen werden protokolliert (Wer hat was wann gemacht?)
 
 ---
@@ -70,7 +87,7 @@ Eine KI-gestützte Rezeptverwaltung mit intelligentem Wochenplaner (Score-Algori
 | **Backend** | Fastify + Node.js 22 | 5.2 / 22.x |
 | **Datenbank** | SQLite (better-sqlite3, WAL-Modus) | 11.7 |
 | **Bildverarbeitung** | Sharp (Resize, WebP-Konvertierung) | 0.33 |
-| **KI-Provider** | Kimi K2.5 (Moonshot AI) — austauschbar | — |
+| **KI-Provider** | Kimi K2.5 / OpenAI / Anthropic / Ollama — austauschbar | — |
 | **Auth** | JWT (@fastify/jwt + bcryptjs) | — |
 | **Container** | Docker (Single-Container) + ghcr.io | — |
 
@@ -218,18 +235,26 @@ ai-cookbook/
 │       │   ├── recipes.js      # CRUD + Foto-Import + Text-Import + Export/Import
 │       │   ├── categories.js   # Kategorien CRUD
 │       │   ├── mealplan.js     # Wochenplaner (Algorithmus + optionales KI-Reasoning)
-│       │   ├── shopping.js     # Einkaufsliste + REWE-Matching
-│       │   ├── pantry.js       # Vorratsschrank CRUD + Verbrauch
-│       │   ├── rewe.js         # REWE Produktsuche
-│       │   └── admin.js        # Admin: Stats, Benutzer, Settings, Logs, Export/Import
+│       │   ├── shopping.js     # Einkaufsliste: Generierung, Items, REWE-Zuordnung, Pantry-Transfer
+│       │   ├── pantry.js       # Vorratsschrank CRUD + Verbrauch + CSV/JSON-Import
+│       │   ├── rewe.js         # REWE: Produktsuche, SSE-Matching, Marktsuche, Präferenzen
+│       │   ├── ingredient-icons.js # Zutaten-Emoji-Mappings (CRUD)
+│       │   └── admin.js        # Admin: Stats, Benutzer, Settings, Logs, Export/Import (Rezepte + Pantry)
 │       ├── services/
 │       │   ├── ai/
 │       │   │   ├── base.js     # BaseAIProvider (Chat, JSON-Parse, Bildanalyse)
 │       │   │   ├── kimi.js     # Kimi K2.5 Provider (api.moonshot.ai)
+│       │   │   ├── openai.js   # OpenAI Provider (GPT-4o etc.)
+│       │   │   ├── anthropic.js # Anthropic Provider (Claude)
+│       │   │   ├── ollama.js   # Ollama Provider (lokal)
 │       │   │   └── provider.js # Provider-Factory
 │       │   ├── meal-planner.js # Wochenplan-Algorithmus (Score-basiert + opt. KI-Reasoning)
-│       │   └── recipe-parser.js # Multi-Bild-Rezeptanalyse
+│       │   ├── recipe-parser.js # Multi-Bild-Rezeptanalyse
+│       │   ├── rewe-api.js     # REWE API-Client (Produktsuche, Marktsuche, URL-Builder)
+│       │   └── shopping-list.js # Einkaufslisten-Service (Generierung, Konsolidierung, Vorratsabgleich)
 │       └── utils/
+│           ├── helpers.js      # normalizeUnit, Konvertierungsfunktionen
+│           └── errors.js       # Fehlerbehandlung
 │
 └── frontend/
     ├── package.json
@@ -240,18 +265,19 @@ ai-cookbook/
         ├── assets/styles/
         │   └── main.css        # Tailwind 4 (@theme, @custom-variant dark)
         ├── components/
-        │   ├── layout/         # Sidebar, Header, ThemeToggle, Toast
+        │   ├── layout/         # AppSidebar, AppHeader, ThemeToggle, NotificationToast
         │   ├── ui/             # ConfirmDialog, ImageCropModal
-        │   ├── recipes/        # RecipeCard, ImportModal, ImportExportModal
+        │   ├── recipes/        # RecipeCard, RecipeImportModal, RecipeImportExportModal
+        │   ├── pantry/         # PantryImportExportModal
         │   └── dashboard/      # StatCard
         ├── views/
         │   ├── LoginView.vue
         │   ├── DashboardView.vue
         │   ├── RecipesView.vue / RecipeDetailView.vue / RecipeFormView.vue
         │   ├── MealPlanView.vue / ShoppingView.vue / PantryView.vue
-        │   └── admin/          # AdminDashboard, AdminUsers, AdminSettings
+        │   └── admin/          # AdminDashboard, AdminUsers, AdminSettings, AdminIngredientIcons
         ├── stores/             # Pinia (auth, recipes, mealplan, shopping, pantry)
-        ├── composables/        # useApi, useTheme, useNotification
+        ├── composables/        # useApi, useTheme, useNotification, useIngredientIcons
         └── router/index.js
 ```
 
@@ -304,28 +330,43 @@ ai-cookbook/
 ### Einkaufsliste (`/api/shopping`)
 | Methode | Pfad | Beschreibung |
 |---------|------|-------------|
-| `POST` | `/generate` | Liste aus Wochenplan generieren |
-| `GET` | `/list` | Aktive Einkaufsliste |
-| `GET` | `/lists` | Alle Listen |
-| `PUT` | `/item/:id/check` | Artikel abhaken |
-| `PUT` | `/item/:id/rewe` | REWE-Produkt zuordnen |
-| `POST` | `/:listId/complete` | Einkauf abschließen → Vorratsschrank |
+| `POST` | `/generate` | Liste aus Wochenplan generieren (mit Duplikat-Konsolidierung + Vorratsabgleich) |
+| `GET` | `/list` | Aktive Einkaufsliste (inkl. Rezept-Details + REWE-Produkte) |
+| `GET` | `/lists` | Alle Listen (auch vergangene) |
+| `PUT` | `/item/:id/check` | Artikel abhaken/entabhaken |
+| `POST` | `/item/add` | Artikel manuell hinzufügen |
+| `DELETE` | `/item/:id` | Artikel löschen |
+| `PUT` | `/item/:id/rewe-product` | REWE-Produkt zuordnen (speichert auch Präferenz) |
+| `POST` | `/item/:id/to-pantry` | Artikel in den Vorratsschrank verschieben |
+| `POST` | `/:listId/complete` | Einkauf abschließen → abgehakte Artikel in Vorratsschrank |
 
 ### Vorratsschrank (`/api/pantry`)
 | Methode | Pfad | Beschreibung |
 |---------|------|-------------|
-| `GET` | `/` | Alle Vorräte |
-| `POST` | `/` | Vorrat hinzufügen |
+| `GET` | `/` | Alle Vorräte (Filter: `?category=X`, `?expiring=true`) |
+| `POST` | `/` | Vorrat hinzufügen (bei Duplikat: Menge addieren) |
 | `PUT` | `/:id` | Vorrat bearbeiten |
 | `DELETE` | `/:id` | Vorrat entfernen |
 | `POST` | `/:id/use` | Menge verbrauchen |
+| `POST` | `/import` | Vorräte aus CSV/JSON importieren (Multipart-Upload) |
 
 ### REWE (`/api/rewe`)
 | Methode | Pfad | Beschreibung |
 |---------|------|-------------|
-| `GET` | `/search` | Produktsuche |
-| `POST` | `/match-ingredient` | Einzelne Zutat matchen |
-| `POST` | `/match-shopping-list` | Gesamte Liste matchen |
+| `GET` | `/search-ingredient` | Produktsuche mit Relevanz-Scoring (`?q=Butter&limit=8`) |
+| `POST` | `/match-shopping-list` | Gesamte Liste matchen (SSE-Stream mit Live-Fortschritt) |
+| `GET` | `/markets` | Marktsuche nach PLZ (`?zipCode=12345`) |
+| `GET` | `/preferences` | Gespeicherte Produkt-Präferenzen abrufen |
+| `DELETE` | `/preferences/:id` | Einzelne Präferenz löschen |
+| `DELETE` | `/preferences` | Alle Präferenzen löschen |
+
+### Zutaten-Icons (`/api/ingredient-icons`)
+| Methode | Pfad | Beschreibung |
+|---------|------|-------------|
+| `GET` | `/` | Alle Keyword→Emoji-Mappings |
+| `POST` | `/` | Neues Mapping erstellen 🔒 |
+| `PUT` | `/:id` | Mapping bearbeiten 🔒 |
+| `DELETE` | `/:id` | Mapping löschen 🔒 |
 
 ### Admin (`/api/admin`) 🔒
 > Alle Routen erfordern `role=admin`.
@@ -337,12 +378,15 @@ ai-cookbook/
 | `PUT` | `/users/:id` | Benutzer-Rolle oder Status ändern |
 | `DELETE` | `/users/:id` | Benutzer mit allen Daten löschen |
 | `POST` | `/users/:id/reset-password` | Passwort zurücksetzen |
+| `GET` | `/categories` | Alle Kategorien mit Nutzungsanzahl |
 | `GET` | `/settings` | Systemeinstellungen abrufen |
 | `PUT` | `/settings` | Einstellungen aktualisieren |
 | `GET` | `/logs` | Admin-Aktivitätslog (paginiert) |
 | `POST` | `/cleanup` | Verwaiste Upload-Dateien entfernen |
-| `GET` | `/export` | Alle Rezepte als JSON exportieren (`?user_id=X`, `?include_images=true`) |
+| `GET` | `/export` | Rezepte als JSON exportieren (`?user_id=X`, `?include_images=true`) |
 | `POST` | `/import` | Rezepte importieren und Benutzer zuweisen (max. 500 pro Import) |
+| `GET` | `/export/pantry` | Vorratsschrank als JSON exportieren (`?user_id=X`) |
+| `POST` | `/import/pantry` | Vorräte importieren und Benutzer zuweisen (CSV/JSON) |
 
 ---
 
@@ -395,6 +439,28 @@ ai-cookbook/
 | Bilder aus Base64 wiederherstellen | ✅ | ✅ |
 | Drag & Drop Upload | ✅ | ✅ |
 | Datei-Vorschau | ✅ | ✅ |
+
+---
+
+## 🗄️ Vorratsschrank Export/Import
+
+### Benutzer
+- **Export** als CSV (Semikolon-getrennt) oder JSON direkt aus dem Vorratsschrank
+- **Import** von CSV oder JSON, bestehende Einträge werden automatisch zusammengeführt (Menge addiert)
+
+### Admin
+- **Export** aller Vorräte als JSON (`?user_id=X` zum Filtern nach Benutzer)
+- **Import** mit Zielbenutzer-Auswahl, Zusammenführung bestehender Einträge
+
+### CSV-Format
+
+```csv
+Zutat;Menge;Einheit;Kategorie;MHD;Notizen
+Mehl;2;kg;Backwaren;2026-12-31;Weizenmehl Type 405
+Milch;1;l;Milchprodukte;2026-02-25;
+```
+
+> Unterstützte Trennzeichen: Semikolon (`;`) und Komma (`,`). BOM wird automatisch entfernt.
 
 ---
 
