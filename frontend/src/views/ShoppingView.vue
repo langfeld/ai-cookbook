@@ -325,15 +325,25 @@
             Bring! verbinden
           </button>
 
-          <!-- Bei REWE bestellen -->
-          <button
-            v-if="shoppingStore.reweLinkedItems.length"
-            @click="showRewePanel = true"
-            class="flex items-center gap-2 bg-red-600 hover:bg-red-700 px-5 py-3 rounded-xl font-medium text-white transition-colors"
-          >
-            <ShoppingCart class="w-4 h-4" />
-            Bei REWE bestellen ({{ shoppingStore.reweLinkedItems.length }})
-          </button>
+          <!-- Bei REWE bestellen (Split-Button) -->
+          <div v-if="shoppingStore.reweLinkedItems.length" class="flex items-stretch">
+            <button
+              @click="handleReweMainAction"
+              :disabled="cartScriptLoading"
+              class="flex items-center gap-2 bg-red-600 hover:bg-red-700 disabled:opacity-50 px-5 py-3 rounded-l-xl font-medium text-white transition-colors"
+            >
+              <Loader2 v-if="cartScriptLoading" class="w-4 h-4 animate-spin" />
+              <ShoppingCart v-else class="w-4 h-4" />
+              Bei REWE bestellen ({{ shoppingStore.reweLinkedItems.length }})
+            </button>
+            <button
+              @click="showReweSettings = true"
+              class="flex items-center bg-red-600 hover:bg-red-700 px-3 border-red-500 border-l rounded-r-xl font-medium text-white transition-colors"
+              title="REWE-Einstellungen"
+            >
+              <Settings class="w-4 h-4" />
+            </button>
+          </div>
           <button
             @click="completePurchase"
             :disabled="checkedCount === 0"
@@ -345,20 +355,116 @@
         </div>
       </div>
 
-      <!-- REWE Bestell-Panel (Overlay) -->
+      <!-- REWE Einstellungen Modal -->
       <Teleport to="body">
         <Transition name="fade">
-          <div v-if="showRewePanel" class="z-50 fixed inset-0 flex justify-center items-end sm:items-center bg-black/50 p-4" @click.self="showRewePanel = false">
-            <div class="flex flex-col bg-white dark:bg-stone-900 shadow-2xl rounded-2xl w-full max-w-lg max-h-[80vh] overflow-hidden">
-              <!-- Panel Header -->
+          <div v-if="showReweSettings" class="z-50 fixed inset-0 flex justify-center items-end sm:items-center bg-black/50 p-4" @click.self="showReweSettings = false">
+            <div class="bg-white dark:bg-stone-900 shadow-2xl rounded-2xl w-full max-w-md overflow-hidden">
+
+              <!-- Header -->
               <div class="flex justify-between items-center px-5 py-4 border-stone-200 dark:border-stone-700 border-b">
                 <div>
-                  <h2 class="font-display font-bold text-stone-800 dark:text-stone-100 text-lg">🏪 Bei REWE bestellen</h2>
+                  <h2 class="font-display font-bold text-stone-800 dark:text-stone-100 text-lg">🏪 REWE-Einstellungen</h2>
+                  <p class="mt-0.5 text-stone-500 dark:text-stone-400 text-xs">Bestell-Methode und Userscript verwalten</p>
+                </div>
+                <button @click="showReweSettings = false" class="hover:bg-stone-100 dark:hover:bg-stone-800 p-1.5 rounded-lg text-stone-400 transition-colors">
+                  <X class="w-5 h-5" />
+                </button>
+              </div>
+
+              <div class="space-y-5 p-5">
+                <!-- Bestell-Methode wählen -->
+                <div>
+                  <label class="block mb-2 font-medium text-stone-700 dark:text-stone-300 text-sm">Bestell-Methode</label>
+                  <div class="space-y-2">
+                    <label
+                      v-for="opt in reweActionOptions"
+                      :key="opt.value"
+                      :class="[
+                        'flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-all',
+                        reweAction === opt.value
+                          ? 'bg-red-50 dark:bg-red-900/20 border-red-300 dark:border-red-700'
+                          : 'bg-stone-50 dark:bg-stone-800 border-stone-200 dark:border-stone-700 hover:border-stone-300 dark:hover:border-stone-600'
+                      ]"
+                    >
+                      <input
+                        type="radio"
+                        :value="opt.value"
+                        v-model="reweAction"
+                        @change="saveReweSettings"
+                        class="mt-0.5 accent-red-600"
+                      />
+                      <div>
+                        <span class="font-medium text-stone-800 dark:text-stone-200 text-sm">{{ opt.icon }} {{ opt.label }}</span>
+                        <p class="mt-0.5 text-stone-500 dark:text-stone-400 text-xs">{{ opt.description }}</p>
+                      </div>
+                    </label>
+                  </div>
+                </div>
+
+                <!-- Vorschau-Option -->
+                <label class="flex items-center gap-3 cursor-pointer select-none">
+                  <div class="relative">
+                    <input type="checkbox" v-model="reweShowPreview" @change="saveReweSettings" class="sr-only peer" />
+                    <div class="bg-stone-200 dark:bg-stone-700 peer-checked:bg-red-500 rounded-full w-10 h-5 transition-colors"></div>
+                    <div class="top-0.5 left-0.5 absolute bg-white rounded-full w-4 h-4 transition-transform peer-checked:translate-x-5"></div>
+                  </div>
+                  <div>
+                    <span class="font-medium text-stone-700 dark:text-stone-300 text-sm">Vorschau anzeigen</span>
+                    <p class="text-stone-400 dark:text-stone-500 text-xs">Produkt-Übersicht vor dem Bestellen zeigen</p>
+                  </div>
+                </label>
+
+                <!-- Trennlinie -->
+                <div class="border-stone-200 dark:border-stone-700 border-t"></div>
+
+                <!-- Userscript-Bereich -->
+                <div>
+                  <h3 class="mb-2 font-medium text-stone-700 dark:text-stone-300 text-sm">🧩 Tampermonkey Userscript</h3>
+                  <p class="mb-3 text-stone-500 dark:text-stone-400 text-xs leading-relaxed">
+                    Einmal installieren – dann legt der 🍳-Button auf rewe.de deine Einkaufsliste direkt in den Warenkorb.
+                  </p>
+                  <div class="flex gap-2">
+                    <button
+                      @click="installUserscript"
+                      class="flex flex-1 justify-center items-center gap-2 bg-purple-600 hover:bg-purple-700 py-2.5 rounded-xl font-medium text-white text-sm transition-colors"
+                    >
+                      <Download class="w-3.5 h-3.5" />
+                      Userscript installieren
+                    </button>
+                    <button
+                      @click="regenerateToken"
+                      class="flex items-center gap-2 bg-stone-200 hover:bg-stone-300 dark:bg-stone-700 dark:hover:bg-stone-600 px-3 py-2.5 rounded-xl font-medium text-stone-700 dark:text-stone-300 text-sm transition-colors"
+                      title="Neues API-Token für das Userscript erzeugen und Userscript neu installieren"
+                    >
+                      <RefreshCw class="w-3.5 h-3.5" />
+                      Token erneuern
+                    </button>
+                  </div>
+                  <p class="mt-2 text-[10px] text-stone-400 dark:text-stone-500 text-center">
+                    ℹ️ Das Userscript enthält deinen Login-Token. Bei Ablauf hier „Token erneuern" klicken.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </Transition>
+      </Teleport>
+
+      <!-- REWE Vorschau-Modal -->
+      <Teleport to="body">
+        <Transition name="fade">
+          <div v-if="showRewePreview" class="z-50 fixed inset-0 flex justify-center items-end sm:items-center bg-black/50 p-4" @click.self="showRewePreview = false">
+            <div class="flex flex-col bg-white dark:bg-stone-900 shadow-2xl rounded-2xl w-full max-w-lg max-h-[80vh] overflow-hidden">
+              <!-- Header -->
+              <div class="flex justify-between items-center px-5 py-4 border-stone-200 dark:border-stone-700 border-b">
+                <div>
+                  <h2 class="font-display font-bold text-stone-800 dark:text-stone-100 text-lg">🏪 REWE-Bestellung</h2>
                   <p class="mt-0.5 text-stone-500 dark:text-stone-400 text-xs">
                     {{ shoppingStore.reweLinkedItems.length }} Produkte · {{ formatPrice(estimatedTotal) }}
                   </p>
                 </div>
-                <button @click="showRewePanel = false" class="hover:bg-stone-100 dark:hover:bg-stone-800 p-1.5 rounded-lg text-stone-400 transition-colors">
+                <button @click="showRewePreview = false" class="hover:bg-stone-100 dark:hover:bg-stone-800 p-1.5 rounded-lg text-stone-400 transition-colors">
                   <X class="w-5 h-5" />
                 </button>
               </div>
@@ -387,44 +493,24 @@
                       class="flex items-center gap-1 bg-red-50 hover:bg-red-100 dark:bg-red-900/30 dark:hover:bg-red-900/50 px-2.5 py-1.5 rounded-lg font-medium text-red-600 dark:text-red-400 text-xs transition-colors"
                     >
                       <ExternalLink class="w-3 h-3" />
-                      Öffnen
                     </a>
                   </div>
                 </div>
               </div>
 
-              <!-- Panel Footer -->
-              <div class="space-y-3 bg-stone-50 dark:bg-stone-800/50 px-5 py-4 border-stone-200 dark:border-stone-700 border-t">
-                <!-- REWE Warenkorb-Script (Trick 17) -->
+              <!-- Footer mit Aktions-Button -->
+              <div class="bg-stone-50 dark:bg-stone-800/50 px-5 py-4 border-stone-200 dark:border-stone-700 border-t">
                 <button
-                  @click="loadCartScript"
+                  @click="executeReweAction"
                   :disabled="cartScriptLoading"
                   class="flex justify-center items-center gap-2 bg-red-600 hover:bg-red-700 disabled:opacity-50 py-3 rounded-xl w-full font-medium text-white transition-colors"
                 >
                   <Loader2 v-if="cartScriptLoading" class="w-4 h-4 animate-spin" />
-                  <Terminal v-else class="w-4 h-4" />
-                  Automatisch in den REWE-Warenkorb legen
+                  <component v-else :is="currentReweActionIcon" class="w-4 h-4" />
+                  {{ currentReweActionLabel }}
                 </button>
-
-                <!-- Userscript-Alternative -->
-                <button
-                  @click="installUserscript"
-                  class="flex justify-center items-center gap-2 bg-purple-600 hover:bg-purple-700 py-2.5 rounded-xl w-full font-medium text-white text-sm transition-colors"
-                >
-                  <Download class="w-3.5 h-3.5" />
-                  🧩 Userscript für Tampermonkey installieren
-                </button>
-
-                <!-- Fallback: Alle Tabs öffnen -->
-                <button
-                  @click="openAllReweProducts"
-                  class="flex justify-center items-center gap-2 bg-stone-200 hover:bg-stone-300 dark:bg-stone-700 dark:hover:bg-stone-600 py-2.5 rounded-xl w-full font-medium text-stone-700 dark:text-stone-300 text-sm transition-colors"
-                >
-                  <ExternalLink class="w-3.5 h-3.5" />
-                  Oder: Alle {{ shoppingStore.reweLinkedItems.length }} Produkte als Tabs öffnen
-                </button>
-                <p class="text-[10px] text-stone-400 dark:text-stone-500 text-center">
-                  Das Script/Userscript legt Produkte automatisch in deinen REWE-Warenkorb. Die Tab-Variante öffnet jedes Produkt einzeln.
+                <p class="mt-2 text-[10px] text-stone-400 dark:text-stone-500 text-center">
+                  Geschätzte Kosten: {{ formatPrice(estimatedTotal) }}
                 </p>
               </div>
             </div>
@@ -733,39 +819,6 @@
                   ⚠️ Experimentelles Feature – funktioniert nur auf www.rewe.de (eingeloggt, Markt gewählt).
                   Das Script nutzt die REWE Basket-API mit Listing-IDs. Keine Garantie.
                 </p>
-
-                <!-- Trennlinie -->
-                <div class="flex items-center gap-3 py-2">
-                  <div class="flex-1 border-stone-200 dark:border-stone-700 border-t"></div>
-                  <span class="text-stone-400 dark:text-stone-500 text-xs">oder</span>
-                  <div class="flex-1 border-stone-200 dark:border-stone-700 border-t"></div>
-                </div>
-
-                <!-- Userscript-Alternative -->
-                <div class="bg-purple-50 dark:bg-purple-900/20 px-4 py-3 border border-purple-200 dark:border-purple-800 rounded-xl text-purple-800 dark:text-purple-300 text-sm">
-                  <p class="mb-1 font-semibold">🧩 Tampermonkey/Greasemonkey Userscript</p>
-                  <p class="text-xs leading-relaxed">
-                    Einmal installieren – kein Script mehr kopieren! Das Userscript zeigt einen 🍳-Button auf <strong>rewe.de</strong>, über den du deine Einkaufsliste direkt in den Warenkorb legen kannst.
-                  </p>
-                  <ol class="space-y-1 mt-2 text-xs list-decimal list-inside">
-                    <li>Installiere <a href="https://www.tampermonkey.net/" target="_blank" rel="noopener" class="font-medium underline hover:no-underline">Tampermonkey</a> (Chrome/Firefox/Edge)</li>
-                    <li>Klicke unten auf "Userscript installieren"</li>
-                    <li>Bestätige die Installation in Tampermonkey</li>
-                    <li>Auf <strong>rewe.de</strong> erscheint der 🍳-Button</li>
-                  </ol>
-                </div>
-
-                <button
-                  @click="installUserscript"
-                  class="flex justify-center items-center gap-2 bg-purple-600 hover:bg-purple-700 py-3 rounded-xl w-full font-medium text-white transition-colors"
-                >
-                  <Download class="w-4 h-4" />
-                  Userscript installieren
-                </button>
-
-                <p class="text-[10px] text-stone-400 dark:text-stone-500 text-center">
-                  ℹ️ Das Userscript enthält deinen Login-Token. Bei Ablauf einfach hier neu installieren.
-                </p>
               </div>
             </div>
           </div>
@@ -794,15 +847,43 @@ import { computed, ref, onMounted, watch } from 'vue';
 import { useShoppingStore } from '@/stores/shopping.js';
 import { useMealPlanStore } from '@/stores/mealplan.js';
 import { useNotification } from '@/composables/useNotification.js';
-import { ListPlus, Check, ShoppingBag, Plus, Package, BookOpen, BookX, ExternalLink, ShoppingCart, X, ArrowRightLeft, Search, Tag, Trash2, Star, Heart, Archive, Send, Link2, Unlink, ClipboardCopy, LogIn, LogOut, ChevronDown, Loader2, Terminal, Download, Settings } from 'lucide-vue-next';
+import { ListPlus, Check, ShoppingBag, Plus, Package, BookOpen, BookX, ExternalLink, ShoppingCart, X, ArrowRightLeft, Search, Tag, Trash2, Star, Heart, Archive, Send, Link2, Unlink, ClipboardCopy, LogIn, LogOut, ChevronDown, Loader2, Terminal, Download, Settings, RefreshCw } from 'lucide-vue-next';
 
 const shoppingStore = useShoppingStore();
 const mealPlanStore = useMealPlanStore();
 const { showSuccess, showError } = useNotification();
 const reweLoading = ref(false);
 
-// REWE-Bestell-Panel
-const showRewePanel = ref(false);
+// REWE-Einstellungen (persistent)
+const showReweSettings = ref(false);
+const showRewePreview = ref(false);
+const reweAction = ref(localStorage.getItem('rewe_action') || 'script');
+const reweShowPreview = ref(localStorage.getItem('rewe_preview') !== 'false');
+
+const reweActionOptions = [
+  { value: 'script', icon: '💻', label: 'Konsolen-Script', description: 'Script kopieren und in der Browser-Konsole auf rewe.de einfügen.' },
+  { value: 'direct', icon: '🧩', label: 'REWE direkt öffnen', description: 'rewe.de öffnen – das Userscript erledigt den Rest.' },
+  { value: 'tabs', icon: '🔗', label: 'Alle Tabs öffnen', description: 'Jedes Produkt einzeln in einem neuen Tab öffnen.' },
+];
+
+function saveReweSettings() {
+  localStorage.setItem('rewe_action', reweAction.value);
+  localStorage.setItem('rewe_preview', reweShowPreview.value);
+}
+
+const currentReweActionLabel = computed(() => {
+  const opt = reweActionOptions.find(o => o.value === reweAction.value);
+  return opt ? `${opt.icon} ${opt.label}` : 'Bestellen';
+});
+
+const currentReweActionIcon = computed(() => {
+  switch (reweAction.value) {
+    case 'script': return Terminal;
+    case 'direct': return ExternalLink;
+    case 'tabs': return ExternalLink;
+    default: return ShoppingCart;
+  }
+});
 
 // Bring! Integration
 const showBringModal = ref(false);
@@ -1024,6 +1105,43 @@ async function completePurchase() {
   }
 }
 
+/** REWE Hauptaktion (Split-Button links) */
+async function handleReweMainAction() {
+  if (reweShowPreview.value) {
+    showRewePreview.value = true;
+  } else {
+    await executeReweAction();
+  }
+}
+
+/** Gewählte REWE-Aktion ausführen */
+async function executeReweAction() {
+  switch (reweAction.value) {
+    case 'script':
+      await loadCartScript();
+      showRewePreview.value = false;
+      break;
+    case 'direct':
+      window.open('https://www.rewe.de/shop/', '_blank', 'noopener');
+      showRewePreview.value = false;
+      showSuccess('REWE geöffnet – klicke dort auf den 🍳-Button!');
+      break;
+    case 'tabs':
+      openAllReweProducts();
+      showRewePreview.value = false;
+      break;
+    default:
+      showRewePreview.value = true;
+  }
+}
+
+/** API-Token erneuern und Userscript neu installieren */
+function regenerateToken() {
+  // Aktueller Token ist noch gültig (User ist eingeloggt) → Userscript einfach neu installieren
+  installUserscript();
+  showSuccess('Userscript mit aktuellem Token wird neu installiert.');
+}
+
 /** Alle REWE-Produkte in neuen Tabs öffnen */
 function openAllReweProducts() {
   const items = shoppingStore.reweLinkedItems;
@@ -1034,7 +1152,6 @@ function openAllReweProducts() {
       window.open(item.rewe_product.url, '_blank', 'noopener');
     }, index * 300);
   });
-  showRewePanel.value = false;
   showSuccess(`${items.length} REWE-Produktseiten geöffnet! 🛒`);
 }
 
@@ -1175,7 +1292,6 @@ async function loadCartScript() {
     }
     cartScript.value = data.script;
     showCartScript.value = true;
-    showRewePanel.value = false;
   } catch {
     showError('Script konnte nicht generiert werden.');
   } finally {
