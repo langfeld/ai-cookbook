@@ -262,11 +262,18 @@
                 </button>
               </div>
 
-              <!-- Menge + Löschen -->
+              <!-- Menge + Aktionen -->
               <div class="flex items-center gap-1.5 shrink-0">
                 <span class="font-medium tabular-nums text-stone-400 dark:text-stone-500 text-xs">
                   {{ item.amount }} {{ item.unit }}
                 </span>
+                <button
+                  @click.stop="moveToPantry(item)"
+                  class="hover:bg-amber-50 dark:hover:bg-amber-900/30 opacity-0 focus:opacity-100 group-hover:opacity-100 p-1 rounded-md text-stone-300 hover:text-amber-600 dark:hover:text-amber-400 dark:text-stone-600 transition-all"
+                  title="In den Vorratsschrank verschieben"
+                >
+                  <Archive class="w-3.5 h-3.5" />
+                </button>
                 <button
                   @click.stop="deleteItem(item)"
                   class="hover:bg-red-50 dark:hover:bg-red-900/30 opacity-0 focus:opacity-100 group-hover:opacity-100 p-1 rounded-md text-stone-300 hover:text-red-500 dark:hover:text-red-400 dark:text-stone-600 transition-all"
@@ -521,7 +528,7 @@ import { computed, ref, onMounted } from 'vue';
 import { useShoppingStore } from '@/stores/shopping.js';
 import { useMealPlanStore } from '@/stores/mealplan.js';
 import { useNotification } from '@/composables/useNotification.js';
-import { ListPlus, Check, ShoppingBag, Plus, Package, BookOpen, BookX, ExternalLink, ShoppingCart, X, ArrowRightLeft, Search, Tag, Trash2, Star, Heart } from 'lucide-vue-next';
+import { ListPlus, Check, ShoppingBag, Plus, Package, BookOpen, BookX, ExternalLink, ShoppingCart, X, ArrowRightLeft, Search, Tag, Trash2, Star, Heart, Archive } from 'lucide-vue-next';
 
 const shoppingStore = useShoppingStore();
 const mealPlanStore = useMealPlanStore();
@@ -682,6 +689,15 @@ async function deleteItem(item) {
     showSuccess(`${item.ingredient_name} entfernt 🗑️`);
   } catch {
     showError('Artikel konnte nicht gelöscht werden.');
+  }
+}
+
+async function moveToPantry(item) {
+  try {
+    await shoppingStore.moveToPantry(item.id);
+    showSuccess(`${item.ingredient_name} in den Vorratsschrank verschoben! 🗄️`);
+  } catch {
+    showError('Artikel konnte nicht verschoben werden.');
   }
 }
 

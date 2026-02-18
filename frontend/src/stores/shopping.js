@@ -154,6 +154,13 @@ export const useShoppingStore = defineStore('shopping', () => {
     items.value = items.value.filter(i => i.id !== itemId);
   }
 
+  /** Item in den Vorratsschrank verschieben */
+  async function moveToPantry(itemId) {
+    const data = await api.post(`/shopping/item/${itemId}/to-pantry`, {});
+    items.value = items.value.filter(i => i.id !== itemId);
+    return data;
+  }
+
   /** REWE-Produkte für eine Zutat suchen (für Produkt-Picker) */
   async function searchReweProducts(query) {
     return await api.get(`/rewe/search-ingredient?q=${encodeURIComponent(query)}`);
@@ -197,7 +204,7 @@ export const useShoppingStore = defineStore('shopping', () => {
   return {
     currentList, items, activeList, reweMatches, loading, reweProgress,
     openItemsCount, estimatedTotal, reweLinkedItems,
-    generateList, fetchActiveList, toggleItem, matchWithRewe, completePurchase, addItem, deleteItem,
+    generateList, fetchActiveList, toggleItem, matchWithRewe, completePurchase, addItem, deleteItem, moveToPantry,
     searchReweProducts, setReweProduct, fetchPreferences, deletePreference, clearAllPreferences,
   };
 });

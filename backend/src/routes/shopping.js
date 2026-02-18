@@ -318,6 +318,62 @@ export default async function shoppingRoutes(fastify) {
   });
 
   /**
+   * POST /api/shopping/item/:id/to-pantry
+   * Einzelnes Item in den Vorratsschrank verschieben
+   */
+  fastify.post('/item/:id/to-pantry', {
+    schema: {
+      description: 'Item in den Vorratsschrank verschieben',
+      tags: ['Einkaufsliste'],
+      security: [{ bearerAuth: [] }],
+    },
+  }, async (request, reply) => {
+    const userId = request.user.id;
+
+    // Item laden und prüfen ob es dem User gehört
+    const item = db.prepare(`
+      SELECT sli.* FROM shopping_list_items sli
+      JOIN shopping_lists sl ON sli.shopping_list_id = sl.id
+      WHERE sli.id = ? AND sl.user_id = ?
+    `).get(request.params.id, userId);
+
+    if (!item) {
+      return reply.status(404).send({ error: 'Artikel nicht gefunden' });
+    }
+
+    const ingredientName = item.ingredient_name.trim();
+    const amount = item.amount || 1;
+    const unit = item.unit || 'Stk.';
+
+    // Prüfen ob Zutat schon im Vorratsschrank existiert → Menge addieren
+    const existing = db.prepare(
+      'SELECT * FROM pantry WHERE user_id = ? AND LOWER(ingredient_name) = LOWER(?)'
+    ).get(userId, ingredientName);
+
+    let pantryId;
+    if (existing) {
+      db.prepare(
+        'UPDATE pantry SET amount = amount + ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
+      ).run(amount, existing.id);
+      pantryId = existing.id;
+    } else {
+      const result = db.prepare(
+        "INSERT INTO pantry (user_id, ingredient_name, amount, unit, category) VALUES (?, ?, ?, ?, 'Sonstiges')"
+      ).run(userId, ingredientName, amount, unit);
+      pantryId = result.lastInsertRowid;
+    }
+
+    // Item von der Einkaufsliste entfernen
+    db.prepare('DELETE FROM shopping_list_items WHERE id = ?').run(item.id);
+
+    return {
+      message: `${ingredientName} in den Vorratsschrank verschoben`,
+      pantryId,
+      updated: !!existing,
+    };
+  });
+
+  /**
    * POST /api/shopping/:listId/complete
    * Einkauf abschließen (Überschüsse in Vorratsschrank)
    */
