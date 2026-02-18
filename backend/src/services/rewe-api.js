@@ -359,7 +359,16 @@ export async function matchShoppingListWithRewe(shoppingItems, onProgress, optio
     if (pref) {
       // Trotzdem API abfragen um aktuellen Preis / Verfügbarkeit zu prüfen
       const { products } = await searchProducts(item.name);
-      const found = products.find(p => p.id === pref.rewe_product_id);
+      let found = products.find(p => p.id === pref.rewe_product_id);
+
+      // Fallback: Wenn Zutatennamen-Suche das Produkt nicht findet (z.B. "Weizenwraps (Dürüm)")
+      // → Suche nach dem gespeicherten Produktnamen (z.B. "Mission Original Wraps 6 Stück")
+      if (!found && pref.rewe_product_name) {
+        console.log(`  🔄 ${item.name}: Nicht per Zutatname gefunden → suche per Produktname "${pref.rewe_product_name}"…`);
+        await new Promise(resolve => setTimeout(resolve, DELAY_BETWEEN));
+        const { products: prodByName } = await searchProducts(pref.rewe_product_name);
+        found = prodByName.find(p => p.id === pref.rewe_product_id);
+      }
 
       if (found) {
         // Gemerktes Produkt ist noch verfügbar → mit aktuellem Preis verwenden
