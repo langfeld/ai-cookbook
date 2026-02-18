@@ -8,7 +8,7 @@
 
 import db from '../config/database.js';
 import { generateWeekPlan, generateReasoning, saveMealPlan, getMealPlan, getSuggestions } from '../services/meal-planner.js';
-import { getWeekStart, scaleIngredient, convertToBaseUnit, normalizeUnit } from '../utils/helpers.js';
+import { getWeekStart, scaleIngredient, convertToBaseUnit, normalizeUnit, unitsCompatible } from '../utils/helpers.js';
 
 export default async function mealplanRoutes(fastify) {
   fastify.addHook('onRequest', fastify.authenticate);
@@ -405,7 +405,7 @@ export default async function mealplanRoutes(fastify) {
 
       if (!scaledAmount || scaledAmount <= 0) continue;
 
-      // In Basiseinheit konvertieren (kg→g, l→ml etc.)
+      // In Basiseinheit konvertieren (kg→g, TL→g, l→ml etc.)
       const normalized = convertToBaseUnit(scaledAmount, ing.unit);
 
       // Passenden Vorrat suchen
@@ -419,18 +419,22 @@ export default async function mealplanRoutes(fastify) {
       // Vorrat in gleiche Einheit konvertieren
       const pantryNormalized = convertToBaseUnit(pantryItem.amount, pantryItem.unit);
 
-      // Nur anpassen wenn gleiche Basiseinheit
-      if (pantryNormalized.unit !== normalized.unit) continue;
+      // Kompatibilität prüfen (g===g, oder g↔ml mit Näherung 1:1)
+      const compat = unitsCompatible(pantryNormalized.unit, normalized.unit);
+      if (!compat.compatible) continue;
+
+      // Zutatenmenge ggf. mit Faktor umrechnen
+      const adjustedAmount = normalized.amount * compat.factor;
 
       if (newState === 1) {
         // Gekocht → Vorrat abziehen
-        const newAmount = Math.max(0, pantryNormalized.amount - normalized.amount);
+        const newAmount = Math.max(0, pantryNormalized.amount - adjustedAmount);
         db.prepare('UPDATE pantry SET amount = ?, unit = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
           .run(newAmount, pantryNormalized.unit, pantryItem.id);
         pantryUpdated++;
       } else {
         // Rückgängig → Vorrat wieder gutschreiben
-        const newAmount = pantryNormalized.amount + normalized.amount;
+        const newAmount = pantryNormalized.amount + adjustedAmount;
         db.prepare('UPDATE pantry SET amount = ?, unit = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
           .run(newAmount, pantryNormalized.unit, pantryItem.id);
         pantryUpdated++;

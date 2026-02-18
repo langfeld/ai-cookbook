@@ -11,7 +11,7 @@
  */
 
 import db from '../config/database.js';
-import { convertToBaseUnit, normalizeUnit, scaleIngredient } from '../utils/helpers.js';
+import { convertToBaseUnit, normalizeUnit, scaleIngredient, unitsCompatible } from '../utils/helpers.js';
 
 /**
  * Generiert eine Einkaufsliste aus einem Wochenplan
@@ -162,9 +162,11 @@ export function generateShoppingList(userId, mealPlanId, options = {}) {
       } else {
         const pantryConverted = convertToBaseUnit(matchingPantry.amount, matchingPantry.unit);
 
-        if (pantryConverted.unit === item.unit) {
-          // Vorrat abziehen
-          const deduction = Math.min(pantryConverted.amount, remainingAmount);
+        // Kompatibilität prüfen (g===g, oder g↔ml mit Näherung 1:1)
+        const compat = unitsCompatible(pantryConverted.unit, item.unit);
+        if (compat.compatible) {
+          const adjustedPantryAmount = pantryConverted.amount * compat.factor;
+          const deduction = Math.min(adjustedPantryAmount, remainingAmount);
           remainingAmount -= deduction;
           pantryDeducted = deduction;
         }

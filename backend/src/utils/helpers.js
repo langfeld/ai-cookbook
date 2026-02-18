@@ -113,14 +113,18 @@ export function normalizeUnit(unit) {
 
 /**
  * Konvertiert Mengen in eine einheitliche Basis für den Vergleich
- * z.B. 1 kg -> 1000 g
+ * z.B. 1 kg → 1000 g, 1 TL → 5 g, 1 EL → 15 g
+ *
+ * TL/EL werden zu Gramm konvertiert (nicht ml), weil sie in Rezepten
+ * überwiegend für trockene Zutaten (Gewürze, Mehl, Zucker) verwendet werden.
+ * Für Flüssigkeiten (Dichte ≈ 1 g/ml) ist der Unterschied vernachlässigbar.
  */
 export function convertToBaseUnit(amount, unit) {
   const conversions = {
     kg: { base: 'g', factor: 1000 },
     l: { base: 'ml', factor: 1000 },
-    EL: { base: 'ml', factor: 15 },
-    TL: { base: 'ml', factor: 5 },
+    EL: { base: 'g', factor: 15 },
+    TL: { base: 'g', factor: 5 },
   };
 
   const normalized = normalizeUnit(unit);
@@ -132,6 +136,20 @@ export function convertToBaseUnit(amount, unit) {
   }
 
   return { amount, unit: normalized };
+}
+
+/**
+ * Prüft ob zwei Einheiten kompatibel sind (direkt oder via g↔ml Näherung)
+ * Gibt den Umrechnungsfaktor zurück (amount_a * factor ≈ amount_b)
+ * @returns {{ compatible: boolean, factor: number }}
+ */
+export function unitsCompatible(unitA, unitB) {
+  if (unitA === unitB) return { compatible: true, factor: 1 };
+  // g ↔ ml: Dichte ≈ 1 g/ml für die meisten Kochzutaten
+  if ((unitA === 'g' && unitB === 'ml') || (unitA === 'ml' && unitB === 'g')) {
+    return { compatible: true, factor: 1 };
+  }
+  return { compatible: false, factor: 0 };
 }
 
 /**
