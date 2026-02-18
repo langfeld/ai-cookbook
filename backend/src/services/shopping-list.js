@@ -19,12 +19,15 @@ import { convertToBaseUnit, normalizeUnit, scaleIngredient } from '../utils/help
  * @param {number} mealPlanId - Wochenplan-ID
  * @returns {object} - Einkaufsliste mit zusammengefassten Zutaten
  */
-export function generateShoppingList(userId, mealPlanId) {
+export function generateShoppingList(userId, mealPlanId, options = {}) {
+  const { excludePastDays = false } = options;
+
   // --- 1. Alle Rezepte und Portionen aus dem Wochenplan laden ---
   const entries = db.prepare(`
     SELECT
       mpe.recipe_id,
       mpe.servings as planned_servings,
+      mpe.day_of_week,
       r.servings as original_servings,
       r.title as recipe_title
     FROM meal_plan_entries mpe
@@ -32,10 +35,32 @@ export function generateShoppingList(userId, mealPlanId) {
     WHERE mpe.meal_plan_id = ?
   `).all(mealPlanId);
 
+  // Vergangene Tage herausfiltern (optional)
+  let filteredEntries = entries;
+  let skippedDays = 0;
+  if (excludePastDays) {
+    const plan = db.prepare('SELECT week_start FROM meal_plans WHERE id = ?').get(mealPlanId);
+    if (plan?.week_start) {
+      const weekStart = new Date(plan.week_start + 'T00:00:00');
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      // Tage seit Wochenbeginn berechnen
+      const diffMs = today.getTime() - weekStart.getTime();
+      const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+      // Nur filtern wenn wir innerhalb der Woche sind (0-6)
+      if (diffDays > 0 && diffDays <= 6) {
+        const beforeCount = filteredEntries.length;
+        filteredEntries = filteredEntries.filter(e => e.day_of_week >= diffDays);
+        skippedDays = diffDays;
+        console.log(`📅 ${beforeCount - filteredEntries.length} Einträge von ${skippedDays} vergangenen Tagen übersprungen`);
+      }
+    }
+  }
+
   // --- 2. Zutaten sammeln und Mengen umrechnen ---
   const ingredientMap = new Map(); // Key: normalisierter Name + Einheit
 
-  for (const entry of entries) {
+  for (const entry of filteredEntries) {
     const ingredients = db.prepare(
       'SELECT * FROM ingredients WHERE recipe_id = ?'
     ).all(entry.recipe_id);
@@ -163,6 +188,7 @@ export function generateShoppingList(userId, mealPlanId) {
     }),
     totalItems: adjustedItems.length,
     itemsToBuy: adjustedItems.filter(i => i.needsToBuy).length,
+    skippedDays,
   };
 }
 

@@ -34,14 +34,45 @@
           <BookX v-else class="w-4 h-4" />
           <span class="hidden sm:inline">{{ showRecipeLinks ? 'Rezepte' : 'Rezepte' }}</span>
         </button>
-        <button
-          @click="generateList"
-          :disabled="shoppingStore.loading"
-          class="flex items-center gap-2 bg-primary-600 hover:bg-primary-700 disabled:opacity-50 px-4 py-2 rounded-xl font-medium text-white text-sm transition-colors"
-        >
-          <ListPlus class="w-4 h-4" />
-          Aus Wochenplan erstellen
-        </button>
+        <!-- Aus Wochenplan erstellen (Split-Button) -->
+        <div class="relative flex items-stretch">
+          <button
+            @click="generateList"
+            :disabled="shoppingStore.loading"
+            class="flex items-center gap-2 bg-primary-600 hover:bg-primary-700 disabled:opacity-50 px-4 py-2 rounded-l-xl font-medium text-white text-sm transition-colors"
+          >
+            <ListPlus class="w-4 h-4" />
+            Aus Wochenplan erstellen
+          </button>
+          <button
+            @click="showGenOptions = !showGenOptions"
+            class="flex items-center bg-primary-600 hover:bg-primary-700 px-2.5 border-primary-500 border-l rounded-r-xl text-white transition-colors"
+            title="Optionen"
+          >
+            <ChevronDown class="w-3.5 h-3.5" :class="showGenOptions ? 'rotate-180' : ''" />
+          </button>
+          <!-- Dropdown -->
+          <Transition name="fade">
+            <div v-if="showGenOptions" class="z-30 fixed inset-0" @click="showGenOptions = false" />
+          </Transition>
+          <Transition name="fade">
+            <div v-if="showGenOptions" class="top-full right-0 z-30 absolute bg-white dark:bg-stone-800 shadow-lg mt-1.5 border border-stone-200 dark:border-stone-700 rounded-xl w-64 overflow-hidden">
+              <div class="p-3">
+                <label class="group flex items-center gap-3 cursor-pointer select-none">
+                  <div class="relative">
+                    <input type="checkbox" v-model="genIncludePastDays" class="sr-only peer" />
+                    <div class="bg-stone-200 dark:bg-stone-600 peer-checked:bg-primary-500 rounded-full w-9 h-5 transition-colors" />
+                    <div class="top-0.5 left-0.5 absolute bg-white shadow-sm rounded-full w-4 h-4 transition-transform peer-checked:translate-x-4" />
+                  </div>
+                  <div>
+                    <p class="font-medium text-stone-700 dark:text-stone-200 text-sm">Vergangene Tage</p>
+                    <p class="text-stone-400 dark:text-stone-500 text-xs">Auch zurückliegende Wochentage einbeziehen</p>
+                  </div>
+                </label>
+              </div>
+            </div>
+          </Transition>
+        </div>
         <button
           v-if="shoppingStore.activeList"
           @click="matchWithRewe"
@@ -866,6 +897,10 @@ const mealPlanStore = useMealPlanStore();
 const { showSuccess, showError } = useNotification();
 const reweLoading = ref(false);
 
+// Einkaufslisten-Generierung Optionen
+const showGenOptions = ref(false);
+const genIncludePastDays = ref(false); // Standardmäßig: vergangene Tage NICHT einbeziehen
+
 // REWE-Einstellungen (persistent)
 const showReweSettings = ref(false);
 const showRewePreview = ref(false);
@@ -1078,6 +1113,7 @@ async function moveToPantry(item) {
 }
 
 async function generateList() {
+  showGenOptions.value = false;
   // Aktuellen Wochenplan laden, falls noch nicht vorhanden
   if (!mealPlanStore.currentPlan) {
     await mealPlanStore.fetchCurrentPlan();
@@ -1088,8 +1124,13 @@ async function generateList() {
     return;
   }
   try {
-    await shoppingStore.generateList(planId);
-    showSuccess('Einkaufsliste erstellt! 📝');
+    const data = await shoppingStore.generateList(planId, {
+      excludePastDays: !genIncludePastDays.value,
+    });
+    const msg = data.skippedDays
+      ? `Einkaufsliste erstellt! 📝 (${data.skippedDays} vergangene Tage übersprungen)`
+      : 'Einkaufsliste erstellt! 📝';
+    showSuccess(msg);
   } catch {
     // Fehler wird von useApi angezeigt
   }

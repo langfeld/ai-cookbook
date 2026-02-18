@@ -27,12 +27,17 @@ export default async function shoppingRoutes(fastify) {
         properties: {
           mealPlanId: { type: 'integer' },
           name: { type: 'string' },
+          excludePastDays: {
+            type: 'boolean',
+            default: true,
+            description: 'Vergangene Tage der Woche von der Einkaufsliste ausschließen',
+          },
         },
       },
     },
   }, async (request, reply) => {
     const userId = request.user.id;
-    const { mealPlanId, name } = request.body;
+    const { mealPlanId, name, excludePastDays = true } = request.body;
 
     // Prüfen ob Plan existiert und dem User gehört
     const plan = db.prepare(
@@ -44,7 +49,7 @@ export default async function shoppingRoutes(fastify) {
     }
 
     // Einkaufsliste generieren (mit Vorratsschrank-Abgleich)
-    const shoppingData = generateShoppingList(userId, mealPlanId);
+    const shoppingData = generateShoppingList(userId, mealPlanId, { excludePastDays });
 
     // Manuelle Items aus der aktuellen aktiven Liste sichern (bevor sie deaktiviert wird)
     const oldList = db.prepare(

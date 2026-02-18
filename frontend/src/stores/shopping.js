@@ -42,10 +42,10 @@ export const useShoppingStore = defineStore('shopping', () => {
   );
 
   /** Einkaufsliste aus Wochenplan generieren */
-  async function generateList(mealPlanId, name) {
+  async function generateList(mealPlanId, { name, excludePastDays = true } = {}) {
     loading.value = true;
     try {
-      const data = await api.post('/shopping/generate', { mealPlanId, name });
+      const data = await api.post('/shopping/generate', { mealPlanId, name, excludePastDays });
       await fetchActiveList();
       return data;
     } finally {
