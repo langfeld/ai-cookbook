@@ -61,6 +61,7 @@ function parseMobileFormat(data) {
       imageUrl: product.imageURL || null,
       parsedAmount: parsedSize.amount,
       parsedUnit: parsedSize.unit,
+      parsedPieceCount: parsedSize.pieceCount || null,
     };
   });
 }
@@ -95,6 +96,7 @@ function parseHalFormat(data) {
       imageUrl,
       parsedAmount: parsedSize.amount,
       parsedUnit: parsedSize.unit,
+      parsedPieceCount: parsedSize.pieceCount || null,
     };
   });
 }
@@ -240,64 +242,78 @@ export function scoreRelevance(productName, ingredientName) {
  * @param {string|null} neededUnit - Einheit (aus Einkaufsliste)
  * @param {number|null} packageAmount - Packungsgröße in Basiseinheit (g/ml)
  * @param {string|null} packageUnit - Einheit der Packungsgröße (g/ml/stk)
+ * @param {number|null} [pieceCount] - Stückzahl pro Packung (aus Produktname: "Duo"=2, "4 Stück"=4)
  * @returns {number} Anzahl benötigter Packungen (mind. 1)
  */
-export function calculatePackagesNeeded(neededAmount, neededUnit, packageAmount, packageUnit) {
+export function calculatePackagesNeeded(neededAmount, neededUnit, packageAmount, packageUnit, pieceCount) {
   // Ohne Mengenangabe → 1 Packung
   if (!neededAmount || neededAmount <= 0) return 1;
 
-  const unitLow = (neededUnit || '').toLowerCase().trim();
-  const pkgUnitLow = (packageUnit || '').toLowerCase().trim();
+  const unitLow = (neededUnit || '').toLowerCase().trim().replace(/\.$/, ''); // "Stk." → "stk"
+  const pkgUnitLow = (packageUnit || '').toLowerCase().trim().replace(/\.$/, '');
 
   // Kücheneinheiten → 1 Packung reicht normalerweise
   const kitchenUnits = [
     'el', 'tl', 'prise', 'prisen', 'etwas', 'messerspitze',
     'zehe', 'zehen', 'scheibe', 'scheiben', 'blatt', 'blätter',
     'bund', 'zweig', 'zweige', 'handvoll', 'spritzer', 'schuss',
-    'nach geschmack', 'n. b.', 'dose', 'dosen', 'glas', 'becher',
+    'nach geschmack', 'n. b', 'dose', 'dosen', 'glas', 'becher',
   ];
   if (kitchenUnits.includes(unitLow)) return 1;
 
-  // Stückeinheiten → Menge IST die Anzahl Packungen
-  const pieceUnits = ['stk', 'stück', 'st', 'stk.', 'packung', 'pkg', 'flasche', 'flaschen', 'tüte', 'tüten', 'beutel', 'tafel', 'tafeln'];
-  if (pieceUnits.includes(unitLow) || (!unitLow && !pkgUnitLow)) {
-    return Math.ceil(neededAmount);
-  }
+  // Stückeinheiten (einkaufsbezogen)
+  const pieceUnits = [
+    'stk', 'stück', 'st', 'packung', 'pkg', 'pck', 'päckchen',
+    'verp', 'verpackung', 'flasche', 'flaschen', 'tüte', 'tüten',
+    'beutel', 'tafel', 'tafeln', 'netz',
+  ];
 
-  // Wenn keine Packungsgröße bekannt → anhand Einheit abschätzen
-  if (!packageAmount) {
-    // Ohne Packungsinfo: Stück-Logik falls kein Gewicht/Volumen
-    if (!['g', 'kg', 'ml', 'l'].includes(unitLow)) {
-      return Math.ceil(neededAmount);
-    }
-    return 1; // Gewicht/Volumen ohne Packungsinfo → 1 Packung als Fallback
-  }
+  const neededIsPiece = pieceUnits.includes(unitLow) || !unitLow;
+  const pkgIsPiece = pieceUnits.includes(pkgUnitLow);
 
-  // Beide in Basiseinheit umrechnen (g / ml)
-  let neededBase = neededAmount;
-  if (unitLow === 'kg') neededBase = neededAmount * 1000;
-  else if (unitLow === 'l') neededBase = neededAmount * 1000;
-
-  // packageAmount ist bereits in Basiseinheit (g/ml) durch parsePackageSize
-  // Prüfen ob die Einheiten kompatibel sind
+  // Gewicht-/Volumeneinheiten
   const weightUnits = ['g', 'kg'];
   const volumeUnits = ['ml', 'l'];
   const neededIsWeight = weightUnits.includes(unitLow);
   const neededIsVolume = volumeUnits.includes(unitLow);
-  const pkgIsWeight = pkgUnitLow === 'g' || pkgUnitLow === 'kg';
-  const pkgIsVolume = pkgUnitLow === 'ml' || pkgUnitLow === 'l';
+  const pkgIsWeight = weightUnits.includes(pkgUnitLow);
+  const pkgIsVolume = volumeUnits.includes(pkgUnitLow);
 
-  if ((neededIsWeight && pkgIsWeight) || (neededIsVolume && pkgIsVolume)) {
-    // Kompatible Einheiten → berechnen
-    return Math.max(1, Math.ceil(neededBase / packageAmount));
+  // ─── Fall 1: Beide Stück-Einheiten ───
+  // z.B. "2 Stk" Brötchen + Packung "4 Stück" → ceil(2/4) = 1
+  if (neededIsPiece && pkgIsPiece && packageAmount > 0) {
+    return Math.max(1, Math.ceil(neededAmount / packageAmount));
   }
 
-  // Stück ohne explizite Einheit (z.B. nur "2 Halloumi")
-  if (!unitLow && packageAmount) {
+  // ─── Fall 2: Stück benötigt, Packung nach Gewicht ───
+  // z.B. "2 Stk" Halloumi + Packung "225g" → jede Packung = 1 Stück → 2
+  // z.B. "2 Verp." Butter + Packung "250g" → 2
+  // ABER: Wenn Stückzahl pro Packung bekannt (z.B. "Duo"=2, "Trio"=3):
+  //       "2 Stk" Zwiebel + "Duo 150g" → pieceCount=2 → ceil(2/2) = 1
+  if (neededIsPiece && (pkgIsWeight || pkgIsVolume)) {
+    if (pieceCount && pieceCount > 0) {
+      return Math.max(1, Math.ceil(neededAmount / pieceCount));
+    }
     return Math.ceil(neededAmount);
   }
 
-  // Inkompatible Einheiten → 1 Packung als Fallback
+  // ─── Fall 3: Stück benötigt, keine Packungsinfo ───
+  if (neededIsPiece && !packageAmount) {
+    return Math.ceil(neededAmount);
+  }
+
+  // ─── Fall 4: Gewicht/Volumen benötigt + Packungsgröße bekannt ───
+  if (packageAmount > 0) {
+    let neededBase = neededAmount;
+    if (unitLow === 'kg') neededBase = neededAmount * 1000;
+    else if (unitLow === 'l') neededBase = neededAmount * 1000;
+
+    if ((neededIsWeight && pkgIsWeight) || (neededIsVolume && pkgIsVolume)) {
+      return Math.max(1, Math.ceil(neededBase / packageAmount));
+    }
+  }
+
+  // ─── Fallback: 1 Packung ───
   return 1;
 }
 
@@ -331,17 +347,44 @@ async function findBestProduct(ingredientName, neededAmount, unit) {
 
   // Für jeden Kandidaten: benötigte Packungen + Gesamtpreis berechnen
   const withCosts = candidates.map(p => {
-    const qty = calculatePackagesNeeded(neededAmount, unit, p.parsedAmount, p.parsedUnit);
+    const qty = calculatePackagesNeeded(neededAmount, unit, p.parsedAmount, p.parsedUnit, p.parsedPieceCount);
     const totalPrice = p.price * qty;
-    return { ...p, packagesNeeded: qty, totalPrice };
+
+    // Grundpreis berechnen (Cents pro kg bzw. pro Stück)
+    // Dient als Maß für das Preis-Leistungs-Verhältnis
+    let pricePerUnit = null;
+    if (p.parsedAmount > 0 && p.price > 0) {
+      if (['g', 'kg'].includes(p.parsedUnit)) {
+        // Cents pro kg (parsedAmount ist bereits in g)
+        pricePerUnit = (p.price / p.parsedAmount) * 1000;
+      } else if (['ml', 'l'].includes(p.parsedUnit)) {
+        // Cents pro Liter (parsedAmount ist bereits in ml)
+        pricePerUnit = (p.price / p.parsedAmount) * 1000;
+      } else if (['stück', 'stk', 'st'].includes(p.parsedUnit)) {
+        // Cents pro Stück
+        pricePerUnit = p.price / p.parsedAmount;
+      }
+    }
+
+    return { ...p, packagesNeeded: qty, totalPrice, pricePerUnit };
   });
 
-  // Sortieren: Erst nach Relevanz-Gruppe (10er-Schritte), dann nach GESAMTPREIS
+  // Sortieren: Erst nach Relevanz-Gruppe (10er-Schritte), dann nach GRUNDPREIS
+  // Der Grundpreis (€/kg, €/Stück) bevorzugt größere, preiswertere Packungen.
+  // Beispiel: Zwiebel-Netz 500g für 1,19€ (2,38€/kg) schlägt
+  //           Zwiebel-Duo 150g für 0,99€ (6,60€/kg)
   withCosts.sort((a, b) => {
     const groupA = Math.floor(a.relevance / 10);
     const groupB = Math.floor(b.relevance / 10);
     if (groupB !== groupA) return groupB - groupA;
-    // Innerhalb gleicher Relevanz: günstigster Gesamtpreis zuerst
+
+    // Innerhalb gleicher Relevanz: günstigster Grundpreis zuerst
+    if (a.pricePerUnit != null && b.pricePerUnit != null) {
+      const unitDiff = a.pricePerUnit - b.pricePerUnit;
+      if (Math.abs(unitDiff) > 0.01) return unitDiff;
+    }
+
+    // Fallback: günstigster Gesamtpreis
     return a.totalPrice - b.totalPrice;
   });
 
@@ -392,13 +435,19 @@ async function findBestProduct(ingredientName, neededAmount, unit) {
  * Parst eine Packungsgröße aus einem String (Titel oder Grammage)
  * z.B. "Barilla Spaghetti Nr.5 500g" -> { amount: 500, unit: "g", raw: "500g" }
  * z.B. "Weihenstephan H-Milch 3,5% 1l" -> { amount: 1000, unit: "ml", raw: "1l" }
+ * z.B. "REWE Bio Zwiebel Duo 150g"     -> { amount: 150, unit: "g", raw: "150g", pieceCount: 2 }
+ *
+ * `pieceCount` wird aus Multiplier-Wörtern im Titel extrahiert:
+ * "Duo" → 2, "Trio" → 3, "Doppelpack" → 2, "3er Pack" → 3, etc.
+ * Dies ist unabhängig von amount/unit und hilft bei der Mengenberechnung,
+ * wenn Stückzahlen benötigt aber Gewichtspackungen gefunden werden.
  */
 function parsePackageSize(sizeStr) {
-  if (!sizeStr) return { amount: null, unit: null, raw: null };
+  if (!sizeStr) return { amount: null, unit: null, raw: null, pieceCount: null };
 
   // Verschiedene Formate: "500g", "1kg", "1,5l", "250 ml", "6 Stück", "4x250ml"
   const match = sizeStr.match(/([\d.,]+)\s*(?:x\s*[\d.,]+\s*)?(g|kg|ml|l|stk|stück|st)\b/i);
-  if (!match) return { amount: null, unit: null, raw: null };
+  if (!match) return { amount: null, unit: null, raw: null, pieceCount: parsePieceCountFromName(sizeStr) };
 
   let amount = parseFloat(match[1].replace(',', '.'));
   let unit = match[2].toLowerCase();
@@ -413,7 +462,44 @@ function parsePackageSize(sizeStr) {
     unit = 'ml';
   }
 
-  return { amount, unit, raw };
+  // Stückzahl aus Multiplier-Wörtern extrahieren (Duo, Trio, Doppelpack…)
+  // Nur relevant, wenn die Haupteinheit NICHT schon "stück" ist
+  const pieceCount = (unit === 'stück' || unit === 'stk' || unit === 'st')
+    ? amount  // "4 Stück" → pieceCount = 4
+    : parsePieceCountFromName(sizeStr);
+
+  return { amount, unit, raw, pieceCount };
+}
+
+/**
+ * Erkennt Stückzahl-Indikatoren in Produktnamen.
+ *
+ * 1. Explizite Multiplier: "Duo" → 2, "Trio" → 3, "Doppelpack" → 2, "3er Pack" → 3
+ * 2. Mehrstück-Gebinde: "Netz", "Sack", "Schale", "Korb" → mind. 3 Stück
+ *    (ein Netz Zwiebeln, eine Schale Tomaten etc. enthalten immer mehrere lose Stücke)
+ */
+function parsePieceCountFromName(name) {
+  if (!name) return null;
+  const low = name.toLowerCase();
+
+  // Wort-Multiplier (exakte Stückzahl bekannt)
+  if (/\bduo\b/.test(low)) return 2;
+  if (/\btrio\b/.test(low)) return 3;
+  if (/\bdoppelpack\b/.test(low)) return 2;
+  if (/\bdreierpack\b/.test(low)) return 3;
+
+  // "2er Pack", "3er-Pack", "4er Packung", etc.
+  const erPackMatch = low.match(/(\d+)er[\s-]?pack/);
+  if (erPackMatch) return parseInt(erPackMatch[1], 10);
+
+  // Mehrstück-Gebinde: Netz, Sack, Schale, Korb
+  // Diese Verpackungen enthalten IMMER mehrere lose Stücke.
+  // Konservative Schätzung: mind. 3 Stück pro Gebinde.
+  // → "2 Stk Zwiebel" + "500g im Netz" → ceil(2/3) = 1 Netz ✓
+  // → "5 Stk Kartoffeln" + "2kg im Netz" → ceil(5/3) = 2 Netze ✓
+  if (/\b(netz|im\s+netz|sack|schale|korb)\b/.test(low)) return 3;
+
+  return null;
 }
 
 /**
@@ -473,7 +559,7 @@ export async function matchShoppingListWithRewe(shoppingItems, onProgress, optio
 
       if (found) {
         // Gemerktes Produkt ist noch verfügbar → mit aktuellem Preis verwenden
-        const packagesNeeded = calculatePackagesNeeded(item.amount, item.unit, found.parsedAmount, found.parsedUnit);
+        const packagesNeeded = calculatePackagesNeeded(item.amount, item.unit, found.parsedAmount, found.parsedUnit, found.parsedPieceCount);
         match = {
           product: found,
           neededAmount: item.amount,

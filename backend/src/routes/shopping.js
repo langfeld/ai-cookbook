@@ -295,7 +295,19 @@ export default async function shoppingRoutes(fastify) {
       if (pkgUnit === 'kg') { pkgAmount *= 1000; pkgUnit = 'g'; }
       else if (pkgUnit === 'l') { pkgAmount *= 1000; pkgUnit = 'ml'; }
     }
-    const quantity = calculatePackagesNeeded(item.amount, item.unit, pkgAmount, pkgUnit);
+
+    // Stückzahl aus Multiplier-Wörtern erkennen (Duo=2, Trio=3, etc.)
+    let pieceCount = null;
+    const nameToCheck = (productName || '').toLowerCase();
+    if (/\bduo\b/.test(nameToCheck)) pieceCount = 2;
+    else if (/\btrio\b/.test(nameToCheck)) pieceCount = 3;
+    else if (/\bdoppelpack\b/.test(nameToCheck)) pieceCount = 2;
+    else {
+      const erPackMatch = nameToCheck.match(/(\d+)er[\s-]?pack/);
+      if (erPackMatch) pieceCount = parseInt(erPackMatch[1], 10);
+    }
+
+    const quantity = calculatePackagesNeeded(item.amount, item.unit, pkgAmount, pkgUnit, pieceCount);
 
     db.prepare(`
       UPDATE shopping_list_items
