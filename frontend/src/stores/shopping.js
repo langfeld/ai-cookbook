@@ -131,9 +131,9 @@ export const useShoppingStore = defineStore('shopping', () => {
   }
 
   /** Einkauf abschließen – abgehakte Items in den Vorratsschrank */
-  async function completePurchase() {
+  async function completePurchase({ includeAll = false } = {}) {
     if (!currentList.value?.id) throw new Error('Keine aktive Einkaufsliste');
-    const data = await api.post(`/shopping/${currentList.value.id}/complete`, {});
+    const data = await api.post(`/shopping/${currentList.value.id}/complete`, { includeAll });
     // Liste zurücksetzen
     currentList.value = null;
     items.value = [];

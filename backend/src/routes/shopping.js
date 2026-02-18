@@ -427,18 +427,24 @@ export default async function shoppingRoutes(fastify) {
               },
             },
           },
+          includeAll: {
+            type: 'boolean',
+            default: false,
+            description: 'Alle Items einbeziehen (nicht nur abgehakte) – z.B. nach Bring!/REWE-Export',
+          },
         },
       },
     },
   }, async (request) => {
     const userId = request.user.id;
     const listId = Number(request.params.listId);
-    let { purchasedItems } = request.body;
+    let { purchasedItems, includeAll = false } = request.body;
 
-    // Wenn keine Items mitgeschickt wurden, alle abgehakten Items aus der Liste nehmen
+    // Wenn keine Items mitgeschickt wurden, Items aus der DB nehmen
     if (!purchasedItems?.length) {
+      const condition = includeAll ? '' : ' AND is_checked = 1';
       purchasedItems = db.prepare(
-        'SELECT ingredient_name, amount, unit FROM shopping_list_items WHERE shopping_list_id = ? AND is_checked = 1'
+        `SELECT ingredient_name, amount, unit FROM shopping_list_items WHERE shopping_list_id = ?${condition}`
       ).all(listId);
     }
 

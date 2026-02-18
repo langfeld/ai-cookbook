@@ -1152,19 +1152,19 @@ async function matchWithRewe() {
   }
 }
 
-async function completePurchase() {
+async function completePurchase({ includeAll = false } = {}) {
   try {
-    await shoppingStore.completePurchase();
+    await shoppingStore.completePurchase({ includeAll });
     showSuccess('Einkauf abgeschlossen! Vorräte aktualisiert. 🎉');
   } catch {
     // Fehler wird von useApi angezeigt
   }
 }
 
-/** Nach Bring!/REWE-Aktion: Einkauf abschließen */
+/** Nach Bring!/REWE-Aktion: Einkauf abschließen (alle Items, nicht nur abgehakte) */
 async function confirmCompletePurchase() {
   showCompletePurchasePrompt.value = false;
-  await completePurchase();
+  await completePurchase({ includeAll: true });
 }
 
 /** REWE Hauptaktion (Split-Button links) */
