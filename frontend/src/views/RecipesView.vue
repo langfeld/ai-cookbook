@@ -15,6 +15,14 @@
         <p class="text-stone-500 text-sm">{{ recipesStore.totalRecipes }} Rezepte in deiner Sammlung</p>
       </div>
       <div class="flex gap-2">
+        <!-- Sammlungen verwalten -->
+        <button
+          @click="showCollectionManager = true"
+          class="flex items-center gap-2 bg-stone-100 hover:bg-stone-200 dark:bg-stone-800 dark:hover:bg-stone-700 px-3 py-2 border border-stone-200 dark:border-stone-700 rounded-lg font-medium text-stone-700 dark:text-stone-300 text-sm transition-colors"
+        >
+          <FolderOpen class="w-4 h-4" />
+          <span class="hidden sm:inline">Sammlungen</span>
+        </button>
         <!-- Auswahl-Modus (nur Admin) -->
         <button
           v-if="authStore.isAdmin"
@@ -80,6 +88,18 @@
         <option value="">Alle Kategorien</option>
         <option v-for="cat in recipesStore.categories" :key="cat.id" :value="cat.name">
           {{ cat.icon }} {{ cat.name }}
+        </option>
+      </select>
+
+      <!-- Sammlungs-Filter -->
+      <select
+        v-model="selectedCollectionFilter"
+        @change="applyCollectionFilter"
+        class="bg-stone-50 dark:bg-stone-800 px-3 py-2 border border-stone-200 dark:border-stone-700 rounded-lg outline-none text-stone-700 dark:text-stone-300 text-sm"
+      >
+        <option value="">Alle Sammlungen</option>
+        <option v-for="col in collectionsStore.collections" :key="col.id" :value="col.id">
+          {{ col.icon }} {{ col.name }} ({{ col.recipe_count ?? 0 }})
         </option>
       </select>
 
@@ -214,6 +234,9 @@
       @close="showExportImport = false"
       @imported="handleExportImportDone"
     />
+
+    <!-- Sammlungen-Manager Modal -->
+    <CollectionManager v-model="showCollectionManager" />
   </div>
 </template>
 
@@ -221,18 +244,23 @@
 import { ref, onMounted } from 'vue';
 import { useRecipesStore } from '@/stores/recipes.js';
 import { useAuthStore } from '@/stores/auth.js';
-import { Search, Sparkles, Plus, Star, BookOpen, ArrowDownUp, CheckSquare, Square, Check, Trash2 } from 'lucide-vue-next';
+import { useCollectionsStore } from '@/stores/collections.js';
+import { Search, Sparkles, Plus, Star, BookOpen, ArrowDownUp, CheckSquare, Square, Check, Trash2, FolderOpen } from 'lucide-vue-next';
 import RecipeCard from '@/components/recipes/RecipeCard.vue';
 import RecipeImportModal from '@/components/recipes/RecipeImportModal.vue';
 import RecipeImportExportModal from '@/components/recipes/RecipeImportExportModal.vue';
+import CollectionManager from '@/components/collections/CollectionManager.vue';
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue';
 import { useNotification } from '@/composables/useNotification.js';
 
 const recipesStore = useRecipesStore();
 const authStore = useAuthStore();
+const collectionsStore = useCollectionsStore();
 const { showSuccess, showError } = useNotification();
 const showPhotoImport = ref(false);
 const showExportImport = ref(false);
+const showCollectionManager = ref(false);
+const selectedCollectionFilter = ref('');
 
 // Mehrfachauswahl (Admin)
 const selectMode = ref(false);
@@ -251,6 +279,11 @@ function debouncedFetch() {
 
 function toggleFavoriteFilter() {
   recipesStore.filters.favorite = recipesStore.filters.favorite ? null : true;
+  recipesStore.fetchRecipes();
+}
+
+function applyCollectionFilter() {
+  recipesStore.filters.collectionId = selectedCollectionFilter.value || '';
   recipesStore.fetchRecipes();
 }
 
@@ -304,5 +337,6 @@ async function executeBatchDelete() {
 onMounted(() => {
   recipesStore.fetchRecipes();
   recipesStore.fetchCategories();
+  collectionsStore.fetchCollections();
 });
 </script>

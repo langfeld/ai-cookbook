@@ -45,6 +45,7 @@ export default async function recipesRoutes(fastify) {
           category: { type: 'string' },
           favorite: { type: 'boolean' },
           difficulty: { type: 'string' },
+          collectionId: { type: 'integer' },
           sort: { type: 'string', enum: ['title', 'created_at', 'last_cooked_at', 'total_time', 'times_cooked'] },
           order: { type: 'string', enum: ['asc', 'desc'] },
           limit: { type: 'integer', default: 50 },
@@ -53,7 +54,7 @@ export default async function recipesRoutes(fastify) {
       },
     },
   }, async (request) => {
-    const { search, category, favorite, difficulty, sort = 'created_at', order = 'desc', limit, offset } = request.query;
+    const { search, category, favorite, difficulty, collectionId, sort = 'created_at', order = 'desc', limit, offset } = request.query;
     const userId = request.user.id;
 
     let query = `
@@ -66,6 +67,12 @@ export default async function recipesRoutes(fastify) {
       WHERE r.user_id = ?
     `;
     const params = [userId];
+
+    // Sammlungs-Filter
+    if (collectionId) {
+      query += ' AND r.id IN (SELECT rcol.recipe_id FROM recipe_collections rcol WHERE rcol.collection_id = ?)';
+      params.push(collectionId);
+    }
 
     // Suchfilter
     if (search) {

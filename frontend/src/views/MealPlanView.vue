@@ -27,11 +27,19 @@
           class="flex items-center gap-1.5 hover:bg-red-50 dark:hover:bg-red-950 px-3 py-2 rounded-xl text-red-500 text-sm transition-colors">
           <Trash2 class="w-4 h-4" /> Löschen
         </button>
-        <button @click="showGenerateModal = true" :disabled="store.generating"
-          class="flex items-center gap-2 bg-primary-600 hover:bg-primary-700 disabled:opacity-50 shadow-sm px-4 py-2 rounded-xl font-medium text-white text-sm transition-colors">
-          <Sparkles class="w-4 h-4" :class="{ 'animate-pulse': store.generating }" />
-          {{ store.generating ? 'Wird erstellt…' : 'Plan generieren' }}
-        </button>
+        <!-- Split-Button: Generieren + Einstellungen -->
+        <div class="flex shadow-sm rounded-xl overflow-hidden">
+          <button @click="showGenerateModal = true" :disabled="store.generating"
+            class="flex items-center gap-2 bg-primary-600 hover:bg-primary-700 disabled:opacity-50 px-4 py-2 font-medium text-white text-sm transition-colors">
+            <Sparkles class="w-4 h-4" :class="{ 'animate-pulse': store.generating }" />
+            {{ store.generating ? 'Wird erstellt…' : 'Plan generieren' }}
+          </button>
+          <button @click="showGenSettings = true"
+            class="flex items-center bg-primary-600 hover:bg-primary-700 px-2.5 py-2 border-primary-500 border-l text-white transition-colors"
+            title="Generierungs-Einstellungen">
+            <Settings class="w-4 h-4" />
+          </button>
+        </div>
       </div>
     </div>
 
@@ -304,7 +312,7 @@
             </div>
 
             <!-- Personen -->
-            <div class="mb-6">
+            <div class="mb-5">
               <label class="block mb-2 font-medium text-stone-700 dark:text-stone-300 text-sm">Personen</label>
               <div class="flex items-center gap-3">
                 <button @click="genPersons = Math.max(1, genPersons - 1)"
@@ -315,6 +323,17 @@
               </div>
             </div>
 
+            <!-- Aktive Sammlungs-Info -->
+            <div v-if="genSourceMode === 'collections' && genCollectionIds.length > 0"
+              class="flex items-center gap-2 bg-primary-50 dark:bg-primary-950 mb-4 px-3 py-2 border border-primary-200 dark:border-primary-800 rounded-lg">
+              <FolderOpen class="w-4 h-4 text-primary-500 shrink-0" />
+              <p class="text-primary-700 dark:text-primary-300 text-xs">
+                <span class="font-medium">{{ genCollectionIds.length }} Sammlung(en)</span> aktiv
+                <button @click="showGenSettings = true; showGenerateModal = false"
+                  class="ml-1 underline hover:no-underline">ändern</button>
+              </p>
+            </div>
+
             <div class="flex justify-end gap-2">
               <button @click="showGenerateModal = false"
                 class="hover:bg-stone-100 dark:hover:bg-stone-800 px-4 py-2 rounded-xl text-stone-600 dark:text-stone-400 text-sm transition-colors">
@@ -323,6 +342,89 @@
               <button @click="doGenerate" :disabled="store.generating || !genMealTypes.length"
                 class="flex items-center gap-2 bg-primary-600 hover:bg-primary-700 disabled:opacity-50 px-4 py-2 rounded-xl font-medium text-white text-sm transition-colors">
                 <Sparkles class="w-4 h-4" /> Generieren
+              </button>
+            </div>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
+
+    <!-- ═══════════════════ GENERIERUNGS-EINSTELLUNGEN-MODAL ═══════════════════ -->
+    <Teleport to="body">
+      <Transition name="modal">
+        <div v-if="showGenSettings" class="z-50 fixed inset-0 flex justify-center items-center bg-black/40 p-4" @click.self="showGenSettings = false">
+          <div class="bg-white dark:bg-stone-900 shadow-2xl p-6 border border-stone-200 dark:border-stone-700 rounded-2xl w-full max-w-md">
+            <h2 class="flex items-center gap-2 mb-5 font-bold text-stone-800 dark:text-stone-100 text-lg">
+              <Settings2 class="w-5 h-5 text-primary-500" /> Generierungs-Einstellungen
+            </h2>
+
+            <!-- Rezeptquelle: Sammlungen oder Alle -->
+            <div class="mb-5">
+              <label class="block mb-2 font-medium text-stone-700 dark:text-stone-300 text-sm">Rezeptquelle</label>
+              <label class="flex items-center gap-2 mb-2 cursor-pointer">
+                <input type="radio" v-model="genSourceMode" value="all" class="accent-primary-600" />
+                <span class="text-stone-700 dark:text-stone-300 text-sm">Alle Rezepte</span>
+              </label>
+              <label class="flex items-center gap-2 cursor-pointer">
+                <input type="radio" v-model="genSourceMode" value="collections" class="accent-primary-600" />
+                <span class="text-stone-700 dark:text-stone-300 text-sm">Nur bestimmte Sammlungen</span>
+              </label>
+            </div>
+
+            <!-- Sammlungs-Auswahl (nur wenn "collections" gewählt) -->
+            <Transition name="fade">
+              <div v-if="genSourceMode === 'collections'" class="mb-5">
+                <label class="block mb-2 font-medium text-stone-700 dark:text-stone-300 text-sm">Sammlungen auswählen</label>
+                <div v-if="collectionsStore.loading" class="text-stone-400 text-sm">Laden…</div>
+                <div v-else-if="!collectionsStore.collections.length" class="text-stone-400 text-sm">
+                  Keine Sammlungen vorhanden. Erstelle zuerst eine Sammlung.
+                </div>
+                <div v-else class="space-y-1 max-h-40 overflow-y-auto">
+                  <label
+                    v-for="col in collectionsStore.collections" :key="col.id"
+                    :class="[
+                      'flex items-center gap-2.5 px-3 py-2 rounded-lg border text-sm cursor-pointer transition-colors',
+                      genCollectionIds.includes(col.id)
+                        ? 'border-primary-400 bg-primary-50 dark:bg-primary-950 text-primary-700 dark:text-primary-300'
+                        : 'border-stone-200 dark:border-stone-700 text-stone-600 dark:text-stone-400 hover:bg-stone-50 dark:hover:bg-stone-800'
+                    ]"
+                  >
+                    <input type="checkbox" :value="col.id" v-model="genCollectionIds" class="accent-primary-600" />
+                    <span
+                      class="flex justify-center items-center rounded w-6 h-6 text-sm shrink-0"
+                      :style="{ backgroundColor: col.color + '20' }"
+                    >{{ col.icon }}</span>
+                    <span class="flex-1 truncate">{{ col.name }}</span>
+                    <span class="text-stone-400 text-xs shrink-0">{{ col.recipe_count ?? 0 }}</span>
+                  </label>
+                </div>
+              </div>
+            </Transition>
+
+            <!-- Deduplizierung -->
+            <div class="mb-6">
+              <label class="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" v-model="genDeduplicate" class="rounded accent-primary-600" />
+                <div>
+                  <span class="font-medium text-stone-700 dark:text-stone-300 text-sm">Duplikate vermeiden</span>
+                  <p class="text-stone-400 text-xs">Rezepte, die in mehreren gewählten Sammlungen vorkommen, nur einmal berücksichtigen.</p>
+                </div>
+              </label>
+            </div>
+
+            <!-- Aktive Einstellungen Zusammenfassung -->
+            <div class="bg-stone-50 dark:bg-stone-800 mb-4 p-3 rounded-lg">
+              <p class="text-stone-600 dark:text-stone-400 text-xs">
+                <span class="font-medium">Aktiv:</span>
+                {{ genSourceMode === 'all' ? 'Alle Rezepte' : `${genCollectionIds.length} Sammlung(en)` }}
+                · {{ genDeduplicate ? 'Duplikate werden vermieden' : 'Duplikate erlaubt' }}
+              </p>
+            </div>
+
+            <div class="flex justify-end gap-2">
+              <button @click="showGenSettings = false"
+                class="hover:bg-stone-100 dark:hover:bg-stone-800 px-4 py-2 rounded-xl text-stone-600 dark:text-stone-400 text-sm transition-colors">
+                Schließen
               </button>
             </div>
           </div>
@@ -442,14 +544,16 @@
 <script setup>
 import { computed, onMounted, ref, watch } from 'vue';
 import { useMealPlanStore } from '@/stores/mealplan.js';
+import { useCollectionsStore } from '@/stores/collections.js';
 import { useNotification } from '@/composables/useNotification.js';
 import {
   Sparkles, ChevronLeft, ChevronRight, Check, Eye, RefreshCw,
   X, Clock, ChefHat, UtensilsCrossed, Plus, Star, Trash2,
-  LayoutGrid, CalendarDays, Settings,
+  LayoutGrid, CalendarDays, Settings, Settings2, FolderOpen,
 } from 'lucide-vue-next';
 
 const store = useMealPlanStore();
+const collectionsStore = useCollectionsStore();
 const { showSuccess } = useNotification();
 
 // ─── State ───
@@ -458,6 +562,7 @@ const viewMode = ref('week');
 const selectedDayIdx = ref(new Date().getDay() === 0 ? 6 : new Date().getDay() - 1); // heute
 const selectedMeal = ref(null);
 const showGenerateModal = ref(false);
+const showGenSettings = ref(false);
 
 // Gespeicherte Präferenzen aus localStorage laden
 const STORAGE_KEY = 'mealplan-gen-prefs';
@@ -467,14 +572,20 @@ const savedPrefs = (() => {
 const genMealTypes = ref(savedPrefs.mealTypes ?? ['fruehstueck', 'mittag', 'abendessen']);
 const genPersons = ref(savedPrefs.personCount ?? 4);
 const visibleSlots = ref(savedPrefs.visibleSlots ?? ['fruehstueck', 'mittag', 'abendessen', 'snack']);
+const genSourceMode = ref(savedPrefs.sourceMode ?? 'all');
+const genCollectionIds = ref(savedPrefs.collectionIds ?? []);
+const genDeduplicate = ref(savedPrefs.deduplicate ?? true);
 const showSlotSettings = ref(false);
 
 // Bei Änderung automatisch in localStorage speichern
-watch([genMealTypes, genPersons, visibleSlots], () => {
+watch([genMealTypes, genPersons, visibleSlots, genSourceMode, genCollectionIds, genDeduplicate], () => {
   localStorage.setItem(STORAGE_KEY, JSON.stringify({
     mealTypes: genMealTypes.value,
     personCount: genPersons.value,
     visibleSlots: visibleSlots.value,
+    sourceMode: genSourceMode.value,
+    collectionIds: genCollectionIds.value,
+    deduplicate: genDeduplicate.value,
   }));
 }, { deep: true });
 
@@ -571,11 +682,17 @@ function selectMeal(meal) {
 async function doGenerate() {
   showGenerateModal.value = false;
   try {
-    await store.generatePlan({
+    const options = {
       weekStart: currentWeekStart.value,
       mealTypes: genMealTypes.value,
       personCount: genPersons.value,
-    });
+    };
+    // Sammlungs-Filter nur wenn explizit Sammlungen gewählt
+    if (genSourceMode.value === 'collections' && genCollectionIds.value.length > 0) {
+      options.collectionIds = genCollectionIds.value;
+      options.deduplicateCollections = genDeduplicate.value;
+    }
+    await store.generatePlan(options);
     showSuccess('Wochenplan erstellt! 🗓️');
   } catch {
     // Fehler von useApi
@@ -679,6 +796,7 @@ async function onDrop(dayIdx, mealKey) {
 onMounted(async () => {
   await store.fetchCurrentPlan(currentWeekStart.value);
   store.fetchHistory();
+  collectionsStore.fetchCollections();
 });
 </script>
 

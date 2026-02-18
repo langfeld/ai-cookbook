@@ -305,6 +305,36 @@ export function initializeDatabase() {
     CREATE INDEX IF NOT EXISTS idx_rewe_prefs_ingredient ON rewe_product_preferences(user_id, ingredient_name);
 
     -- ============================================
+    -- Sammlungen (Collections)
+    -- ============================================
+    CREATE TABLE IF NOT EXISTS collections (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      name TEXT NOT NULL,
+      icon TEXT DEFAULT '📁',
+      color TEXT DEFAULT '#6366f1',
+      sort_order INTEGER DEFAULT 0,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_collections_user ON collections(user_id);
+
+    -- ============================================
+    -- Rezept-Sammlungs-Zuordnung (n:m)
+    -- ============================================
+    CREATE TABLE IF NOT EXISTS recipe_collections (
+      recipe_id INTEGER NOT NULL,
+      collection_id INTEGER NOT NULL,
+      added_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (recipe_id, collection_id),
+      FOREIGN KEY (recipe_id) REFERENCES recipes(id) ON DELETE CASCADE,
+      FOREIGN KEY (collection_id) REFERENCES collections(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_recipe_collections_collection ON recipe_collections(collection_id);
+    CREATE INDEX IF NOT EXISTS idx_recipe_collections_recipe ON recipe_collections(recipe_id);
+
+    -- ============================================
     -- Bring! Einkaufslisten-Verbindung
     -- ============================================
     CREATE TABLE IF NOT EXISTS bring_settings (

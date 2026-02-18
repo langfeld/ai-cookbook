@@ -21,6 +21,7 @@ export const useRecipesStore = defineStore('recipes', () => {
     category: '',
     favorite: null,
     difficulty: '',
+    collectionId: '',
     sort: 'created_at',
     order: 'desc',
   });
@@ -44,6 +45,7 @@ export const useRecipesStore = defineStore('recipes', () => {
       if (filters.value.category) params.set('category', filters.value.category);
       if (filters.value.favorite !== null) params.set('favorite', filters.value.favorite);
       if (filters.value.difficulty) params.set('difficulty', filters.value.difficulty);
+      if (filters.value.collectionId) params.set('collectionId', filters.value.collectionId);
       params.set('sort', filters.value.sort);
       params.set('order', filters.value.order);
 

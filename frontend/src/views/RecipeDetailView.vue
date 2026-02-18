@@ -74,6 +74,7 @@
               <span class="hidden sm:inline">Als gekocht markieren</span>
               <span class="sm:hidden">Gekocht</span>
             </button>
+            <AddToCollection v-if="recipe?.id" :recipe-id="recipe.id" />
             <router-link
               :to="'/recipes/new?edit=' + recipe.id"
               class="flex sm:flex-initial flex-1 justify-center items-center gap-2 hover:bg-stone-50 dark:hover:bg-stone-800 px-4 py-2 border border-stone-300 dark:border-stone-600 rounded-lg text-stone-700 dark:text-stone-300 text-sm transition-colors"
@@ -373,6 +374,7 @@ import { useMealPlanStore } from '@/stores/mealplan.js';
 import { useNotification } from '@/composables/useNotification.js';
 import { Star, Clock, Users, ChefHat, Pencil, Plus, Minus, Trash2, List, Layers, CalendarPlus, X, ChevronLeft, ChevronRight } from 'lucide-vue-next';
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue';
+import AddToCollection from '@/components/collections/AddToCollection.vue';
 import { useIngredientIcons } from '@/composables/useIngredientIcons.js';
 
 const route = useRoute();

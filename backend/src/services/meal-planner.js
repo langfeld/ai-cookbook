@@ -330,9 +330,27 @@ export async function generateWeekPlan(userId, options = {}) {
     personCount = 4,
     mealTypes = ['fruehstueck', 'mittag', 'abendessen'],
     excludeRecipeIds = [],
+    collectionIds = [],       // Nur Rezepte aus diesen Sammlungen
+    deduplicateCollections = true, // Rezepte in mehreren Sammlungen nur einmal zählen
   } = options;
 
-  // --- 1. Alle Rezepte des Benutzers laden ---
+  // --- 1. Alle Rezepte des Benutzers laden (ggf. gefiltert nach Sammlungen) ---
+  let collectionFilter = '';
+  if (collectionIds.length > 0) {
+    if (deduplicateCollections) {
+      // Rezept nur einmal, auch wenn in mehreren gewählten Sammlungen
+      collectionFilter = `AND r.id IN (
+        SELECT DISTINCT rcol.recipe_id FROM recipe_collections rcol
+        WHERE rcol.collection_id IN (${collectionIds.join(',')})
+      )`;
+    } else {
+      collectionFilter = `AND r.id IN (
+        SELECT rcol.recipe_id FROM recipe_collections rcol
+        WHERE rcol.collection_id IN (${collectionIds.join(',')})
+      )`;
+    }
+  }
+
   const recipes = db.prepare(`
     SELECT
       r.*,
@@ -345,6 +363,7 @@ export async function generateWeekPlan(userId, options = {}) {
     LEFT JOIN categories c ON rc.category_id = c.id
     WHERE r.user_id = ?
     ${excludeRecipeIds.length ? `AND r.id NOT IN (${excludeRecipeIds.join(',')})` : ''}
+    ${collectionFilter}
     GROUP BY r.id
     ORDER BY r.last_cooked_at ASC NULLS FIRST, r.times_cooked ASC
   `).all(userId);

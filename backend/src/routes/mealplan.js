@@ -32,6 +32,17 @@ export default async function mealplanRoutes(fastify) {
           },
           weekStart: { type: 'string', format: 'date' },
           excludeRecipeIds: { type: 'array', items: { type: 'integer' } },
+          collectionIds: {
+            type: 'array',
+            items: { type: 'integer' },
+            default: [],
+            description: 'Nur Rezepte aus diesen Sammlungen berücksichtigen (leer = alle)',
+          },
+          deduplicateCollections: {
+            type: 'boolean',
+            default: true,
+            description: 'Rezepte in mehreren Sammlungen nur einmal berücksichtigen',
+          },
         },
       },
     },

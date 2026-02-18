@@ -1,6 +1,6 @@
 # AI Cookbook 🍳🤖
 
-Eine KI-gestützte Rezeptverwaltung mit intelligentem Wochenplaner (Score-Algorithmus + optionales KI-Reasoning), Einkaufsliste mit REWE-Integration, Bring!-Anbindung, Tampermonkey-Userscript, Vorratsschrank und umfangreichem Admin-Bereich.
+Eine KI-gestützte Rezeptverwaltung mit intelligentem Wochenplaner (Score-Algorithmus + optionales KI-Reasoning), Rezept-Sammlungen, Einkaufsliste mit REWE-Integration, Bring!-Anbindung, Tampermonkey-Userscript, Vorratsschrank und umfangreichem Admin-Bereich.
 
 ![Vue 3](https://img.shields.io/badge/Vue-3.5-4FC08D?logo=vuedotjs&logoColor=white)
 ![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-4-06B6D4?logo=tailwindcss&logoColor=white)
@@ -25,12 +25,14 @@ Eine KI-gestützte Rezeptverwaltung mit intelligentem Wochenplaner (Score-Algori
 - **Portionsrechner** — Zutatenmengen dynamisch umrechnen
 - **Kochhistorie** — Protokoll, wann welches Rezept zuletzt gekocht wurde
 - **Favoriten** — Lieblingsrezepte markieren und filtern
+- **Sammlungen** — Rezepte in frei erstellbare Sammlungen organisieren (mit Icon & Farbe). Ein Rezept kann mehreren Sammlungen angehören. Sammlungen lassen sich in der Rezeptübersicht als Filter verwenden
 
 ### 📅 Wochenplaner
 - **Score-basierter Algorithmus** — Berücksichtigt Kochhistorie, Rezeptrotation, Favoriten, Schwierigkeitsgrad, Zutatensynergien und Vorräte
 - **Optionales KI-Reasoning** — Falls KI verfügbar, generiert sie eine kurze Begründung zum Plan (kein Pflichtfeature)
 - **4 Mahlzeiten/Tag** — Frühstück, Mittag, Abendessen, Snack
 - **Horizontal scrollbares 7-Tage-Raster** — Auch auf Mobile voll nutzbar
+- **Sammlungs-Filter** — Plan-Generierung optional auf bestimmte Sammlungen beschränken (Mehrfachauswahl). Mit Deduplizierungs-Option für Rezepte, die in mehreren Sammlungen vorkommen
 
 ### 🛒 Einkaufsliste
 - **Automatisch generiert** — Aus dem Wochenplan, mit intelligenter Duplikat-Konsolidierung und Einheiten-Normalisierung
@@ -248,6 +250,7 @@ ai-cookbook/
 │       │   ├── auth.js         # Registrierung, Login, Token-Refresh
 │       │   ├── recipes.js      # CRUD + Foto-Import + Text-Import + Export/Import
 │       │   ├── categories.js   # Kategorien CRUD
+│       │   ├── collections.js  # Sammlungen CRUD + Rezept-Zuordnungen
 │       │   ├── mealplan.js     # Wochenplaner (Algorithmus + optionales KI-Reasoning)
 │       │   ├── shopping.js     # Einkaufsliste: Generierung, Items, REWE-Zuordnung, Pantry-Transfer
 │       │   ├── pantry.js       # Vorratsschrank CRUD + Verbrauch + CSV/JSON-Import
@@ -284,6 +287,7 @@ ai-cookbook/
         │   ├── layout/         # AppSidebar, AppHeader, ThemeToggle, NotificationToast
         │   ├── ui/             # ConfirmDialog, ImageCropModal
         │   ├── recipes/        # RecipeCard, RecipeImportModal, RecipeImportExportModal
+        │   ├── collections/    # CollectionManager, AddToCollection
         │   ├── pantry/         # PantryImportExportModal
         │   └── dashboard/      # StatCard
         ├── views/
@@ -292,7 +296,7 @@ ai-cookbook/
         │   ├── RecipesView.vue / RecipeDetailView.vue / RecipeFormView.vue
         │   ├── MealPlanView.vue / ShoppingView.vue / PantryView.vue
         │   └── admin/          # AdminDashboard, AdminUsers, AdminSettings, AdminIngredientIcons
-        ├── stores/             # Pinia (auth, recipes, mealplan, shopping, pantry)
+        ├── stores/             # Pinia (auth, recipes, mealplan, shopping, pantry, collections)
         ├── composables/        # useApi, useTheme, useNotification, useIngredientIcons
         └── router/index.js
 ```
@@ -332,6 +336,17 @@ ai-cookbook/
 | `POST` | `/` | Kategorie erstellen |
 | `PUT` | `/:id` | Kategorie bearbeiten |
 | `DELETE` | `/:id` | Kategorie löschen |
+
+### Sammlungen (`/api/collections`)
+| Methode | Pfad | Beschreibung |
+|---------|------|-------------|
+| `GET` | `/` | Alle Sammlungen mit Rezeptanzahl |
+| `POST` | `/` | Neue Sammlung erstellen (Name, Icon, Farbe) |
+| `PUT` | `/:id` | Sammlung bearbeiten |
+| `DELETE` | `/:id` | Sammlung löschen (Rezepte bleiben erhalten) |
+| `POST` | `/:id/recipes` | Rezepte zur Sammlung hinzufügen (`{recipeIds: [...]}`) |
+| `DELETE` | `/:id/recipes/:recipeId` | Rezept aus Sammlung entfernen |
+| `GET` | `/for-recipe/:recipeId` | Sammlungen eines Rezepts abrufen |
 
 ### Wochenplaner (`/api/mealplan`)
 | Methode | Pfad | Beschreibung |

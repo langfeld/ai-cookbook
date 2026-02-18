@@ -1,0 +1,284 @@
+/**
+ * ============================================
+ * Sammlungen-Routen (Collections)
+ * ============================================
+ * CRUD für Sammlungen + Rezept-Zuordnung (n:m).
+ * Jeder Benutzer kann eigene Sammlungen erstellen
+ * und Rezepte zu mehreren Sammlungen hinzufügen.
+ */
+
+import db from '../config/database.js';
+
+export default async function collectionsRoutes(fastify) {
+  fastify.addHook('onRequest', fastify.authenticate);
+
+  // ─────────────────────────────────────────────
+  // GET / – Alle Sammlungen des Benutzers
+  // ─────────────────────────────────────────────
+  fastify.get('/', {
+    schema: {
+      description: 'Alle Sammlungen des Benutzers mit Rezeptanzahl',
+      tags: ['Sammlungen'],
+      security: [{ bearerAuth: [] }],
+    },
+  }, async (request) => {
+    const collections = db.prepare(`
+      SELECT c.*,
+        (SELECT COUNT(*) FROM recipe_collections rc WHERE rc.collection_id = c.id) as recipe_count
+      FROM collections c
+      WHERE c.user_id = ?
+      ORDER BY c.sort_order ASC, c.name ASC
+    `).all(request.user.id);
+
+    return { collections };
+  });
+
+  // ─────────────────────────────────────────────
+  // POST / – Neue Sammlung erstellen
+  // ─────────────────────────────────────────────
+  fastify.post('/', {
+    schema: {
+      description: 'Neue Sammlung erstellen',
+      tags: ['Sammlungen'],
+      security: [{ bearerAuth: [] }],
+      body: {
+        type: 'object',
+        required: ['name'],
+        properties: {
+          name: { type: 'string', minLength: 1, maxLength: 100 },
+          icon: { type: 'string', maxLength: 10, default: '📁' },
+          color: { type: 'string', pattern: '^#[0-9a-fA-F]{6}$', default: '#6366f1' },
+        },
+      },
+    },
+  }, async (request, reply) => {
+    const { name, icon = '📁', color = '#6366f1' } = request.body;
+    const userId = request.user.id;
+
+    // Prüfen ob Name bereits existiert
+    const existing = db.prepare(
+      'SELECT id FROM collections WHERE user_id = ? AND name = ?'
+    ).get(userId, name);
+    if (existing) {
+      return reply.status(409).send({ error: `Sammlung "${name}" existiert bereits.` });
+    }
+
+    // Höchste Sortierreihenfolge ermitteln
+    const maxOrder = db.prepare(
+      'SELECT COALESCE(MAX(sort_order), 0) as max_order FROM collections WHERE user_id = ?'
+    ).get(userId).max_order;
+
+    const { lastInsertRowid } = db.prepare(
+      'INSERT INTO collections (user_id, name, icon, color, sort_order) VALUES (?, ?, ?, ?, ?)'
+    ).run(userId, name, icon, color, maxOrder + 1);
+
+    const collection = db.prepare('SELECT * FROM collections WHERE id = ?').get(lastInsertRowid);
+    return { message: `Sammlung "${name}" erstellt!`, collection: { ...collection, recipe_count: 0 } };
+  });
+
+  // ─────────────────────────────────────────────
+  // PUT /:id – Sammlung bearbeiten
+  // ─────────────────────────────────────────────
+  fastify.put('/:id', {
+    schema: {
+      description: 'Sammlung bearbeiten',
+      tags: ['Sammlungen'],
+      security: [{ bearerAuth: [] }],
+      body: {
+        type: 'object',
+        properties: {
+          name: { type: 'string', minLength: 1, maxLength: 100 },
+          icon: { type: 'string', maxLength: 10 },
+          color: { type: 'string', pattern: '^#[0-9a-fA-F]{6}$' },
+        },
+      },
+    },
+  }, async (request, reply) => {
+    const { id } = request.params;
+    const { name, icon, color } = request.body;
+
+    const result = db.prepare(`
+      UPDATE collections
+      SET name = COALESCE(?, name),
+          icon = COALESCE(?, icon),
+          color = COALESCE(?, color),
+          updated_at = CURRENT_TIMESTAMP
+      WHERE id = ? AND user_id = ?
+    `).run(name, icon, color, id, request.user.id);
+
+    if (result.changes === 0) {
+      return reply.status(404).send({ error: 'Sammlung nicht gefunden.' });
+    }
+
+    const collection = db.prepare(`
+      SELECT c.*,
+        (SELECT COUNT(*) FROM recipe_collections rc WHERE rc.collection_id = c.id) as recipe_count
+      FROM collections c WHERE c.id = ?
+    `).get(id);
+
+    return { message: 'Sammlung aktualisiert!', collection };
+  });
+
+  // ─────────────────────────────────────────────
+  // DELETE /:id – Sammlung löschen
+  // ─────────────────────────────────────────────
+  fastify.delete('/:id', {
+    schema: {
+      description: 'Sammlung löschen (Rezepte bleiben erhalten)',
+      tags: ['Sammlungen'],
+      security: [{ bearerAuth: [] }],
+    },
+  }, async (request, reply) => {
+    const result = db.prepare(
+      'DELETE FROM collections WHERE id = ? AND user_id = ?'
+    ).run(request.params.id, request.user.id);
+
+    if (result.changes === 0) {
+      return reply.status(404).send({ error: 'Sammlung nicht gefunden.' });
+    }
+
+    return { message: 'Sammlung gelöscht.' };
+  });
+
+  // ─────────────────────────────────────────────
+  // GET /:id/recipes – Rezepte einer Sammlung
+  // ─────────────────────────────────────────────
+  fastify.get('/:id/recipes', {
+    schema: {
+      description: 'Alle Rezepte einer Sammlung laden',
+      tags: ['Sammlungen'],
+      security: [{ bearerAuth: [] }],
+    },
+  }, async (request, reply) => {
+    const { id } = request.params;
+
+    // Prüfen ob Sammlung dem Benutzer gehört
+    const collection = db.prepare(
+      'SELECT id FROM collections WHERE id = ? AND user_id = ?'
+    ).get(id, request.user.id);
+    if (!collection) {
+      return reply.status(404).send({ error: 'Sammlung nicht gefunden.' });
+    }
+
+    const recipes = db.prepare(`
+      SELECT r.*, rc.added_at as collection_added_at,
+        GROUP_CONCAT(DISTINCT c.name) as category_names
+      FROM recipes r
+      JOIN recipe_collections rc ON r.id = rc.recipe_id
+      LEFT JOIN recipe_categories rcat ON r.id = rcat.recipe_id
+      LEFT JOIN categories c ON rcat.category_id = c.id
+      WHERE rc.collection_id = ?
+      GROUP BY r.id
+      ORDER BY rc.added_at DESC
+    `).all(id);
+
+    return { recipes };
+  });
+
+  // ─────────────────────────────────────────────
+  // POST /:id/recipes – Rezept(e) zu Sammlung hinzufügen
+  // ─────────────────────────────────────────────
+  fastify.post('/:id/recipes', {
+    schema: {
+      description: 'Rezept(e) zu einer Sammlung hinzufügen',
+      tags: ['Sammlungen'],
+      security: [{ bearerAuth: [] }],
+      body: {
+        type: 'object',
+        required: ['recipeIds'],
+        properties: {
+          recipeIds: {
+            type: 'array',
+            items: { type: 'integer' },
+            minItems: 1,
+          },
+        },
+      },
+    },
+  }, async (request, reply) => {
+    const { id } = request.params;
+    const { recipeIds } = request.body;
+
+    // Prüfen ob Sammlung dem Benutzer gehört
+    const collection = db.prepare(
+      'SELECT id, name FROM collections WHERE id = ? AND user_id = ?'
+    ).get(id, request.user.id);
+    if (!collection) {
+      return reply.status(404).send({ error: 'Sammlung nicht gefunden.' });
+    }
+
+    const stmt = db.prepare(
+      'INSERT OR IGNORE INTO recipe_collections (recipe_id, collection_id) VALUES (?, ?)'
+    );
+
+    let addedCount = 0;
+    const insertMany = db.transaction(() => {
+      for (const recipeId of recipeIds) {
+        const result = stmt.run(recipeId, id);
+        if (result.changes > 0) addedCount++;
+      }
+    });
+    insertMany();
+
+    return {
+      message: addedCount > 0
+        ? `${addedCount} Rezept${addedCount !== 1 ? 'e' : ''} zu "${collection.name}" hinzugefügt!`
+        : 'Alle Rezepte waren bereits in der Sammlung.',
+      addedCount,
+    };
+  });
+
+  // ─────────────────────────────────────────────
+  // DELETE /:id/recipes/:recipeId – Rezept aus Sammlung entfernen
+  // ─────────────────────────────────────────────
+  fastify.delete('/:id/recipes/:recipeId', {
+    schema: {
+      description: 'Rezept aus einer Sammlung entfernen',
+      tags: ['Sammlungen'],
+      security: [{ bearerAuth: [] }],
+    },
+  }, async (request, reply) => {
+    const { id, recipeId } = request.params;
+
+    // Prüfen ob Sammlung dem Benutzer gehört
+    const collection = db.prepare(
+      'SELECT id FROM collections WHERE id = ? AND user_id = ?'
+    ).get(id, request.user.id);
+    if (!collection) {
+      return reply.status(404).send({ error: 'Sammlung nicht gefunden.' });
+    }
+
+    const result = db.prepare(
+      'DELETE FROM recipe_collections WHERE recipe_id = ? AND collection_id = ?'
+    ).run(recipeId, id);
+
+    if (result.changes === 0) {
+      return reply.status(404).send({ error: 'Rezept war nicht in dieser Sammlung.' });
+    }
+
+    return { message: 'Rezept aus Sammlung entfernt.' };
+  });
+
+  // ─────────────────────────────────────────────
+  // GET /for-recipe/:recipeId – Sammlungen eines Rezepts
+  // ─────────────────────────────────────────────
+  fastify.get('/for-recipe/:recipeId', {
+    schema: {
+      description: 'Alle Sammlungen abrufen, in denen ein Rezept enthalten ist',
+      tags: ['Sammlungen'],
+      security: [{ bearerAuth: [] }],
+    },
+  }, async (request) => {
+    const { recipeId } = request.params;
+
+    const collections = db.prepare(`
+      SELECT c.*, rc.added_at as collection_added_at
+      FROM collections c
+      JOIN recipe_collections rc ON c.id = rc.collection_id
+      WHERE rc.recipe_id = ? AND c.user_id = ?
+      ORDER BY c.sort_order ASC, c.name ASC
+    `).all(recipeId, request.user.id);
+
+    return { collections };
+  });
+}
