@@ -296,18 +296,28 @@
         </div>
         <div class="flex flex-wrap gap-2">
           <!-- An Bring! senden -->
+          <div v-if="shoppingStore.bringStatus?.connected" class="flex items-stretch">
+            <button
+              v-if="shoppingStore.openItemsCount > 0"
+              @click="sendToBring"
+              :disabled="shoppingStore.bringSending"
+              class="flex items-center gap-2 bg-teal-600 hover:bg-teal-700 disabled:opacity-50 px-5 py-3 rounded-l-xl font-medium text-white transition-colors"
+            >
+              <Loader2 v-if="shoppingStore.bringSending" class="w-4 h-4 animate-spin" />
+              <Send v-else class="w-4 h-4" />
+              An Bring! senden
+            </button>
+            <button
+              @click="showBringModal = true"
+              class="flex items-center bg-teal-600 hover:bg-teal-700 px-3 font-medium text-white transition-colors"
+              :class="shoppingStore.openItemsCount > 0 ? 'rounded-r-xl border-l border-teal-500' : 'rounded-xl py-3'"
+              title="Bring!-Einstellungen"
+            >
+              <Settings class="w-4 h-4" />
+            </button>
+          </div>
           <button
-            v-if="shoppingStore.bringStatus?.connected && shoppingStore.openItemsCount > 0"
-            @click="sendToBring"
-            :disabled="shoppingStore.bringSending"
-            class="flex items-center gap-2 bg-teal-600 hover:bg-teal-700 disabled:opacity-50 px-5 py-3 rounded-xl font-medium text-white transition-colors"
-          >
-            <Loader2 v-if="shoppingStore.bringSending" class="w-4 h-4 animate-spin" />
-            <Send v-else class="w-4 h-4" />
-            An Bring! senden
-          </button>
-          <button
-            v-else-if="!shoppingStore.bringStatus?.connected"
+            v-else
             @click="showBringModal = true"
             class="flex items-center gap-2 bg-teal-600 hover:bg-teal-700 px-5 py-3 rounded-xl font-medium text-white transition-colors"
           >
@@ -784,7 +794,7 @@ import { computed, ref, onMounted, watch } from 'vue';
 import { useShoppingStore } from '@/stores/shopping.js';
 import { useMealPlanStore } from '@/stores/mealplan.js';
 import { useNotification } from '@/composables/useNotification.js';
-import { ListPlus, Check, ShoppingBag, Plus, Package, BookOpen, BookX, ExternalLink, ShoppingCart, X, ArrowRightLeft, Search, Tag, Trash2, Star, Heart, Archive, Send, Link2, Unlink, ClipboardCopy, LogIn, LogOut, ChevronDown, Loader2, Terminal, Download } from 'lucide-vue-next';
+import { ListPlus, Check, ShoppingBag, Plus, Package, BookOpen, BookX, ExternalLink, ShoppingCart, X, ArrowRightLeft, Search, Tag, Trash2, Star, Heart, Archive, Send, Link2, Unlink, ClipboardCopy, LogIn, LogOut, ChevronDown, Loader2, Terminal, Download, Settings } from 'lucide-vue-next';
 
 const shoppingStore = useShoppingStore();
 const mealPlanStore = useMealPlanStore();
