@@ -72,7 +72,14 @@ export const useMealPlanStore = defineStore('mealplan', () => {
       const params = weekStart ? `?weekStart=${weekStart}` : '';
       const data = await api.get(`/mealplan${params}`);
       currentPlan.value = data.plan;
-      // Reasoning wird NICHT beim Laden gesetzt – nur nach frischer Generierung
+      // Gespeichertes Reasoning aus der DB wiederherstellen
+      if (data.plan?.reasoning) {
+        reasoning.value = data.plan.reasoning;
+        reasoningSource.value = 'ai';
+      } else {
+        reasoning.value = null;
+        reasoningSource.value = null;
+      }
       return data;
     } finally {
       loading.value = false;
