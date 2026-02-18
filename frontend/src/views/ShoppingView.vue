@@ -689,7 +689,7 @@
                 </div>
 
                 <div class="bg-blue-50 dark:bg-blue-900/20 px-4 py-3 border border-blue-200 dark:border-blue-800 rounded-xl text-blue-800 dark:text-blue-300 text-xs">
-                  <p class="font-semibold mb-1">💡 Wie funktioniert das Script?</p>
+                  <p class="mb-1 font-semibold">💡 Wie funktioniert das Script?</p>
                   <p>Das Script lädt für jedes Produkt die Produktseite, ermittelt daraus die marktspezifische <em>Listing-ID</em> und fügt es direkt über die REWE Basket-API in deinen Warenkorb ein. Falls die Listing-ID nicht gefunden wird, öffnet sich ein Popup als Fallback.</p>
                 </div>
 

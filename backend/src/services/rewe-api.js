@@ -303,7 +303,12 @@ export function calculatePackagesNeeded(neededAmount, neededUnit, packageAmount,
 
 /**
  * Sucht das beste REWE-Produkt für eine Zutat
- * Strategie: Relevantestes + günstigstes Produkt
+ * Strategie: Relevantestes Produkt mit dem günstigsten GESAMTPREIS
+ * (berücksichtigt, wie viele Packungen nötig sind)
+ *
+ * Beispiel: 2× Knoblauch benötigt
+ *   - "Knoblauch 1 Stk" 1,00€ → 2 Packungen → 2,00€ Gesamt
+ *   - "Knoblauch 3er Netz" 1,50€ → 1 Packung → 1,50€ Gesamt ← günstiger!
  */
 async function findBestProduct(ingredientName, neededAmount, unit) {
   const { products } = await searchProducts(ingredientName);
@@ -322,34 +327,50 @@ async function findBestProduct(ingredientName, neededAmount, unit) {
 
   // Nur einigermaßen relevante Produkte (Score > 0)
   const relevant = scored.filter(p => p.relevance > 0);
+  const candidates = relevant.length ? relevant : scored;
 
-  // Sortieren: Erst nach Relevanz (absteigend), bei gleicher Relevanz nach Preis (aufsteigend)
-  const sorted = (relevant.length ? relevant : scored).sort((a, b) => {
-    // Relevanz-Gruppen bilden (10er-Schritte) → innerhalb einer Gruppe nach Preis
-    const relevanceGroupA = Math.floor(a.relevance / 10);
-    const relevanceGroupB = Math.floor(b.relevance / 10);
-    if (relevanceGroupB !== relevanceGroupA) return relevanceGroupB - relevanceGroupA;
-    return a.price - b.price;
+  // Für jeden Kandidaten: benötigte Packungen + Gesamtpreis berechnen
+  const withCosts = candidates.map(p => {
+    const qty = calculatePackagesNeeded(neededAmount, unit, p.parsedAmount, p.parsedUnit);
+    const totalPrice = p.price * qty;
+    return { ...p, packagesNeeded: qty, totalPrice };
   });
 
-  // Unter den Top-Relevanz-Produkten das günstigste nehmen, das die Menge abdeckt
-  const topRelevance = sorted[0]?.relevance || 0;
-  const topGroup = Math.floor(topRelevance / 10);
-  const topTier = sorted.filter(p => Math.floor(p.relevance / 10) >= topGroup);
+  // Sortieren: Erst nach Relevanz-Gruppe (10er-Schritte), dann nach GESAMTPREIS
+  withCosts.sort((a, b) => {
+    const groupA = Math.floor(a.relevance / 10);
+    const groupB = Math.floor(b.relevance / 10);
+    if (groupB !== groupA) return groupB - groupA;
+    // Innerhalb gleicher Relevanz: günstigster Gesamtpreis zuerst
+    return a.totalPrice - b.totalPrice;
+  });
 
-  // Bevorzuge passende Menge innerhalb der Top-Gruppe
-  const suitable = topTier
-    .filter(p => p.parsedAmount >= neededAmount || !p.parsedAmount)
-    .sort((a, b) => a.price - b.price);
+  // Top-Relevanz-Gruppe ermitteln
+  const topGroup = Math.floor((withCosts[0]?.relevance || 0) / 10);
+  const topTier = withCosts.filter(p => Math.floor(p.relevance / 10) >= topGroup);
 
-  const best = suitable[0] || topTier[0] || sorted[0] || products[0];
+  // Das mit dem günstigsten Gesamtpreis in der Top-Gruppe (bereits sortiert)
+  const best = topTier[0] || withCosts[0] || products[0];
 
-  // Wie viele Packungen werden benötigt?
-  const packagesNeeded = calculatePackagesNeeded(neededAmount, unit, best.parsedAmount, best.parsedUnit);
+  const packagesNeeded = best.packagesNeeded || 1;
+  const totalPrice = best.totalPrice || best.price;
 
   // Überschuss berechnen (basierend auf Gesamtmenge aller Packungen)
   const totalPackageAmount = best.parsedAmount ? best.parsedAmount * packagesNeeded : 0;
-  const surplus = totalPackageAmount ? Math.max(0, totalPackageAmount - (neededAmount || 0)) : 0;
+  let surplus = 0;
+  if (totalPackageAmount && neededAmount) {
+    // Nur bei kompatiblen Einheiten (Gewicht/Volumen) Überschuss berechnen
+    const unitLow = (unit || '').toLowerCase();
+    const pkgUnitLow = (best.parsedUnit || '').toLowerCase();
+    const bothWeight = ['g', 'kg'].includes(unitLow) && pkgUnitLow === 'g';
+    const bothVolume = ['ml', 'l'].includes(unitLow) && pkgUnitLow === 'ml';
+    if (bothWeight || bothVolume) {
+      let neededBase = neededAmount;
+      if (unitLow === 'kg') neededBase *= 1000;
+      if (unitLow === 'l') neededBase *= 1000;
+      surplus = Math.max(0, totalPackageAmount - neededBase);
+    }
+  }
 
   return {
     product: best,
@@ -357,7 +378,7 @@ async function findBestProduct(ingredientName, neededAmount, unit) {
     unit,
     packageAmount: best.parsedAmount,
     packagesNeeded,
-    totalPrice: best.price ? best.price * packagesNeeded : null,
+    totalPrice,
     surplus,
     surplusForPantry: surplus > 0 ? {
       ingredient_name: ingredientName,

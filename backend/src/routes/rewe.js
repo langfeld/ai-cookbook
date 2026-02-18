@@ -387,7 +387,7 @@ export default async function reweRoutes(fastify) {
 
 /**
  * Generiert ein JavaScript-Script für die REWE-Website.
- * 
+ *
  * Strategie (basierend auf Reverse-Engineering der REWE-Website):
  * 1. Für jedes Produkt: Produktseite fetchen (GET /shop/p/{productId})
  * 2. Aus dem HTML die marktspezifische "listingId" extrahieren (data-listingid Attribut)
