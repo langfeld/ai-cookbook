@@ -332,6 +332,7 @@ export async function generateWeekPlan(userId, options = {}) {
     excludeRecipeIds = [],
     collectionIds = [],       // Nur Rezepte aus diesen Sammlungen
     deduplicateCollections = true, // Rezepte in mehreren Sammlungen nur einmal zählen
+    enableAiReasoning = false,    // KI-Begründung generieren?
   } = options;
 
   // --- 1. Alle Rezepte des Benutzers laden (ggf. gefiltert nach Sammlungen) ---
@@ -476,24 +477,26 @@ export async function generateWeekPlan(userId, options = {}) {
     reasoning += ' ' + reasons.slice(0, 5).join('; ') + '.';
   }
 
-  // --- 6. Optional: KI-Reasoning (nicht-blockierend) ---
-  try {
-    const { getAIProvider } = await import('./ai/provider.js');
-    const ai = getAIProvider();
-    if (ai?.apiKey) {
-      const titles = plan.flatMap(d =>
-        d.meals.map(m => `${d.day_name} ${m.meal_type}: ${m.recipe_title}`)
-      ).join('\n');
-      const aiReasoning = await ai.chat(
-        `Erkläre in 2-3 Sätzen auf Deutsch, warum dieser Wochenplan ausgewogen ist:\n${titles}`,
-        { maxTokens: 200 }
-      );
-      if (aiReasoning && aiReasoning.length > 10) {
-        reasoning = aiReasoning.trim();
+  // --- 6. Optional: KI-Reasoning (nur wenn vom Benutzer aktiviert) ---
+  if (enableAiReasoning) {
+    try {
+      const { getAIProvider } = await import('./ai/provider.js');
+      const ai = getAIProvider();
+      if (ai?.apiKey) {
+        const titles = plan.flatMap(d =>
+          d.meals.map(m => `${d.day_name} ${m.meal_type}: ${m.recipe_title}`)
+        ).join('\n');
+        const aiReasoning = await ai.chat(
+          `Erkläre in 2-3 Sätzen auf Deutsch, warum dieser Wochenplan ausgewogen ist:\n${titles}`,
+          { maxTokens: 200 }
+        );
+        if (aiReasoning && aiReasoning.length > 10) {
+          reasoning = aiReasoning.trim();
+        }
       }
+    } catch {
+      // KI nicht verfügbar – algorithmisches Reasoning verwenden
     }
-  } catch {
-    // KI nicht verfügbar – algorithmisches Reasoning verwenden
   }
 
   return { plan, reasoning };
@@ -513,14 +516,14 @@ export function saveMealPlan(userId, weekStart, planData) {
   }
 
   const insertPlan = db.prepare(
-    'INSERT INTO meal_plans (user_id, week_start) VALUES (?, ?)'
+    'INSERT INTO meal_plans (user_id, week_start, reasoning) VALUES (?, ?, ?)'
   );
   const insertEntry = db.prepare(
     'INSERT INTO meal_plan_entries (meal_plan_id, recipe_id, day_of_week, meal_type, servings) VALUES (?, ?, ?, ?, ?)'
   );
 
   const transaction = db.transaction(() => {
-    const { lastInsertRowid: planId } = insertPlan.run(userId, weekStart);
+    const { lastInsertRowid: planId } = insertPlan.run(userId, weekStart, planData.reasoning || null);
 
     for (const day of plan) {
       const dayNum = day.day ?? plan.indexOf(day);

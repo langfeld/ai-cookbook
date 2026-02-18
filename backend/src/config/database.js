@@ -410,6 +410,13 @@ function migrateDatabase() {
     console.log('  ↳ Migration: shopping_list_items.rewe_quantity hinzugefügt');
   }
 
+  // Spalte 'reasoning' in meal_plans hinzufügen (KI-/Algorithmus-Begründung)
+  const mpCols = db.prepare("PRAGMA table_info(meal_plans)").all().map(c => c.name);
+  if (!mpCols.includes('reasoning')) {
+    db.exec("ALTER TABLE meal_plans ADD COLUMN reasoning TEXT");
+    console.log('  ↳ Migration: meal_plans.reasoning hinzugefügt');
+  }
+
   // Standard-Zutaten-Icons seeden (nur wenn Tabelle leer)
   const iconsCount = db.prepare("SELECT COUNT(*) as count FROM ingredient_icons").get().count;
   if (iconsCount === 0) {

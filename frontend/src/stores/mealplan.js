@@ -12,6 +12,7 @@ import { useApi } from '@/composables/useApi.js';
 
 export const useMealPlanStore = defineStore('mealplan', () => {
   const currentPlan = ref(null);
+  const reasoning = ref(null);
   const planHistory = ref([]);
   const loading = ref(false);
   const generating = ref(false);
@@ -31,6 +32,7 @@ export const useMealPlanStore = defineStore('mealplan', () => {
     try {
       const data = await api.post('/mealplan/generate', options);
       currentPlan.value = data.plan;
+      reasoning.value = data.reasoning || null;
       return data;
     } finally {
       generating.value = false;
@@ -44,6 +46,7 @@ export const useMealPlanStore = defineStore('mealplan', () => {
       const params = weekStart ? `?weekStart=${weekStart}` : '';
       const data = await api.get(`/mealplan${params}`);
       currentPlan.value = data.plan;
+      reasoning.value = data.plan?.reasoning || null;
       return data;
     } finally {
       loading.value = false;
@@ -143,7 +146,7 @@ export const useMealPlanStore = defineStore('mealplan', () => {
   }
 
   return {
-    currentPlan, planHistory, loading, generating,
+    currentPlan, reasoning, planHistory, loading, generating,
     mealTypeLabels,
     generatePlan, fetchCurrentPlan, fetchHistory,
     fetchSuggestions, markCooked, swapRecipe, addEntry, addRecipeToPlan, moveEntry, removeEntry, deletePlan,

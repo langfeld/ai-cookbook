@@ -108,6 +108,24 @@
 
     <!-- ═══════════════════ INHALT ═══════════════════ -->
 
+    <!-- KI-/Algorithmus-Reasoning -->
+    <Transition name="fade">
+      <div v-if="store.reasoning && currentPlan" class="relative bg-linear-to-r from-primary-50 dark:from-primary-950/50 to-transparent px-4 py-3 border border-primary-200 dark:border-primary-800 rounded-xl">
+        <div class="flex items-start gap-3">
+          <div class="flex justify-center items-center bg-primary-100 dark:bg-primary-900 rounded-lg w-8 h-8 shrink-0">
+            <Sparkles class="w-4 h-4 text-primary-600 dark:text-primary-400" />
+          </div>
+          <div class="flex-1 min-w-0">
+            <p class="mb-0.5 font-medium text-primary-800 dark:text-primary-200 text-xs uppercase tracking-wide">Plan-Begründung</p>
+            <p class="text-stone-700 dark:text-stone-300 text-sm leading-relaxed">{{ store.reasoning }}</p>
+          </div>
+          <button @click="store.reasoning = null" class="hover:bg-primary-100 dark:hover:bg-primary-900 p-1 rounded-lg transition-colors shrink-0" title="Schließen">
+            <X class="w-4 h-4 text-primary-400" />
+          </button>
+        </div>
+      </div>
+    </Transition>
+
     <!-- Laden -->
     <div v-if="store.loading || store.generating" class="flex flex-col items-center gap-3 py-16">
       <div class="border-2 border-primary-200 border-t-primary-600 rounded-full w-10 h-10 animate-spin" />
@@ -402,12 +420,23 @@
             </Transition>
 
             <!-- Deduplizierung -->
-            <div class="mb-6">
+            <div class="mb-5">
               <label class="flex items-center gap-2 cursor-pointer">
                 <input type="checkbox" v-model="genDeduplicate" class="rounded accent-primary-600" />
                 <div>
                   <span class="font-medium text-stone-700 dark:text-stone-300 text-sm">Duplikate vermeiden</span>
                   <p class="text-stone-400 text-xs">Rezepte, die in mehreren gewählten Sammlungen vorkommen, nur einmal berücksichtigen.</p>
+                </div>
+              </label>
+            </div>
+
+            <!-- KI-Reasoning -->
+            <div class="mb-6">
+              <label class="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" v-model="genAiReasoning" class="rounded accent-primary-600" />
+                <div>
+                  <span class="font-medium text-stone-700 dark:text-stone-300 text-sm">🤖 KI-Begründung</span>
+                  <p class="text-stone-400 text-xs">Die KI erklärt in 2-3 Sätzen, warum der Plan ausgewogen ist. Erfordert konfigurierten KI-Provider.</p>
                 </div>
               </label>
             </div>
@@ -418,6 +447,7 @@
                 <span class="font-medium">Aktiv:</span>
                 {{ genSourceMode === 'all' ? 'Alle Rezepte' : `${genCollectionIds.length} Sammlung(en)` }}
                 · {{ genDeduplicate ? 'Duplikate werden vermieden' : 'Duplikate erlaubt' }}
+                · {{ genAiReasoning ? 'KI-Begründung an' : 'KI-Begründung aus' }}
               </p>
             </div>
 
@@ -575,10 +605,11 @@ const visibleSlots = ref(savedPrefs.visibleSlots ?? ['fruehstueck', 'mittag', 'a
 const genSourceMode = ref(savedPrefs.sourceMode ?? 'all');
 const genCollectionIds = ref(savedPrefs.collectionIds ?? []);
 const genDeduplicate = ref(savedPrefs.deduplicate ?? true);
+const genAiReasoning = ref(savedPrefs.aiReasoning ?? false);
 const showSlotSettings = ref(false);
 
 // Bei Änderung automatisch in localStorage speichern
-watch([genMealTypes, genPersons, visibleSlots, genSourceMode, genCollectionIds, genDeduplicate], () => {
+watch([genMealTypes, genPersons, visibleSlots, genSourceMode, genCollectionIds, genDeduplicate, genAiReasoning], () => {
   localStorage.setItem(STORAGE_KEY, JSON.stringify({
     mealTypes: genMealTypes.value,
     personCount: genPersons.value,
@@ -586,6 +617,7 @@ watch([genMealTypes, genPersons, visibleSlots, genSourceMode, genCollectionIds, 
     sourceMode: genSourceMode.value,
     collectionIds: genCollectionIds.value,
     deduplicate: genDeduplicate.value,
+    aiReasoning: genAiReasoning.value,
   }));
 }, { deep: true });
 
@@ -686,6 +718,7 @@ async function doGenerate() {
       weekStart: currentWeekStart.value,
       mealTypes: genMealTypes.value,
       personCount: genPersons.value,
+      enableAiReasoning: genAiReasoning.value,
     };
     // Sammlungs-Filter nur wenn explizit Sammlungen gewählt
     if (genSourceMode.value === 'collections' && genCollectionIds.value.length > 0) {

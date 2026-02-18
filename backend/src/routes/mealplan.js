@@ -43,6 +43,11 @@ export default async function mealplanRoutes(fastify) {
             default: true,
             description: 'Rezepte in mehreren Sammlungen nur einmal berücksichtigen',
           },
+          enableAiReasoning: {
+            type: 'boolean',
+            default: false,
+            description: 'KI-Begründung zum generierten Plan erstellen',
+          },
         },
       },
     },
