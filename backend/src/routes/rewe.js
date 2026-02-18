@@ -403,7 +403,7 @@ function generateReweCartScript(products) {
   const productsJson = JSON.stringify(products);
 
   return `(async function() {
-  /* AI Cookbook → REWE Warenkorb v3 */
+  /* AI Cookbook → REWE Warenkorb v4 */
   if (!location.hostname.includes('rewe.de')) {
     alert('Dieses Script muss auf www.rewe.de ausgeführt werden!');
     return;
