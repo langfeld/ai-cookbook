@@ -137,7 +137,7 @@
             @click="selectMode ? toggleSelect(item.id) : null"
           >
             <!-- Auswahl-Checkbox Overlay -->
-            <div v-if="selectMode" class="top-3 left-3 z-10 absolute">
+            <div v-if="selectMode" class="top-0 left-0 z-10 absolute -mt-2 -ml-2">
               <div
                 :class="[
                   'w-6 h-6 rounded-md border-2 flex items-center justify-center transition-all shadow-sm',
