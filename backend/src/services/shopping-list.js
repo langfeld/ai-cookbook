@@ -73,6 +73,46 @@ export function generateShoppingList(userId, mealPlanId) {
     }
   }
 
+  // --- 2b. Zweiter Konsolidierungsschritt: ---
+  // Gleiche Zutat mit unterschiedlichen, inkompatiblen Einheiten zusammenführen
+  // z.B. "Halloumi 200g" + "Halloumi 1 Stk" → zusammenlegen
+  const consolidatedMap = new Map();
+  for (const [key, item] of ingredientMap) {
+    const nameKey = item.name.toLowerCase();
+
+    if (consolidatedMap.has(nameKey)) {
+      const existing = consolidatedMap.get(nameKey);
+
+      if (existing.unit === item.unit) {
+        // Gleiche Einheit → Mengen addieren
+        existing.amount = (existing.amount || 0) + (item.amount || 0);
+      } else {
+        // Unterschiedliche Einheiten → die mit der größeren Menge bevorzugen,
+        // oder die Stück-Einheit wenn es Zähl-Einheiten sind
+        // Mengenangaben einfach addieren, Einheit der größeren Menge behalten
+        const existingAmount = existing.amount || 0;
+        const newAmount = item.amount || 0;
+        existing.amount = existingAmount + newAmount;
+        // Die informativere/größere Einheit behalten
+        if (newAmount > existingAmount && item.unit) {
+          existing.unit = item.unit;
+        }
+      }
+
+      // Rezepte zusammenführen
+      for (const title of item.recipes) {
+        existing.recipes.push(title);
+      }
+      for (const id of item.recipeIds) {
+        if (!existing.recipeIds.includes(id)) {
+          existing.recipeIds.push(id);
+        }
+      }
+    } else {
+      consolidatedMap.set(nameKey, { ...item });
+    }
+  }
+
   // --- 3. Vorräte abziehen ---
   const pantryItems = db.prepare(
     'SELECT * FROM pantry WHERE user_id = ? AND amount > 0'
@@ -80,7 +120,7 @@ export function generateShoppingList(userId, mealPlanId) {
 
   const adjustedItems = [];
 
-  for (const [key, item] of ingredientMap) {
+  for (const [key, item] of consolidatedMap) {
     let remainingAmount = item.amount;
     let pantryDeducted = 0;
 

@@ -76,32 +76,39 @@ export function formatAmount(amount) {
 export function normalizeUnit(unit) {
   if (!unit) return '';
 
+  // Trailing-Punkt entfernen (z.B. "Verp." → "Verp") und trimmen
+  const cleaned = unit.trim().replace(/\.$/, '');
+
   const unitMap = {
-    gramm: 'g',
-    gram: 'g',
-    kilogramm: 'kg',
-    kilogram: 'kg',
+    // Gewicht
+    gramm: 'g', gram: 'g', gr: 'g',
+    kilogramm: 'kg', kilogram: 'kg',
+    // Volumen
     milliliter: 'ml',
     liter: 'l',
-    teelöffel: 'TL',
-    esslöffel: 'EL',
-    stück: 'Stk',
-    stueck: 'Stk',
-    stk: 'Stk',
+    // Löffel
+    teelöffel: 'TL', 'tl': 'TL',
+    esslöffel: 'EL', 'el': 'EL',
+    // Stück-ähnliche Einheiten → alle auf "Stk" normalisieren
+    stück: 'Stk', stueck: 'Stk', stk: 'Stk', st: 'Stk',
+    verp: 'Stk', verpackung: 'Stk', verpackungen: 'Stk',
+    kopf: 'Stk', köpfe: 'Stk',
+    knolle: 'Stk', knollen: 'Stk',
+    stange: 'Stk', stangen: 'Stk',
+    zweig: 'Stk', zweige: 'Stk',
+    blatt: 'Stk', blätter: 'Stk',
+    rispe: 'Stk', rispen: 'Stk',
+    // Andere zählbare Einheiten
     bund: 'Bund',
-    dose: 'Dose',
-    dosen: 'Dose',
+    dose: 'Dose', dosen: 'Dose',
     becher: 'Becher',
-    packung: 'Pkg',
-    pkg: 'Pkg',
-    prise: 'Prise',
-    scheibe: 'Scheibe',
-    scheiben: 'Scheibe',
-    zehe: 'Zehe',
-    zehen: 'Zehe',
+    packung: 'Pkg', pkg: 'Pkg', pack: 'Pkg', päckchen: 'Pkg',
+    prise: 'Prise', prisen: 'Prise',
+    scheibe: 'Scheibe', scheiben: 'Scheibe',
+    zehe: 'Zehe', zehen: 'Zehe',
   };
 
-  return unitMap[unit.toLowerCase()] || unit;
+  return unitMap[cleaned.toLowerCase()] || unit;
 }
 
 /**
