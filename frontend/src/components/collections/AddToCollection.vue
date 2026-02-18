@@ -17,7 +17,7 @@
 
     <Transition name="fade">
       <div v-if="open"
-        class="right-0 z-30 absolute bg-white dark:bg-stone-900 shadow-xl mt-2 border border-stone-200 dark:border-stone-700 rounded-xl w-64 overflow-hidden">
+        class="sm:right-0 bottom-20 sm:bottom-auto z-30 fixed sm:absolute inset-x-3 sm:inset-x-auto bg-white dark:bg-stone-900 shadow-xl sm:mt-2 border border-stone-200 dark:border-stone-700 rounded-xl sm:w-64 overflow-hidden">
         <!-- Header -->
         <div class="p-3 border-stone-200 dark:border-stone-800 border-b">
           <p class="font-medium text-stone-700 dark:text-stone-300 text-xs uppercase tracking-wide">Zu Sammlung hinzufügen</p>

@@ -97,6 +97,15 @@
               <span class="hidden sm:inline">Zum Planer</span>
               <span class="sm:hidden">Planer</span>
             </button>
+            <button
+              v-if="recipe.steps?.length"
+              @click="showCookingMode = true"
+              class="flex sm:flex-initial flex-1 justify-center items-center gap-2 bg-stone-800 hover:bg-stone-700 dark:bg-stone-700 dark:hover:bg-stone-600 px-4 py-2 rounded-lg font-medium text-white text-sm transition-colors"
+            >
+              <Maximize class="w-4 h-4" />
+              <span class="hidden sm:inline">Kochmodus</span>
+              <span class="sm:hidden">Kochen</span>
+            </button>
           </div>
         </div>
       </div>
@@ -352,6 +361,15 @@
       </Transition>
     </Teleport>
 
+    <!-- Kochmodus (Vollbild) -->
+    <CookingMode
+      v-if="recipe"
+      v-model="showCookingMode"
+      :recipe="recipe"
+      :adjusted-servings="adjustedServings"
+      @finished="handleCookingFinished"
+    />
+
     <!-- Bestätigungs-Dialog zum Löschen -->
     <ConfirmDialog
       v-model="showDeleteDialog"
@@ -372,9 +390,10 @@ import { useRoute, useRouter } from 'vue-router';
 import { useRecipesStore } from '@/stores/recipes.js';
 import { useMealPlanStore } from '@/stores/mealplan.js';
 import { useNotification } from '@/composables/useNotification.js';
-import { Star, Clock, Users, ChefHat, Pencil, Plus, Minus, Trash2, List, Layers, CalendarPlus, X, ChevronLeft, ChevronRight } from 'lucide-vue-next';
+import { Star, Clock, Users, ChefHat, Pencil, Plus, Minus, Trash2, List, Layers, CalendarPlus, X, ChevronLeft, ChevronRight, Maximize } from 'lucide-vue-next';
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue';
 import AddToCollection from '@/components/collections/AddToCollection.vue';
+import CookingMode from '@/components/recipes/CookingMode.vue';
 import { useIngredientIcons } from '@/composables/useIngredientIcons.js';
 
 const route = useRoute();
@@ -389,6 +408,7 @@ const adjustedServings = ref(4);
 const showDeleteDialog = ref(false);
 const deleting = ref(false);
 const ingredientView = ref('all');
+const showCookingMode = ref(false);
 
 // ─── Wochenplaner-Modal ───
 const showPlannerModal = ref(false);
@@ -560,6 +580,10 @@ async function markCooked() {
   await recipesStore.markAsCooked(recipe.value.id, { servings: adjustedServings.value });
   showSuccess('Als gekocht markiert! 👨‍🍳');
   await recipesStore.fetchRecipe(recipe.value.id);
+}
+
+async function handleCookingFinished() {
+  await markCooked();
 }
 
 async function deleteRecipe() {
