@@ -49,7 +49,7 @@
 
 <script setup>
 import { computed } from 'vue';
-import { AlertTriangle, Trash2, Info, Loader2 } from 'lucide-vue-next';
+import { AlertTriangle, Trash2, Info, CheckCircle, Loader2 } from 'lucide-vue-next';
 
 const props = defineProps({
   modelValue: { type: Boolean, default: false },
@@ -57,7 +57,7 @@ const props = defineProps({
   message: { type: String, default: 'Diese Aktion kann nicht rückgängig gemacht werden.' },
   confirmText: { type: String, default: 'Bestätigen' },
   cancelText: { type: String, default: 'Abbrechen' },
-  variant: { type: String, default: 'danger', validator: v => ['danger', 'warning', 'info'].includes(v) },
+  variant: { type: String, default: 'danger', validator: v => ['danger', 'warning', 'info', 'success'].includes(v) },
   loading: { type: Boolean, default: false },
 });
 
@@ -67,6 +67,7 @@ const variantIcon = computed(() => ({
   danger: Trash2,
   warning: AlertTriangle,
   info: Info,
+  success: CheckCircle,
 })[props.variant]);
 
 const variantClasses = computed(() => ({
@@ -84,6 +85,11 @@ const variantClasses = computed(() => ({
     iconBg: 'icon-bg-info',
     iconColor: 'text-blue-600 dark:text-blue-400',
     confirmBtn: 'confirm-btn-info',
+  },
+  success: {
+    iconBg: 'icon-bg-success',
+    iconColor: 'text-green-600 dark:text-green-400',
+    confirmBtn: 'confirm-btn-success',
   },
 })[props.variant]);
 
@@ -153,6 +159,12 @@ function cancel() {
 :is(.dark .icon-bg-info) {
   background-color: color-mix(in oklab, var(--color-blue-900) 50%, transparent);
 }
+.icon-bg-success {
+  background-color: var(--color-green-100);
+}
+:is(.dark .icon-bg-success) {
+  background-color: color-mix(in oklab, var(--color-green-900) 50%, transparent);
+}
 
 /* Cancel Button */
 .cancel-btn {
@@ -212,6 +224,12 @@ function cancel() {
 }
 .confirm-btn-info:hover:not(:disabled) {
   background-color: var(--color-blue-700);
+}
+.confirm-btn-success {
+  background-color: var(--color-green-600);
+}
+.confirm-btn-success:hover:not(:disabled) {
+  background-color: var(--color-green-700);
 }
 
 /* Transition */

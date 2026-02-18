@@ -839,6 +839,17 @@
     <div v-else class="flex justify-center py-16">
       <div class="border-2 border-primary-200 border-t-primary-600 rounded-full w-8 h-8 animate-spin" />
     </div>
+
+    <!-- "Einkauf abschließen?"-Dialog nach Bring!/REWE -->
+    <ConfirmDialog
+      v-model="showCompletePurchasePrompt"
+      variant="success"
+      title="Einkauf abschließen?"
+      message="Die Artikel wurden erfolgreich übermittelt. Soll der Einkauf jetzt abgeschlossen und die Zutaten in den Vorratsschrank übernommen werden?"
+      confirm-text="Ja, abschließen 🎉"
+      cancel-text="Nein, noch nicht"
+      @confirm="confirmCompletePurchase"
+    />
   </div>
 </template>
 
@@ -848,6 +859,7 @@ import { useShoppingStore } from '@/stores/shopping.js';
 import { useMealPlanStore } from '@/stores/mealplan.js';
 import { useNotification } from '@/composables/useNotification.js';
 import { ListPlus, Check, ShoppingBag, Plus, Package, BookOpen, BookX, ExternalLink, ShoppingCart, X, ArrowRightLeft, Search, Tag, Trash2, Star, Heart, Archive, Send, Link2, Unlink, ClipboardCopy, LogIn, LogOut, ChevronDown, Loader2, Terminal, Download, Settings, RefreshCw } from 'lucide-vue-next';
+import ConfirmDialog from '@/components/ui/ConfirmDialog.vue';
 
 const shoppingStore = useShoppingStore();
 const mealPlanStore = useMealPlanStore();
@@ -907,6 +919,9 @@ const pickerSearch = ref('');         // Suchbegriff im Picker
 
 // Manuelles Hinzufügen
 const newItem = ref({ name: '', amount: null, unit: '' });
+
+// "Einkauf abschließen?"-Dialog nach Bring!/REWE
+const showCompletePurchasePrompt = ref(false);
 
 // Rezept-Links ein-/ausblenden (persistent via localStorage)
 const showRecipeLinks = ref(localStorage.getItem('shopping_showRecipeLinks') !== 'false');
@@ -1105,6 +1120,12 @@ async function completePurchase() {
   }
 }
 
+/** Nach Bring!/REWE-Aktion: Einkauf abschließen */
+async function confirmCompletePurchase() {
+  showCompletePurchasePrompt.value = false;
+  await completePurchase();
+}
+
 /** REWE Hauptaktion (Split-Button links) */
 async function handleReweMainAction() {
   if (reweShowPreview.value) {
@@ -1120,15 +1141,18 @@ async function executeReweAction() {
     case 'script':
       await loadCartScript();
       showRewePreview.value = false;
+      showCompletePurchasePrompt.value = true;
       break;
     case 'direct':
       window.open('https://www.rewe.de/shop/', '_blank', 'noopener');
       showRewePreview.value = false;
       showSuccess('REWE geöffnet – klicke dort auf den 🍳-Button!');
+      showCompletePurchasePrompt.value = true;
       break;
     case 'tabs':
       openAllReweProducts();
       showRewePreview.value = false;
+      showCompletePurchasePrompt.value = true;
       break;
     default:
       showRewePreview.value = true;
@@ -1252,6 +1276,7 @@ async function sendToBring() {
       showError(`${result.errors.length} Artikel konnten nicht gesendet werden.`);
     }
     showBringModal.value = false;
+    showCompletePurchasePrompt.value = true;
   } catch {
     showError('Senden an Bring! fehlgeschlagen.');
   }
