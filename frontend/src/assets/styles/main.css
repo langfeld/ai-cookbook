@@ -45,6 +45,19 @@
   --color-accent-800: #166534;
   --color-accent-900: #14532d;
 
+  /* REWE-Farbe: Warmes, gedämpftes Korallenrot */
+  --color-rewe-50: #fdf5f4;
+  --color-rewe-100: #fbe8e6;
+  --color-rewe-200: #f8d4d0;
+  --color-rewe-300: #f2b3ac;
+  --color-rewe-400: #e48a80;
+  --color-rewe-500: #c75b52;
+  --color-rewe-600: #b44c43;
+  --color-rewe-700: #973e36;
+  --color-rewe-800: #7d3530;
+  --color-rewe-900: #69302d;
+  --color-rewe-950: #381614;
+
   /* Schriftarten */
   --font-sans: 'Inter', 'system-ui', '-apple-system', 'Segoe UI', sans-serif;
   --font-display: 'Playfair Display', 'Georgia', serif;

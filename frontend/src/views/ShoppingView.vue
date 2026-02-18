@@ -46,7 +46,7 @@
           v-if="shoppingStore.activeList"
           @click="matchWithRewe"
           :disabled="reweLoading"
-          class="flex items-center gap-2 bg-red-600 hover:bg-red-700 disabled:opacity-50 px-4 py-2 rounded-xl font-medium text-white text-sm transition-colors"
+          class="flex items-center gap-2 bg-rewe-500 hover:bg-rewe-600 disabled:opacity-50 px-4 py-2 rounded-xl font-medium text-white text-sm transition-colors"
         >
           🏪 REWE-Zuordnung
         </button>
@@ -63,11 +63,11 @@
 
     <!-- REWE-Matching Fortschritt -->
     <Transition name="slide">
-      <div v-if="shoppingStore.reweProgress" class="bg-white dark:bg-stone-900 border border-red-200 dark:border-red-800/40 rounded-xl overflow-hidden">
+      <div v-if="shoppingStore.reweProgress" class="bg-white dark:bg-stone-900 border border-rewe-200 dark:border-rewe-800/40 rounded-xl overflow-hidden">
         <!-- Fortschrittsbalken -->
-        <div class="bg-red-100 dark:bg-red-900/20 w-full h-1.5">
+        <div class="bg-rewe-100 dark:bg-rewe-900/20 w-full h-1.5">
           <div
-            class="bg-red-500 h-1.5 transition-all duration-300 ease-out"
+            class="bg-rewe-500 h-1.5 transition-all duration-300 ease-out"
             :style="{ width: `${reweMatchPercent}%` }"
           />
         </div>
@@ -77,13 +77,13 @@
             <div class="flex items-center gap-3 min-w-0">
               <div class="relative flex justify-center items-center w-9 h-9 shrink-0">
                 <svg class="w-9 h-9 -rotate-90" viewBox="0 0 36 36">
-                  <circle cx="18" cy="18" r="15" fill="none" stroke="currentColor" stroke-width="3" class="text-red-100 dark:text-red-900/40" />
+                  <circle cx="18" cy="18" r="15" fill="none" stroke="currentColor" stroke-width="3" class="text-rewe-100 dark:text-rewe-900/40" />
                   <circle cx="18" cy="18" r="15" fill="none" stroke="currentColor" stroke-width="3"
-                    class="text-red-500 transition-all duration-300"
+                    class="text-rewe-500 transition-all duration-300"
                     :stroke-dasharray="`${reweMatchPercent * 0.942} 100`"
                   />
                 </svg>
-                <span class="absolute font-bold text-[10px] text-red-600 dark:text-red-400">{{ reweMatchPercent }}%</span>
+                <span class="absolute font-bold text-[10px] text-rewe-600 dark:text-rewe-400">{{ reweMatchPercent }}%</span>
               </div>
               <div class="min-w-0">
                 <p class="font-medium text-stone-800 dark:text-stone-200 text-sm truncate">
@@ -233,7 +233,7 @@
                 <div v-if="item.rewe_product" class="flex items-center gap-1 mt-0.5 text-xs">
                   <button
                     @click.stop="openProductPicker(item)"
-                    class="inline-flex items-center gap-1 text-red-500 hover:text-red-700 dark:hover:text-red-400 hover:underline transition-colors cursor-pointer"
+                    class="inline-flex items-center gap-1 text-rewe-500 hover:text-rewe-700 dark:hover:text-rewe-400 hover:underline transition-colors cursor-pointer"
                     :title="`Klick: Alternatives Produkt wählen`"
                   >
                     🏪 <span v-if="item.rewe_product.quantity > 1" class="font-semibold">{{ item.rewe_product.quantity }}×</span> {{ item.rewe_product.name }} – {{ formatPrice(item.rewe_product.price * (item.rewe_product.quantity || 1)) }}
@@ -245,7 +245,7 @@
                     target="_blank"
                     rel="noopener"
                     @click.stop
-                    class="text-stone-400 hover:text-red-500 transition-colors"
+                    class="text-stone-400 hover:text-rewe-500 transition-colors"
                     title="Bei REWE öffnen"
                   >
                     <ExternalLink class="w-3 h-3" />
@@ -255,7 +255,7 @@
                 <button
                   v-else-if="shoppingStore.reweLinkedItems.length > 0 || reweLoading"
                   @click.stop="openProductPicker(item)"
-                  class="inline-flex items-center gap-1 mt-0.5 text-stone-400 hover:text-red-500 text-xs transition-colors cursor-pointer"
+                  class="inline-flex items-center gap-1 mt-0.5 text-stone-400 hover:text-rewe-500 text-xs transition-colors cursor-pointer"
                   title="REWE-Produkt suchen"
                 >
                   🔍 Produkt suchen…
@@ -330,7 +330,7 @@
             <button
               @click="handleReweMainAction"
               :disabled="cartScriptLoading"
-              class="flex items-center gap-2 bg-red-600 hover:bg-red-700 disabled:opacity-50 px-5 py-3 rounded-l-xl font-medium text-white transition-colors"
+              class="flex items-center gap-2 bg-rewe-500 hover:bg-rewe-600 disabled:opacity-50 px-5 py-3 rounded-l-xl font-medium text-white transition-colors"
             >
               <Loader2 v-if="cartScriptLoading" class="w-4 h-4 animate-spin" />
               <ShoppingCart v-else class="w-4 h-4" />
@@ -338,7 +338,7 @@
             </button>
             <button
               @click="showReweSettings = true"
-              class="flex items-center bg-red-600 hover:bg-red-700 px-3 border-red-500 border-l rounded-r-xl font-medium text-white transition-colors"
+              class="flex items-center bg-rewe-500 hover:bg-rewe-600 px-3 border-rewe-400 border-l rounded-r-xl font-medium text-white transition-colors"
               title="REWE-Einstellungen"
             >
               <Settings class="w-4 h-4" />
@@ -383,7 +383,7 @@
                       :class="[
                         'flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-all',
                         reweAction === opt.value
-                          ? 'bg-red-50 dark:bg-red-900/20 border-red-300 dark:border-red-700'
+                          ? 'bg-rewe-50 dark:bg-rewe-900/20 border-rewe-300 dark:border-rewe-700'
                           : 'bg-stone-50 dark:bg-stone-800 border-stone-200 dark:border-stone-700 hover:border-stone-300 dark:hover:border-stone-600'
                       ]"
                     >
@@ -392,7 +392,7 @@
                         :value="opt.value"
                         v-model="reweAction"
                         @change="saveReweSettings"
-                        class="mt-0.5 accent-red-600"
+                        class="mt-0.5 accent-rewe-600"
                       />
                       <div>
                         <span class="font-medium text-stone-800 dark:text-stone-200 text-sm">{{ opt.icon }} {{ opt.label }}</span>
@@ -406,7 +406,7 @@
                 <label class="flex items-center gap-3 cursor-pointer select-none">
                   <div class="relative">
                     <input type="checkbox" v-model="reweShowPreview" @change="saveReweSettings" class="sr-only peer" />
-                    <div class="bg-stone-200 dark:bg-stone-700 peer-checked:bg-red-500 rounded-full w-10 h-5 transition-colors"></div>
+                    <div class="bg-stone-200 dark:bg-stone-700 peer-checked:bg-rewe-500 rounded-full w-10 h-5 transition-colors"></div>
                     <div class="top-0.5 left-0.5 absolute bg-white rounded-full w-4 h-4 transition-transform peer-checked:translate-x-5"></div>
                   </div>
                   <div>
@@ -479,7 +479,7 @@
                   <div class="flex-1 min-w-0">
                     <p class="font-medium text-stone-800 dark:text-stone-200 text-sm truncate">{{ item.ingredient_name }}</p>
                     <p class="text-stone-500 dark:text-stone-400 text-xs truncate">
-                      <span v-if="item.rewe_product.quantity > 1" class="font-semibold text-red-500">{{ item.rewe_product.quantity }}×</span>
+                      <span v-if="item.rewe_product.quantity > 1" class="font-semibold text-rewe-500">{{ item.rewe_product.quantity }}×</span>
                       {{ item.rewe_product.name }}
                     </p>
                     <p v-if="item.rewe_product.packageSize" class="text-[10px] text-stone-400 dark:text-stone-500">{{ item.rewe_product.packageSize }}</p>
@@ -490,7 +490,7 @@
                       :href="item.rewe_product.url"
                       target="_blank"
                       rel="noopener"
-                      class="flex items-center gap-1 bg-red-50 hover:bg-red-100 dark:bg-red-900/30 dark:hover:bg-red-900/50 px-2.5 py-1.5 rounded-lg font-medium text-red-600 dark:text-red-400 text-xs transition-colors"
+                      class="flex items-center gap-1 bg-rewe-50 hover:bg-rewe-100 dark:bg-rewe-900/30 dark:hover:bg-rewe-900/50 px-2.5 py-1.5 rounded-lg font-medium text-rewe-600 dark:text-rewe-400 text-xs transition-colors"
                     >
                       <ExternalLink class="w-3 h-3" />
                     </a>
@@ -503,7 +503,7 @@
                 <button
                   @click="executeReweAction"
                   :disabled="cartScriptLoading"
-                  class="flex justify-center items-center gap-2 bg-red-600 hover:bg-red-700 disabled:opacity-50 py-3 rounded-xl w-full font-medium text-white transition-colors"
+                  class="flex justify-center items-center gap-2 bg-rewe-500 hover:bg-rewe-600 disabled:opacity-50 py-3 rounded-xl w-full font-medium text-white transition-colors"
                 >
                   <Loader2 v-if="cartScriptLoading" class="w-4 h-4 animate-spin" />
                   <component v-else :is="currentReweActionIcon" class="w-4 h-4" />
@@ -556,13 +556,13 @@
                       v-model="pickerSearch"
                       type="text"
                       placeholder="Suchbegriff ändern…"
-                      class="bg-stone-50 dark:bg-stone-800 py-2 pr-3 pl-9 border border-stone-300 focus:border-transparent dark:border-stone-600 rounded-lg focus:ring-2 focus:ring-red-500 w-full text-stone-800 dark:text-stone-200 placeholder:text-stone-400 text-sm"
+                      class="bg-stone-50 dark:bg-stone-800 py-2 pr-3 pl-9 border border-stone-300 focus:border-transparent dark:border-stone-600 rounded-lg focus:ring-2 focus:ring-rewe-500 w-full text-stone-800 dark:text-stone-200 placeholder:text-stone-400 text-sm"
                     />
                   </div>
                   <button
                     type="submit"
                     :disabled="pickerLoading || pickerSearch.trim().length < 2"
-                    class="bg-red-600 hover:bg-red-700 disabled:opacity-50 px-3 py-2 rounded-lg font-medium text-white text-sm transition-colors shrink-0"
+                    class="bg-rewe-500 hover:bg-rewe-600 disabled:opacity-50 px-3 py-2 rounded-lg font-medium text-white text-sm transition-colors shrink-0"
                   >
                     Suchen
                   </button>
@@ -573,7 +573,7 @@
               <div class="flex-1 overflow-y-auto">
                 <!-- Ladezustand -->
                 <div v-if="pickerLoading" class="flex flex-col items-center gap-3 py-12">
-                  <div class="border-2 border-red-200 border-t-red-600 rounded-full w-8 h-8 animate-spin" />
+                  <div class="border-2 border-rewe-200 border-t-rewe-600 rounded-full w-8 h-8 animate-spin" />
                   <p class="text-stone-500 dark:text-stone-400 text-sm">Suche bei REWE…</p>
                 </div>
 
@@ -606,7 +606,7 @@
 
                     <!-- Produktinfo -->
                     <div class="flex-1 min-w-0">
-                      <p class="font-medium text-stone-800 dark:group-hover:text-red-400 dark:text-stone-200 group-hover:text-red-600 text-sm truncate transition-colors">
+                      <p class="font-medium text-stone-800 dark:group-hover:text-rewe-400 dark:text-stone-200 group-hover:text-rewe-600 text-sm truncate transition-colors">
                         {{ product.name }}
                       </p>
                       <p class="flex items-center gap-2 mt-0.5 text-stone-500 dark:text-stone-400 text-xs">
