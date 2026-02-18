@@ -90,7 +90,7 @@ function generateReweUserscript(apiBaseUrl, authToken) {
     #ac-fab {
       position: fixed; bottom: 24px; right: 24px; z-index: 999990;
       width: 56px; height: 56px; border-radius: 50%;
-      background: linear-gradient(135deg, #cc0000, #a00);
+      background: linear-gradient(135deg, #c75b52, #a8473f);
       color: white; border: none; cursor: pointer;
       box-shadow: 0 4px 16px rgba(0,0,0,0.3);
       font-size: 24px; display: flex; align-items: center; justify-content: center;
@@ -122,7 +122,7 @@ function generateReweUserscript(apiBaseUrl, authToken) {
     #ac-panel.ac-open { display: flex; }
 
     #ac-panel-header {
-      background: linear-gradient(135deg, #cc0000, #a00);
+      background: linear-gradient(135deg, #c75b52, #a8473f);
       color: white; padding: 16px 20px;
       display: flex; align-items: center; justify-content: space-between;
     }
@@ -143,7 +143,7 @@ function generateReweUserscript(apiBaseUrl, authToken) {
     }
     .ac-status .ac-spinner {
       display: inline-block; width: 20px; height: 20px;
-      border: 2px solid #ddd; border-top-color: #cc0000;
+      border: 2px solid #ddd; border-top-color: #c75b52;
       border-radius: 50%; animation: ac-spin 0.8s linear infinite;
       margin-bottom: 8px;
     }
@@ -179,7 +179,7 @@ function generateReweUserscript(apiBaseUrl, authToken) {
       transition: all 0.2s;
     }
     .ac-btn-primary {
-      background: linear-gradient(135deg, #cc0000, #a00);
+      background: linear-gradient(135deg, #c75b52, #a8473f);
       color: white;
     }
     .ac-btn-primary:hover { filter: brightness(1.1); }
@@ -213,7 +213,37 @@ function generateReweUserscript(apiBaseUrl, authToken) {
       text-align: center;
     }
     .ac-error-box a {
-      color: #cc0000; text-decoration: underline; cursor: pointer;
+      color: #c75b52; text-decoration: underline; cursor: pointer;
+    }
+
+    .ac-option-row {
+      display: flex; align-items: center; gap: 8px;
+      padding: 8px 20px; font-size: 12px; color: #666;
+    }
+    .ac-toggle {
+      position: relative; width: 36px; height: 20px; flex-shrink: 0;
+    }
+    .ac-toggle input {
+      opacity: 0; width: 0; height: 0; position: absolute;
+    }
+    .ac-toggle-slider {
+      position: absolute; inset: 0; border-radius: 10px;
+      background: #ccc; cursor: pointer; transition: background 0.2s;
+    }
+    .ac-toggle-slider::before {
+      content: ''; position: absolute;
+      width: 16px; height: 16px; border-radius: 50%;
+      left: 2px; top: 2px; background: white;
+      transition: transform 0.2s;
+    }
+    .ac-toggle input:checked + .ac-toggle-slider {
+      background: #c75b52;
+    }
+    .ac-toggle input:checked + .ac-toggle-slider::before {
+      transform: translateX(16px);
+    }
+    .ac-option-label {
+      cursor: pointer; user-select: none;
     }
   \`);
 
@@ -221,6 +251,7 @@ function generateReweUserscript(apiBaseUrl, authToken) {
   let products = [];
   let panelOpen = false;
   let isAdding = false;
+  let autoCheckout = localStorage.getItem('ac_auto_checkout') !== 'false'; // default: true
 
   /* ─── DOM ─── */
 
@@ -245,26 +276,24 @@ function generateReweUserscript(apiBaseUrl, authToken) {
     </div>
     <div id="ac-panel-body">
       <div class="ac-status" id="ac-status">
-        Klicke auf "Liste laden" um deine Einkaufsliste abzurufen.
+        <div class="ac-spinner"></div><br>Lade Einkaufsliste...
       </div>
     </div>
-    <div id="ac-panel-footer">
-      <button class="ac-btn ac-btn-primary" id="ac-btn-load">
-        📋 Einkaufsliste laden
-      </button>
-    </div>
+    <div id="ac-panel-footer"></div>
   \`;
   document.body.appendChild(panel);
 
   // Event-Listener
   document.getElementById('ac-panel-close').onclick = () => togglePanel();
-  document.getElementById('ac-btn-load').onclick = loadProducts;
 
   /* ─── Funktionen ─── */
 
   function togglePanel() {
     panelOpen = !panelOpen;
     panel.classList.toggle('ac-open', panelOpen);
+    if (panelOpen && !products.length && !isAdding) {
+      loadProducts();
+    }
   }
 
   function setStatus(html) {
@@ -399,6 +428,15 @@ function generateReweUserscript(apiBaseUrl, authToken) {
       <button class="ac-btn ac-btn-primary" id="ac-btn-add">
         🛒 Alle in den Warenkorb legen
       </button>
+      <div class="ac-option-row">
+        <label class="ac-toggle">
+          <input type="checkbox" id="ac-auto-checkout" \${autoCheckout ? 'checked' : ''}>
+          <span class="ac-toggle-slider"></span>
+        </label>
+        <label class="ac-option-label" for="ac-auto-checkout">
+          Nach dem Hinzufügen zum Warenkorb wechseln
+        </label>
+      </div>
       <button class="ac-btn ac-btn-secondary" id="ac-btn-reload">
         🔄 Liste neu laden
       </button>
@@ -406,6 +444,10 @@ function generateReweUserscript(apiBaseUrl, authToken) {
 
     document.getElementById('ac-btn-add').onclick = addAllToCart;
     document.getElementById('ac-btn-reload').onclick = loadProducts;
+    document.getElementById('ac-auto-checkout').onchange = (e) => {
+      autoCheckout = e.target.checked;
+      localStorage.setItem('ac_auto_checkout', autoCheckout);
+    };
   }
 
   /* ─── Alle Produkte in den REWE-Warenkorb ─── */
@@ -508,6 +550,13 @@ function generateReweUserscript(apiBaseUrl, authToken) {
 
     /* Badge aktualisieren */
     updateBadge(0);
+
+    /* Auto-Checkout: Zum Warenkorb wechseln wenn aktiviert und mindestens ein Produkt hinzugefügt */
+    if (autoCheckout && added > 0) {
+      setTimeout(() => {
+        window.location.href = 'https://www.rewe.de/shop/checkout/basket';
+      }, 1500);
+    }
   }
 
   function escapeHtml(str) {
@@ -516,7 +565,7 @@ function generateReweUserscript(apiBaseUrl, authToken) {
     return div.innerHTML;
   }
 
-  console.log('%c🍳 AI Cookbook Userscript geladen!', 'color:#cc0000;font-weight:bold;font-size:14px');
+  console.log('%c🍳 AI Cookbook Userscript geladen!', 'color:#c75b52;font-weight:bold;font-size:14px');
   console.log('%c   Klicke auf den 🍳-Button unten rechts.', 'color:#666');
 })();
 `;
