@@ -276,7 +276,7 @@ export const useShoppingStore = defineStore('shopping', () => {
   function getReweUserscriptUrl() {
     const authStore = useAuthStore();
     const baseUrl = window.location.origin;
-    return `${baseUrl}/api/rewe/userscript?token=${encodeURIComponent(authStore.token)}`;
+    return `${baseUrl}/api/rewe/userscript.user.js?token=${encodeURIComponent(authStore.token)}`;
   }
 
   return {

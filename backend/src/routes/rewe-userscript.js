@@ -11,12 +11,13 @@
 export default async function reweUserscriptRoute(fastify) {
 
   /**
-   * GET /api/rewe/userscript
-   * Generiert ein Tampermonkey/Greasemonkey-Userscript.
+   * GET /api/rewe/userscript.user.js
+   * Generiert ein Tampermonkey/Greasemonkey/ViolentMonkey-Userscript.
    * Auth über ?token= Query-Parameter (JWT).
-   * Content-Disposition mit .user.js Dateiname → Tampermonkey erkennt es.
+   * URL endet auf .user.js → Userscript-Manager erkennt es automatisch
+   * und öffnet den Installations-Dialog.
    */
-  fastify.get('/userscript', {
+  fastify.get('/userscript.user.js', {
     schema: {
       description: 'Tampermonkey/Greasemonkey Userscript für REWE-Warenkorb',
       tags: ['REWE'],
@@ -47,7 +48,6 @@ export default async function reweUserscriptRoute(fastify) {
 
     reply
       .type('text/javascript; charset=utf-8')
-      .header('Content-Disposition', 'attachment; filename="ai-cookbook.user.js"')
       .send(script);
   });
 }
