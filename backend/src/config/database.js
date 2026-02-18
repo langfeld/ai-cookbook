@@ -39,6 +39,15 @@ export function initializeDatabase() {
     }
   } catch { /* Tabelle existiert noch nicht — OK */ }
 
+  // Migration: is_permanent-Spalte zum Vorratsschrank hinzufügen
+  try {
+    const pantryColumns = db.prepare("PRAGMA table_info(pantry)").all().map(c => c.name);
+    if (pantryColumns.length > 0 && !pantryColumns.includes('is_permanent')) {
+      db.exec("ALTER TABLE pantry ADD COLUMN is_permanent INTEGER DEFAULT 0");
+      console.log('  ↳ Migration: is_permanent-Spalte zu pantry hinzugefügt');
+    }
+  } catch { /* Tabelle existiert noch nicht — OK */ }
+
   db.exec(`
     -- ============================================
     -- Benutzer-Tabelle
@@ -207,6 +216,7 @@ export function initializeDatabase() {
       category TEXT DEFAULT 'Sonstiges',   -- Lebensmittelkategorie
       expiry_date DATE,                     -- Ablaufdatum (optional)
       notes TEXT,
+      is_permanent INTEGER DEFAULT 0,       -- Dauerhaft verfügbar (z.B. Wasser, Salz)
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE

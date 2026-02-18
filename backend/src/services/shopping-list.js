@@ -115,7 +115,7 @@ export function generateShoppingList(userId, mealPlanId) {
 
   // --- 3. Vorräte abziehen ---
   const pantryItems = db.prepare(
-    'SELECT * FROM pantry WHERE user_id = ? AND amount > 0'
+    'SELECT * FROM pantry WHERE user_id = ? AND (amount > 0 OR is_permanent = 1)'
   ).all(userId);
 
   const adjustedItems = [];
@@ -130,13 +130,19 @@ export function generateShoppingList(userId, mealPlanId) {
     );
 
     if (matchingPantry && remainingAmount) {
-      const pantryConverted = convertToBaseUnit(matchingPantry.amount, matchingPantry.unit);
+      if (matchingPantry.is_permanent) {
+        // Dauerhaft verfügbar → komplett abziehen, Bestand bleibt unverändert
+        pantryDeducted = remainingAmount;
+        remainingAmount = 0;
+      } else {
+        const pantryConverted = convertToBaseUnit(matchingPantry.amount, matchingPantry.unit);
 
-      if (pantryConverted.unit === item.unit) {
-        // Vorrat abziehen
-        const deduction = Math.min(pantryConverted.amount, remainingAmount);
-        remainingAmount -= deduction;
-        pantryDeducted = deduction;
+        if (pantryConverted.unit === item.unit) {
+          // Vorrat abziehen
+          const deduction = Math.min(pantryConverted.amount, remainingAmount);
+          remainingAmount -= deduction;
+          pantryDeducted = deduction;
+        }
       }
     }
 

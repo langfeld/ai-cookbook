@@ -117,13 +117,22 @@
           >
             <div class="flex justify-between items-start">
               <div>
-                <h4 class="font-medium text-stone-800 dark:text-stone-200 text-sm">{{ item.ingredient_name }}</h4>
-                <p class="mt-0.5 text-stone-500 dark:text-stone-400 text-xs">
+                <h4 class="flex items-center gap-1.5 font-medium text-stone-800 dark:text-stone-200 text-sm">
+                  {{ item.ingredient_name }}
+                  <span v-if="item.is_permanent" class="inline-flex items-center gap-0.5 bg-blue-100 dark:bg-blue-900/30 px-1.5 py-0.5 rounded-full text-[10px] text-blue-600 dark:text-blue-400" title="Dauerhaft verfügbar">
+                    <Infinity class="w-3 h-3" />
+                  </span>
+                </h4>
+                <p v-if="!item.is_permanent" class="mt-0.5 text-stone-500 dark:text-stone-400 text-xs">
                   {{ item.amount }} {{ item.unit }}
+                </p>
+                <p v-else class="mt-0.5 text-blue-500 dark:text-blue-400 text-xs">
+                  Immer verfügbar
                 </p>
               </div>
               <div class="flex gap-1">
                 <button
+                  v-if="!item.is_permanent"
                   @click="openUseModal(item)"
                   class="p-1.5 rounded-lg text-accent-600 hover:bg-accent-50 dark:hover:bg-accent-900/20"
                   title="Verbrauchen"
@@ -140,7 +149,7 @@
               </div>
             </div>
             <!-- Ablaufdatum -->
-            <div v-if="item.expiry_date" class="mt-2">
+            <div v-if="item.expiry_date && !item.is_permanent" class="mt-2">
               <span :class="[
                 'text-xs px-2 py-0.5 rounded-full',
                 isExpiringSoon(item.expiry_date)
@@ -174,7 +183,7 @@
             <label class="block mb-1 text-stone-600 dark:text-stone-400 text-sm">Name *</label>
             <input v-model="addForm.name" type="text" class="form-input" placeholder="z.B. Mehl" />
           </div>
-          <div class="gap-3 grid grid-cols-2">
+          <div v-if="!addForm.is_permanent" class="gap-3 grid grid-cols-2">
             <div>
               <label class="block mb-1 text-stone-600 dark:text-stone-400 text-sm">Menge</label>
               <input v-model.number="addForm.amount" type="number" step="0.01" class="form-input" />
@@ -191,7 +200,21 @@
               <option v-for="cat in pantryCategories" :key="cat" :value="cat">{{ cat }}</option>
             </select>
           </div>
-          <div>
+
+          <!-- Dauerhaft verfügbar Toggle -->
+          <label class="flex items-center gap-3 cursor-pointer select-none">
+            <div class="relative">
+              <input type="checkbox" v-model="addForm.is_permanent" class="sr-only peer" />
+              <div class="bg-stone-200 dark:bg-stone-700 peer-checked:bg-blue-500 rounded-full w-10 h-5 transition-colors"></div>
+              <div class="top-0.5 left-0.5 absolute bg-white rounded-full w-4 h-4 transition-transform peer-checked:translate-x-5"></div>
+            </div>
+            <div>
+              <span class="font-medium text-stone-700 dark:text-stone-300 text-sm">Dauerhaft verfügbar</span>
+              <p class="text-stone-400 dark:text-stone-500 text-xs">z.B. Wasser, Salz, Pfeffer – immer vorhanden</p>
+            </div>
+          </label>
+
+          <div v-if="!addForm.is_permanent">
             <label class="block mb-1 text-stone-600 dark:text-stone-400 text-sm">MHD (optional)</label>
             <input v-model="addForm.expires_at" type="date" class="form-input" />
           </div>
@@ -319,7 +342,7 @@
 import { ref, reactive, computed, onMounted, onUnmounted } from 'vue';
 import { usePantryStore } from '@/stores/pantry.js';
 import { useNotification } from '@/composables/useNotification.js';
-import { Plus, Minus, Trash2, AlertTriangle, Download, Upload, FileSpreadsheet, FileJson, Loader2 } from 'lucide-vue-next';
+import { Plus, Minus, Trash2, AlertTriangle, Download, Upload, FileSpreadsheet, FileJson, Loader2, Infinity } from 'lucide-vue-next';
 
 const pantryStore = usePantryStore();
 const { showSuccess, showError } = useNotification();
@@ -340,6 +363,7 @@ const addForm = reactive({
   unit: 'Stk.',
   category: '',
   expires_at: '',
+  is_permanent: false,
 });
 
 const pantryCategories = [
@@ -396,14 +420,15 @@ async function addItem() {
   try {
     await pantryStore.addItem({
       ingredient_name: addForm.name,
-      amount: addForm.amount,
-      unit: addForm.unit,
+      amount: addForm.is_permanent ? 1 : addForm.amount,
+      unit: addForm.is_permanent ? '' : addForm.unit,
       category: addForm.category || undefined,
-      expiry_date: addForm.expires_at || undefined,
+      expiry_date: addForm.is_permanent ? undefined : (addForm.expires_at || undefined),
+      is_permanent: addForm.is_permanent ? 1 : 0,
     });
     showSuccess(`${addForm.name} hinzugefügt!`);
     showAddModal.value = false;
-    Object.assign(addForm, { name: '', amount: 1, unit: 'Stk.', category: '', expires_at: '' });
+    Object.assign(addForm, { name: '', amount: 1, unit: 'Stk.', category: '', expires_at: '', is_permanent: false });
   } catch {
     // Fehler wird von useApi angezeigt
   }
@@ -508,6 +533,7 @@ function parseCsvImport(text) {
   const catIdx = headers.findIndex(h => ['kategorie', 'category'].includes(h));
   const expiryIdx = headers.findIndex(h => ['mhd', 'expiry_date', 'ablaufdatum'].includes(h));
   const notesIdx = headers.findIndex(h => ['notizen', 'notes', 'bemerkung'].includes(h));
+  const permanentIdx = headers.findIndex(h => ['dauerhaft', 'is_permanent', 'permanent'].includes(h));
 
   if (nameIdx === -1) return null;
 
@@ -523,6 +549,7 @@ function parseCsvImport(text) {
       category: cols[catIdx] || 'Sonstiges',
       expiry_date: cols[expiryIdx] || null,
       notes: cols[notesIdx] || null,
+      is_permanent: permanentIdx >= 0 && ['ja', 'yes', '1', 'true'].includes((cols[permanentIdx] || '').toLowerCase()),
     });
   }
   return items;
@@ -562,7 +589,7 @@ function exportPantry(format) {
 
   if (format === 'csv') {
     // CSV mit Semikolon (deutscher Excel-Standard), BOM für korrekte Umlaute
-    const header = 'Zutat;Menge;Einheit;Kategorie;MHD;Notizen';
+    const header = 'Zutat;Menge;Einheit;Kategorie;MHD;Notizen;Dauerhaft';
     const rows = items.map(i => [
       csvEscape(i.ingredient_name),
       i.amount ?? '',
@@ -570,6 +597,7 @@ function exportPantry(format) {
       csvEscape(i.category || 'Sonstiges'),
       i.expiry_date || '',
       csvEscape(i.notes || ''),
+      i.is_permanent ? 'Ja' : 'Nein',
     ].join(';'));
     content = '\uFEFF' + [header, ...rows].join('\r\n');
     mimeType = 'text/csv;charset=utf-8';
@@ -586,6 +614,7 @@ function exportPantry(format) {
         category: i.category || 'Sonstiges',
         expiry_date: i.expiry_date || null,
         notes: i.notes || null,
+        is_permanent: i.is_permanent || false,
       })),
     };
     content = JSON.stringify(exportData, null, 2);

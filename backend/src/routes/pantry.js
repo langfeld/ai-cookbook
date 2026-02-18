@@ -39,6 +39,7 @@ function parseImportData(text, filename = '') {
   const catIdx = headers.findIndex(h => ['kategorie', 'category'].includes(h));
   const expiryIdx = headers.findIndex(h => ['mhd', 'expiry_date', 'ablaufdatum', 'haltbar'].includes(h));
   const notesIdx = headers.findIndex(h => ['notizen', 'notes', 'bemerkung'].includes(h));
+  const permanentIdx = headers.findIndex(h => ['dauerhaft', 'is_permanent', 'permanent'].includes(h));
 
   if (nameIdx === -1) return null;
 
@@ -54,6 +55,7 @@ function parseImportData(text, filename = '') {
       category: cols[catIdx]?.trim() || 'Sonstiges',
       expiry_date: cols[expiryIdx]?.trim() || null,
       notes: cols[notesIdx]?.trim() || null,
+      is_permanent: permanentIdx >= 0 && ['ja', 'yes', '1', 'true'].includes((cols[permanentIdx] || '').trim().toLowerCase()),
     });
   }
   return items;
@@ -104,7 +106,7 @@ export default async function pantryRoutes(fastify) {
     const userId = request.user.id;
     const { category, expiring } = request.query;
 
-    let query = 'SELECT * FROM pantry WHERE user_id = ? AND amount > 0';
+    let query = 'SELECT * FROM pantry WHERE user_id = ? AND (amount > 0 OR is_permanent = 1)';
     const params = [userId];
 
     if (category) {
@@ -123,12 +125,12 @@ export default async function pantryRoutes(fastify) {
 
     // Kategorien für Filter
     const categories = db.prepare(
-      'SELECT DISTINCT category FROM pantry WHERE user_id = ? AND amount > 0 ORDER BY category'
+      'SELECT DISTINCT category FROM pantry WHERE user_id = ? AND (amount > 0 OR is_permanent = 1) ORDER BY category'
     ).all(userId);
 
     // Bald ablaufende Items zählen
     const expiringCount = db.prepare(
-      `SELECT COUNT(*) as count FROM pantry WHERE user_id = ? AND amount > 0 AND expiry_date IS NOT NULL AND expiry_date <= date('now', '+7 days')`
+      `SELECT COUNT(*) as count FROM pantry WHERE user_id = ? AND (amount > 0 OR is_permanent = 1) AND expiry_date IS NOT NULL AND expiry_date <= date('now', '+7 days')`
     ).get(userId);
 
     return {
@@ -157,12 +159,13 @@ export default async function pantryRoutes(fastify) {
           category: { type: 'string' },
           expiry_date: { type: 'string', format: 'date' },
           notes: { type: 'string' },
+          is_permanent: { type: 'integer', enum: [0, 1] },
         },
       },
     },
   }, async (request, reply) => {
     const userId = request.user.id;
-    const { ingredient_name, amount, unit, category, expiry_date, notes } = request.body;
+    const { ingredient_name, amount, unit, category, expiry_date, notes, is_permanent } = request.body;
 
     // Prüfen ob Zutat schon existiert -> Menge addieren
     const existing = db.prepare(
@@ -171,15 +174,15 @@ export default async function pantryRoutes(fastify) {
 
     if (existing) {
       db.prepare(
-        'UPDATE pantry SET amount = amount + ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
-      ).run(amount, existing.id);
+        'UPDATE pantry SET amount = amount + ?, is_permanent = COALESCE(?, is_permanent), updated_at = CURRENT_TIMESTAMP WHERE id = ?'
+      ).run(amount, is_permanent ?? null, existing.id);
 
       return { id: existing.id, message: 'Menge aktualisiert!' };
     }
 
     const result = db.prepare(
-      'INSERT INTO pantry (user_id, ingredient_name, amount, unit, category, expiry_date, notes) VALUES (?, ?, ?, ?, ?, ?, ?)'
-    ).run(userId, ingredient_name, amount, unit, category || 'Sonstiges', expiry_date, notes);
+      'INSERT INTO pantry (user_id, ingredient_name, amount, unit, category, expiry_date, notes, is_permanent) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+    ).run(userId, ingredient_name, amount, unit, category || 'Sonstiges', expiry_date, notes, is_permanent || 0);
 
     return reply.status(201).send({
       id: result.lastInsertRowid,
@@ -194,7 +197,7 @@ export default async function pantryRoutes(fastify) {
   fastify.put('/:id', {
     schema: { description: 'Vorrat aktualisieren', tags: ['Vorratsschrank'], security: [{ bearerAuth: [] }] },
   }, async (request, reply) => {
-    const { amount, unit, category, expiry_date, notes } = request.body;
+    const { amount, unit, category, expiry_date, notes, is_permanent } = request.body;
 
     const result = db.prepare(`
       UPDATE pantry SET
@@ -203,9 +206,10 @@ export default async function pantryRoutes(fastify) {
         category = COALESCE(?, category),
         expiry_date = COALESCE(?, expiry_date),
         notes = COALESCE(?, notes),
+        is_permanent = COALESCE(?, is_permanent),
         updated_at = CURRENT_TIMESTAMP
       WHERE id = ? AND user_id = ?
-    `).run(amount, unit, category, expiry_date, notes, request.params.id, request.user.id);
+    `).run(amount, unit, category, expiry_date, notes, is_permanent ?? null, request.params.id, request.user.id);
 
     if (result.changes === 0) return reply.status(404).send({ error: 'Vorrat nicht gefunden' });
     return { message: 'Vorrat aktualisiert!' };
@@ -279,10 +283,10 @@ export default async function pantryRoutes(fastify) {
       'SELECT * FROM pantry WHERE user_id = ? AND LOWER(ingredient_name) = LOWER(?)'
     );
     const insertItem = db.prepare(
-      'INSERT INTO pantry (user_id, ingredient_name, amount, unit, category, expiry_date, notes) VALUES (?, ?, ?, ?, ?, ?, ?)'
+      'INSERT INTO pantry (user_id, ingredient_name, amount, unit, category, expiry_date, notes, is_permanent) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
     );
     const updateAmount = db.prepare(
-      'UPDATE pantry SET amount = amount + ?, unit = COALESCE(?, unit), category = COALESCE(?, category), expiry_date = COALESCE(?, expiry_date), notes = COALESCE(?, notes), updated_at = CURRENT_TIMESTAMP WHERE id = ?'
+      'UPDATE pantry SET amount = amount + ?, unit = COALESCE(?, unit), category = COALESCE(?, category), expiry_date = COALESCE(?, expiry_date), notes = COALESCE(?, notes), is_permanent = COALESCE(?, is_permanent), updated_at = CURRENT_TIMESTAMP WHERE id = ?'
     );
 
     const transaction = db.transaction(() => {
@@ -298,13 +302,14 @@ export default async function pantryRoutes(fastify) {
           const category = String(item.category || 'Sonstiges').trim();
           const expiry_date = item.expiry_date || null;
           const notes = item.notes || null;
+          const isPermanent = item.is_permanent ? 1 : 0;
 
           const existing = findExisting.get(userId, name);
           if (existing) {
-            updateAmount.run(amount, unit, category, expiry_date, notes, existing.id);
+            updateAmount.run(amount, unit, category, expiry_date, notes, isPermanent || null, existing.id);
             updated++;
           } else {
-            insertItem.run(userId, name, amount, unit, category, expiry_date, notes);
+            insertItem.run(userId, name, amount, unit, category, expiry_date, notes, isPermanent);
             imported++;
           }
         } catch (err) {
@@ -349,6 +354,11 @@ export default async function pantryRoutes(fastify) {
     ).get(request.params.id, request.user.id);
 
     if (!item) return reply.status(404).send({ error: 'Vorrat nicht gefunden' });
+
+    // Permanente Items können nicht verbraucht werden
+    if (item.is_permanent) {
+      return reply.status(400).send({ error: 'Dauerhaft verfügbare Artikel können nicht verbraucht werden.' });
+    }
 
     const newAmount = Math.max(0, item.amount - amount);
     db.prepare(
