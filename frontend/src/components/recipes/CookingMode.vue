@@ -248,18 +248,22 @@
           </button>
 
           <!-- Schritt-Punkte -->
-          <div class="flex gap-1.5 overflow-x-auto">
+          <div class="flex items-center gap-1.5 overflow-x-auto">
             <button
               v-for="(step, idx) in steps"
               :key="step.id"
               @click="goToStep(idx)"
               :class="[
-                'w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-full transition-all shrink-0',
+                'rounded-full transition-all shrink-0',
                 idx === currentIndex
-                  ? 'bg-primary-500 scale-125'
-                  : idx < currentIndex
-                    ? 'bg-primary-300 dark:bg-primary-700'
-                    : 'bg-stone-300 dark:bg-stone-700 hover:bg-stone-400 dark:hover:bg-stone-600'
+                  ? 'w-3.5 h-3.5 sm:w-4 sm:h-4 bg-primary-500'
+                  : 'w-2.5 h-2.5 sm:w-3 sm:h-3',
+                idx !== currentIndex && idx < currentIndex
+                  ? 'bg-primary-300 dark:bg-primary-700'
+                  : '',
+                idx !== currentIndex && idx > currentIndex
+                  ? 'bg-stone-300 dark:bg-stone-700 hover:bg-stone-400 dark:hover:bg-stone-600'
+                  : ''
               ]"
               :title="`Schritt ${idx + 1}`"
             />
