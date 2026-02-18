@@ -396,6 +396,15 @@
                   Automatisch in den REWE-Warenkorb legen
                 </button>
 
+                <!-- Userscript-Alternative -->
+                <button
+                  @click="installUserscript"
+                  class="flex justify-center items-center gap-2 bg-purple-600 hover:bg-purple-700 py-2.5 rounded-xl w-full font-medium text-white text-sm transition-colors"
+                >
+                  <Download class="w-3.5 h-3.5" />
+                  🧩 Userscript für Tampermonkey installieren
+                </button>
+
                 <!-- Fallback: Alle Tabs öffnen -->
                 <button
                   @click="openAllReweProducts"
@@ -405,7 +414,7 @@
                   Oder: Alle {{ shoppingStore.reweLinkedItems.length }} Produkte als Tabs öffnen
                 </button>
                 <p class="text-[10px] text-stone-400 dark:text-stone-500 text-center">
-                  Das Script legt Produkte automatisch in deinen REWE-Warenkorb. Die Tab-Variante öffnet jedes Produkt einzeln.
+                  Das Script/Userscript legt Produkte automatisch in deinen REWE-Warenkorb. Die Tab-Variante öffnet jedes Produkt einzeln.
                 </p>
               </div>
             </div>
@@ -714,6 +723,39 @@
                   ⚠️ Experimentelles Feature – funktioniert nur auf www.rewe.de (eingeloggt, Markt gewählt).
                   Das Script nutzt die REWE Basket-API mit Listing-IDs. Keine Garantie.
                 </p>
+
+                <!-- Trennlinie -->
+                <div class="flex items-center gap-3 py-2">
+                  <div class="flex-1 border-stone-200 dark:border-stone-700 border-t"></div>
+                  <span class="text-stone-400 dark:text-stone-500 text-xs">oder</span>
+                  <div class="flex-1 border-stone-200 dark:border-stone-700 border-t"></div>
+                </div>
+
+                <!-- Userscript-Alternative -->
+                <div class="bg-purple-50 dark:bg-purple-900/20 px-4 py-3 border border-purple-200 dark:border-purple-800 rounded-xl text-purple-800 dark:text-purple-300 text-sm">
+                  <p class="mb-1 font-semibold">🧩 Tampermonkey/Greasemonkey Userscript</p>
+                  <p class="text-xs leading-relaxed">
+                    Einmal installieren – kein Script mehr kopieren! Das Userscript zeigt einen 🍳-Button auf <strong>rewe.de</strong>, über den du deine Einkaufsliste direkt in den Warenkorb legen kannst.
+                  </p>
+                  <ol class="space-y-1 mt-2 text-xs list-decimal list-inside">
+                    <li>Installiere <a href="https://www.tampermonkey.net/" target="_blank" rel="noopener" class="font-medium underline hover:no-underline">Tampermonkey</a> (Chrome/Firefox/Edge)</li>
+                    <li>Klicke unten auf "Userscript installieren"</li>
+                    <li>Bestätige die Installation in Tampermonkey</li>
+                    <li>Auf <strong>rewe.de</strong> erscheint der 🍳-Button</li>
+                  </ol>
+                </div>
+
+                <button
+                  @click="installUserscript"
+                  class="flex justify-center items-center gap-2 bg-purple-600 hover:bg-purple-700 py-3 rounded-xl w-full font-medium text-white transition-colors"
+                >
+                  <Download class="w-4 h-4" />
+                  Userscript installieren
+                </button>
+
+                <p class="text-[10px] text-stone-400 dark:text-stone-500 text-center">
+                  ℹ️ Das Userscript enthält deinen Login-Token. Bei Ablauf einfach hier neu installieren.
+                </p>
               </div>
             </div>
           </div>
@@ -742,7 +784,7 @@ import { computed, ref, onMounted, watch } from 'vue';
 import { useShoppingStore } from '@/stores/shopping.js';
 import { useMealPlanStore } from '@/stores/mealplan.js';
 import { useNotification } from '@/composables/useNotification.js';
-import { ListPlus, Check, ShoppingBag, Plus, Package, BookOpen, BookX, ExternalLink, ShoppingCart, X, ArrowRightLeft, Search, Tag, Trash2, Star, Heart, Archive, Send, Link2, Unlink, ClipboardCopy, LogIn, LogOut, ChevronDown, Loader2, Terminal } from 'lucide-vue-next';
+import { ListPlus, Check, ShoppingBag, Plus, Package, BookOpen, BookX, ExternalLink, ShoppingCart, X, ArrowRightLeft, Search, Tag, Trash2, Star, Heart, Archive, Send, Link2, Unlink, ClipboardCopy, LogIn, LogOut, ChevronDown, Loader2, Terminal, Download } from 'lucide-vue-next';
 
 const shoppingStore = useShoppingStore();
 const mealPlanStore = useMealPlanStore();
@@ -1139,6 +1181,16 @@ async function copyCartScript() {
     showSuccess('Script kopiert! Jetzt in die REWE-Konsole einfügen.');
   } catch {
     showError('Kopieren fehlgeschlagen.');
+  }
+}
+
+function installUserscript() {
+  try {
+    const url = shoppingStore.getReweUserscriptUrl();
+    window.open(url, '_blank');
+    showSuccess('Userscript wird geöffnet – bestätige die Installation in Tampermonkey!');
+  } catch {
+    showError('Userscript-URL konnte nicht generiert werden.');
   }
 }
 </script>

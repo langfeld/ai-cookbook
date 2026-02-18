@@ -1,12 +1,14 @@
 # AI Cookbook 🍳🤖
 
-Eine KI-gestützte Rezeptverwaltung mit intelligentem Wochenplaner (Score-Algorithmus + optionales KI-Reasoning), Einkaufsliste mit REWE-Integration, Vorratsschrank und umfangreichem Admin-Bereich.
+Eine KI-gestützte Rezeptverwaltung mit intelligentem Wochenplaner (Score-Algorithmus + optionales KI-Reasoning), Einkaufsliste mit REWE-Integration, Bring!-Anbindung, Tampermonkey-Userscript, Vorratsschrank und umfangreichem Admin-Bereich.
 
 ![Vue 3](https://img.shields.io/badge/Vue-3.5-4FC08D?logo=vuedotjs&logoColor=white)
 ![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-4-06B6D4?logo=tailwindcss&logoColor=white)
 ![Fastify](https://img.shields.io/badge/Fastify-5-000000?logo=fastify&logoColor=white)
 ![SQLite](https://img.shields.io/badge/SQLite-3-003B57?logo=sqlite&logoColor=white)
 ![Docker](https://img.shields.io/badge/Docker-ghcr.io-2496ED?logo=docker&logoColor=white)
+![Bring!](https://img.shields.io/badge/Bring!-Integration-4CAF50?logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCI+PHRleHQgeT0iMTgiIGZvbnQtc2l6ZT0iMTgiPvCfm42uPC90ZXh0Pjwvc3ZnPg==&logoColor=white)
+![Tampermonkey](https://img.shields.io/badge/Tampermonkey-Userscript-00485B?logo=tampermonkey&logoColor=white)
 
 ---
 
@@ -19,7 +21,7 @@ Eine KI-gestützte Rezeptverwaltung mit intelligentem Wochenplaner (Score-Algori
 - **Bildzuschnitt** — Integrierter Cropper mit Seitenverhältnissen (4:3, 1:1, 16:9, Frei) und Drehen
 - **Kategorien** — Frei anlegbare Kategorien mit Icons und Farben
 - **Zutaten-Icons** — Emoji-Zuordnungen für Zutaten (z. B. 🍅 Tomate, 🧄 Knoblauch). Über Admin-Bereich verwaltbar mit Emoji-Picker
-- **Farbige Zutatenerkennung** — Zutaten werden in Kochschritten farblich hervorgehoben (Fleisch 🔴, Gemüse 🟢, Milch 🔵, Gewürze 🟡)
+- **Farbige Zutatenerkennung** — Zutaten werden in Kochschritten farblich hervorgehoben
 - **Portionsrechner** — Zutatenmengen dynamisch umrechnen
 - **Kochhistorie** — Protokoll, wann welches Rezept zuletzt gekocht wurde
 - **Favoriten** — Lieblingsrezepte markieren und filtern
@@ -42,12 +44,23 @@ Eine KI-gestützte Rezeptverwaltung mit intelligentem Wochenplaner (Score-Algori
 
 ### 🏪 REWE-Integration
 - **Automatisches Produkt-Matching** — Alle Zutaten werden per SSE-Stream mit Live-Fortschrittsanzeige REWE-Produkten zugeordnet
-- **Relevanz-Scoring** — Intelligenter Algorithmus mit Compound-Wort-Erkennung (z. B. „Knoblauch" in „Knoblauchzehe"), Flavor-Filter (Saft, Bonbon, Duschgel etc.) und Preis-Sortierung
+- **Relevanz-Scoring** — Intelligenter Algorithmus mit Compound-Wort-Erkennung (z. B. „Knoblauch" in „Knoblauchzehe"), Flavor-Filter (Saft, Bonbon, Duschgel etc.) und Grundpreis-Sortierung
+- **Grundpreis-Optimierung** — Sortierung nach €/kg bzw. €/Stück statt Paketpreis. Bevorzugt größere, preiswertere Packungen automatisch
+- **Intelligente Mengenberechnung** — Packungsgrößen-Parsing (g, kg, ml, l, Stück), Stückzahl-Erkennung aus Produktnamen (Duo, Trio, 6er-Pack, Beutel, Becher, Schale etc.), automatische Einheiten-Konvertierung
 - **Produkt-Picker** — Alternatives REWE-Produkt suchen und auswählen (mit Suchfeld, Relevanz-Badge, Preis)
 - **Produkt-Präferenzen** — Manuell gewählte Produkte werden gespeichert und beim nächsten Matching automatisch bevorzugt (mit Preisaktualität)
 - **Preisübersicht** — Geschätzte Gesamtkosten, Einzelpreise pro Artikel
 - **REWE-Bestell-Panel** — Alle zugeordneten Produkte auf einen Blick, mit Link zum REWE-Onlineshop
+- **Warenkorb-Script** — Generiert ein Browser-Konsolenscript, das alle gematchten Produkte automatisch in den REWE-Warenkorb legt (Listing-ID-basiert, mit Fortschrittsanzeige)
+- **Tampermonkey-Userscript** — Installiert sich als Browser-Extension auf rewe.de: Floating Action Button (🍳), Panel mit Produktliste, automatisches Einfügen in den Warenkorb, Live-Status pro Artikel (✅/❌/⚠️). Kommuniziert per `GM_xmlhttpRequest` CORS-frei mit der API
 - **Marktsuche** — REWE-Markt per PLZ finden, konfigurierbar über Admin-Einstellungen
+
+### 🛍️ Bring!-Integration
+- **Account-Verbindung** — Bring!-Konto über E-Mail und Passwort verbinden (Passwort AES-256-GCM-verschlüsselt gespeichert)
+- **Listen-Auswahl** — Alle eigenen Bring!-Listen werden geladen, Zielliste frei wählbar
+- **Einkaufsliste senden** — Alle offenen Artikel der Einkaufsliste per Klick an die Bring!-App senden (mit Mengenangaben als Specification)
+- **Bidirektionale Nutzung** — Einkaufsliste im AI Cookbook verwalten, unterwegs in der Bring!-App abhaken
+- **Account trennen** — Bring!-Verbindung jederzeit entfernen (Zugangsdaten werden gelöscht)
 
 ### 🗄️ Vorratsschrank
 - **Kategorie-Gruppierung** — Übersichtlich nach Lebensmittelgruppen
@@ -89,6 +102,7 @@ Eine KI-gestützte Rezeptverwaltung mit intelligentem Wochenplaner (Score-Algori
 | **Bildverarbeitung** | Sharp (Resize, WebP-Konvertierung) | 0.33 |
 | **KI-Provider** | Kimi K2.5 / OpenAI / Anthropic / Ollama — austauschbar | — |
 | **Auth** | JWT (@fastify/jwt + bcryptjs) | — |
+| **Bring!** | bring-shopping (npm) | 1.x |
 | **Container** | Docker (Single-Container) + ghcr.io | — |
 
 ---
@@ -237,7 +251,9 @@ ai-cookbook/
 │       │   ├── mealplan.js     # Wochenplaner (Algorithmus + optionales KI-Reasoning)
 │       │   ├── shopping.js     # Einkaufsliste: Generierung, Items, REWE-Zuordnung, Pantry-Transfer
 │       │   ├── pantry.js       # Vorratsschrank CRUD + Verbrauch + CSV/JSON-Import
-│       │   ├── rewe.js         # REWE: Produktsuche, SSE-Matching, Marktsuche, Präferenzen
+│       │   ├── rewe.js         # REWE: Produktsuche, SSE-Matching, Marktsuche, Präferenzen, Cart-Script
+│       │   ├── rewe-userscript.js # REWE: Tampermonkey/Greasemonkey Userscript-Generator
+│       │   ├── bring.js        # Bring!: Account-Verbindung, Listen, Senden, Trennen
 │       │   ├── ingredient-icons.js # Zutaten-Emoji-Mappings (CRUD)
 │       │   └── admin.js        # Admin: Stats, Benutzer, Settings, Logs, Export/Import (Rezepte + Pantry)
 │       ├── services/
@@ -359,6 +375,18 @@ ai-cookbook/
 | `GET` | `/preferences` | Gespeicherte Produkt-Präferenzen abrufen |
 | `DELETE` | `/preferences/:id` | Einzelne Präferenz löschen |
 | `DELETE` | `/preferences` | Alle Präferenzen löschen |
+| `GET` | `/cart-script` | Warenkorb-Script generieren (Listing-ID-basiert, für Browser-Konsole) |
+| `GET` | `/userscript` | Tampermonkey/Greasemonkey-Userscript herunterladen (`?token=JWT`, ohne Auth-Hook) |
+
+### Bring! (`/api/bring`)
+| Methode | Pfad | Beschreibung |
+|---------|------|-------------|
+| `POST` | `/connect` | Bring!-Account verbinden (E-Mail + Passwort + Zielliste) |
+| `GET` | `/status` | Verbindungsstatus prüfen (verbunden? welche Liste?) |
+| `GET` | `/lists` | Alle verfügbaren Bring!-Listen abrufen |
+| `PUT` | `/list` | Aktive Bring!-Liste wechseln |
+| `POST` | `/send` | Offene Einkaufsartikel an Bring!-Liste senden |
+| `DELETE` | `/disconnect` | Bring!-Verbindung trennen (Zugangsdaten löschen) |
 
 ### Zutaten-Icons (`/api/ingredient-icons`)
 | Methode | Pfad | Beschreibung |
@@ -515,6 +543,8 @@ Dieses Projekt verwendet **Tailwind CSS 4** mit CSS-basierter Konfiguration:
 
 - **Vue Transition:** Alle Views müssen **genau ein Root-Element** haben (wegen `<Transition mode="out-in">` in `App.vue`)
 - **REWE-API:** Inoffizielle API, kann sich ändern. Fehlende Market-ID deaktiviert die Funktion
+- **REWE-Userscript:** Token läuft nach 7 Tagen ab — danach muss ein neues Userscript installiert werden
+- **Bring!-API:** Nutzt das Community-Paket `bring-shopping` (inoffiziell). Bring!-Passwörter werden AES-256-GCM-verschlüsselt in der DB gespeichert
 - **KI-Genauigkeit:** Foto-Import funktioniert am besten mit gut beleuchteten, scharfen Rezeptfotos
 - **SQLite:** Für Single-Server-Betrieb ausgelegt, nicht für horizontale Skalierung
 - **Passwort ändern:** Es gibt aktuell keine Self-Service-Funktion zum Passwort-Ändern. Admins können Passwörter über die Benutzerverwaltung zurücksetzen

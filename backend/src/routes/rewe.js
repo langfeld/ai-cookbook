@@ -548,3 +548,4 @@ function generateReweCartScript(products) {
 })();`
 ;
 }
+

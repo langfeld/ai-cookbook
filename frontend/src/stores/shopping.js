@@ -272,6 +272,13 @@ export const useShoppingStore = defineStore('shopping', () => {
     return await api.get('/rewe/cart-script');
   }
 
+  /** REWE Userscript-Install-URL generieren */
+  function getReweUserscriptUrl() {
+    const authStore = useAuthStore();
+    const baseUrl = window.location.origin;
+    return `${baseUrl}/api/rewe/userscript?token=${encodeURIComponent(authStore.token)}`;
+  }
+
   return {
     currentList, items, activeList, reweMatches, loading, reweProgress,
     openItemsCount, estimatedTotal, reweLinkedItems,
@@ -282,5 +289,6 @@ export const useShoppingStore = defineStore('shopping', () => {
     fetchBringStatus, connectBring, fetchBringLists, setBringList, sendToBring, disconnectBring,
     // REWE Script
     getReweCartScript,
+    getReweUserscriptUrl,
   };
 });
