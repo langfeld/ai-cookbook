@@ -144,7 +144,7 @@ export default async function reweRoutes(fastify) {
     // Ergebnisse in die Datenbank schreiben
     const updateStmt = db.prepare(`
       UPDATE shopping_list_items
-      SET rewe_product_id = ?, rewe_product_name = ?, rewe_price = ?, rewe_package_size = ?
+      SET rewe_product_id = ?, rewe_product_name = ?, rewe_price = ?, rewe_package_size = ?, rewe_quantity = ?
       WHERE shopping_list_id = ? AND ingredient_name = ?
     `);
 
@@ -157,6 +157,7 @@ export default async function reweRoutes(fastify) {
             match.product.name || null,
             match.product.price || null,
             match.product.packageSize || null,
+            match.packagesNeeded || 1,
             listId,
             items[i].ingredient_name,
           );
@@ -165,9 +166,11 @@ export default async function reweRoutes(fastify) {
     });
     saveAll();
 
-    // Gesamtpreis berechnen (in Cent)
+    // Gesamtpreis berechnen (in Cent) – Preis × Anzahl Packungen
     const totalEstimate = results.reduce((sum, r) => {
-      return sum + (r.reweMatch?.product?.price || 0);
+      const price = r.reweMatch?.product?.price || 0;
+      const qty = r.reweMatch?.packagesNeeded || 1;
+      return sum + (price * qty);
     }, 0);
 
     const matchedCount = results.filter(r => r.reweMatch).length;
@@ -344,7 +347,7 @@ export default async function reweRoutes(fastify) {
     }
 
     const items = db.prepare(`
-      SELECT ingredient_name, rewe_product_id, rewe_product_name, rewe_price
+      SELECT ingredient_name, amount, unit, rewe_product_id, rewe_product_name, rewe_price, rewe_quantity
       FROM shopping_list_items
       WHERE shopping_list_id = ? AND is_checked = 0 AND rewe_product_id IS NOT NULL
     `).all(activeList.id);
@@ -353,11 +356,14 @@ export default async function reweRoutes(fastify) {
       return { error: 'Keine REWE-Produkte zugeordnet.' };
     }
 
-    // Produkt-Daten für das Script aufbereiten (inkl. URL für Fallback)
+    // Produkt-Daten für das Script aufbereiten (inkl. Menge und URL)
     const products = items.map(i => ({
       id: String(i.rewe_product_id),
       name: i.rewe_product_name || i.ingredient_name,
       price: i.rewe_price,
+      quantity: i.rewe_quantity || 1,
+      ingredientAmount: i.amount,
+      ingredientUnit: i.unit,
       url: buildReweProductUrl(i.rewe_product_name || i.ingredient_name, i.rewe_product_id),
     }));
 
@@ -407,7 +413,8 @@ function generateReweCartScript(products) {
   const log = (msg, ok) => console.log('%c🛒 ' + msg, 'color:' + (ok === false ? '#dc2626' : ok === true ? '#16a34a' : '#cc0000') + ';font-weight:bold');
   const wait = (ms) => new Promise(r => setTimeout(r, ms));
 
-  log('AI Cookbook: ' + products.length + ' Produkte in den Warenkorb legen...');
+  const totalPackages = products.reduce((s, p) => s + (p.quantity || 1), 0);
+  log('AI Cookbook: ' + products.length + ' Produkte (' + totalPackages + ' Packungen) in den Warenkorb legen...');
 
   /* ──── Fortschritts-Banner ──── */
   const oldBanner = document.getElementById('ai-cookbook-banner');
@@ -431,7 +438,9 @@ function generateReweCartScript(products) {
 
   for (let i = 0; i < products.length; i++) {
     const p = products[i];
-    update('🛒 ' + (i+1) + '/' + products.length + ': ' + p.name + '...');
+    const qty = p.quantity || 1;
+    const qtyLabel = qty > 1 ? ' (' + qty + '×)' : '';
+    update('🛒 ' + (i+1) + '/' + products.length + ': ' + p.name + qtyLabel + '...');
 
     try {
       /* Schritt 1: Produktseite abrufen, um die Listing-ID zu finden */
@@ -474,12 +483,12 @@ function generateReweCartScript(products) {
 
       log('  Listing-ID: ' + listingId);
 
-      /* Schritt 3: Produkt in den Warenkorb legen */
+      /* Schritt 3: Produkt in den Warenkorb legen (mit richtiger Menge) */
       const cartRes = await fetch('/shop/api/baskets/listings/' + encodeURIComponent(listingId), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          quantity: 1,
+          quantity: qty,
           includeTimeslot: false,
           context: 'product-detail'
         }),
@@ -488,7 +497,7 @@ function generateReweCartScript(products) {
 
       if (cartRes.ok) {
         added++;
-        log('✅ ' + p.name + ' → Warenkorb!', true);
+        log('✅ ' + p.name + (qty > 1 ? ' ×' + qty : '') + ' → Warenkorb!', true);
       } else {
         /* Bei 409 (Conflict) ist das Produkt evtl. schon im Warenkorb */
         if (cartRes.status === 409) {

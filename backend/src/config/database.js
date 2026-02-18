@@ -364,6 +364,12 @@ function migrateDatabase() {
     console.log('  ↳ Migration: shopping_list_items.recipe_ids hinzugefügt');
   }
 
+  // Spalte 'rewe_quantity' in shopping_list_items hinzufügen (Anzahl benötigter Packungen)
+  if (!sliCols.includes('rewe_quantity')) {
+    db.exec("ALTER TABLE shopping_list_items ADD COLUMN rewe_quantity INTEGER DEFAULT 1");
+    console.log('  ↳ Migration: shopping_list_items.rewe_quantity hinzugefügt');
+  }
+
   // Standard-Zutaten-Icons seeden (nur wenn Tabelle leer)
   const iconsCount = db.prepare("SELECT COUNT(*) as count FROM ingredient_icons").get().count;
   if (iconsCount === 0) {

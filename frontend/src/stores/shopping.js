@@ -28,9 +28,13 @@ export const useShoppingStore = defineStore('shopping', () => {
 
   // Anzahl der noch offenen Items
   const openItemsCount = computed(() => items.value.filter(i => !i.is_checked).length);
-  // Geschätzter Gesamtpreis (REWE)
+  // Geschätzter Gesamtpreis (REWE) – Preis × Anzahl Packungen
   const estimatedTotal = computed(() =>
-    items.value.reduce((sum, i) => sum + (i.rewe_price || 0), 0)
+    items.value.reduce((sum, i) => {
+      const price = i.rewe_price || 0;
+      const qty = i.rewe_product?.quantity || 1;
+      return sum + (price * qty);
+    }, 0)
   );
   // Items mit REWE-Produktzuordnung (für "Bei REWE bestellen")
   const reweLinkedItems = computed(() =>
@@ -181,7 +185,7 @@ export const useShoppingStore = defineStore('shopping', () => {
       item.rewe_product_name = product.name;
       item.rewe_price = product.price;
       item.rewe_package_size = product.packageSize;
-      item.rewe_product = data.rewe_product;
+      item.rewe_product = data.rewe_product; // enthält jetzt auch quantity
     }
     return data;
   }

@@ -7,7 +7,7 @@
 
 import db from '../config/database.js';
 import { generateShoppingList, saveShoppingList, processPurchase } from '../services/shopping-list.js';
-import { buildReweProductUrl } from '../services/rewe-api.js';
+import { buildReweProductUrl, calculatePackagesNeeded } from '../services/rewe-api.js';
 
 export default async function shoppingRoutes(fastify) {
   fastify.addHook('onRequest', fastify.authenticate);
@@ -126,7 +126,8 @@ export default async function shoppingRoutes(fastify) {
       const rewe_product = item.rewe_product_id ? {
         id: item.rewe_product_id,
         name: item.rewe_product_name,
-        price: item.rewe_price,           // Cent
+        price: item.rewe_price,           // Cent (Einzelpackung)
+        quantity: item.rewe_quantity || 1, // Anzahl benötigter Packungen
         packageSize: item.rewe_package_size,
         url: buildReweProductUrl(item.rewe_product_name, item.rewe_product_id),
       } : null;
@@ -274,9 +275,9 @@ export default async function shoppingRoutes(fastify) {
   }, async (request, reply) => {
     const { productId, productName, price, packageSize } = request.body;
 
-    // 1. Item in der Einkaufsliste aktualisieren
+    // 1. Item in der Einkaufsliste aktualisieren (inkl. Menge/Einheit für Mengenberechnung)
     const item = db.prepare(`
-      SELECT sli.id, sli.ingredient_name FROM shopping_list_items sli
+      SELECT sli.id, sli.ingredient_name, sli.amount, sli.unit FROM shopping_list_items sli
       JOIN shopping_lists sl ON sli.shopping_list_id = sl.id
       WHERE sli.id = ? AND sl.user_id = ?
     `).get(request.params.id, request.user.id);
@@ -285,11 +286,22 @@ export default async function shoppingRoutes(fastify) {
       return reply.status(404).send({ error: 'Artikel nicht gefunden' });
     }
 
+    // Packungsgröße parsen und benötigte Menge berechnen
+    const pkgMatch = (packageSize || productName || '').match(/([\d.,]+)\s*(?:x\s*[\d.,]+\s*)?(g|kg|ml|l|stk|stück|st)\b/i);
+    let pkgAmount = null, pkgUnit = null;
+    if (pkgMatch) {
+      pkgAmount = parseFloat(pkgMatch[1].replace(',', '.'));
+      pkgUnit = pkgMatch[2].toLowerCase();
+      if (pkgUnit === 'kg') { pkgAmount *= 1000; pkgUnit = 'g'; }
+      else if (pkgUnit === 'l') { pkgAmount *= 1000; pkgUnit = 'ml'; }
+    }
+    const quantity = calculatePackagesNeeded(item.amount, item.unit, pkgAmount, pkgUnit);
+
     db.prepare(`
       UPDATE shopping_list_items
-      SET rewe_product_id = ?, rewe_product_name = ?, rewe_price = ?, rewe_package_size = ?
+      SET rewe_product_id = ?, rewe_product_name = ?, rewe_price = ?, rewe_package_size = ?, rewe_quantity = ?
       WHERE id = ?
-    `).run(productId, productName, price, packageSize || null, item.id);
+    `).run(productId, productName, price, packageSize || null, quantity, item.id);
 
     // 2. Produkt-Präferenz speichern/aktualisieren (merkt sich die Auswahl für nächstes Mal)
     db.prepare(`
@@ -310,6 +322,7 @@ export default async function shoppingRoutes(fastify) {
         id: productId,
         name: productName,
         price,
+        quantity,
         packageSize: packageSize || null,
         url: buildReweProductUrl(productName, productId),
       },

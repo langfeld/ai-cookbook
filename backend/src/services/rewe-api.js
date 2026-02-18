@@ -228,6 +228,80 @@ export function scoreRelevance(productName, ingredientName) {
 }
 
 /**
+ * Berechnet, wie viele REWE-Packungen benötigt werden.
+ *
+ * Logik:
+ * - Stückangaben ("2 Stk Halloumi") → Menge = Anzahl Packungen
+ * - Gewicht/Volumen ("400g Reis", "1l Milch") → ceil(benötigte Menge / Packungsgröße)
+ * - Kücheneinheiten (EL, TL, Prise…) → 1 Packung reicht meist
+ * - Keine Angabe → 1
+ *
+ * @param {number|null} neededAmount - Benötigte Menge (aus Einkaufsliste)
+ * @param {string|null} neededUnit - Einheit (aus Einkaufsliste)
+ * @param {number|null} packageAmount - Packungsgröße in Basiseinheit (g/ml)
+ * @param {string|null} packageUnit - Einheit der Packungsgröße (g/ml/stk)
+ * @returns {number} Anzahl benötigter Packungen (mind. 1)
+ */
+export function calculatePackagesNeeded(neededAmount, neededUnit, packageAmount, packageUnit) {
+  // Ohne Mengenangabe → 1 Packung
+  if (!neededAmount || neededAmount <= 0) return 1;
+
+  const unitLow = (neededUnit || '').toLowerCase().trim();
+  const pkgUnitLow = (packageUnit || '').toLowerCase().trim();
+
+  // Kücheneinheiten → 1 Packung reicht normalerweise
+  const kitchenUnits = [
+    'el', 'tl', 'prise', 'prisen', 'etwas', 'messerspitze',
+    'zehe', 'zehen', 'scheibe', 'scheiben', 'blatt', 'blätter',
+    'bund', 'zweig', 'zweige', 'handvoll', 'spritzer', 'schuss',
+    'nach geschmack', 'n. b.', 'dose', 'dosen', 'glas', 'becher',
+  ];
+  if (kitchenUnits.includes(unitLow)) return 1;
+
+  // Stückeinheiten → Menge IST die Anzahl Packungen
+  const pieceUnits = ['stk', 'stück', 'st', 'stk.', 'packung', 'pkg', 'flasche', 'flaschen', 'tüte', 'tüten', 'beutel', 'tafel', 'tafeln'];
+  if (pieceUnits.includes(unitLow) || (!unitLow && !pkgUnitLow)) {
+    return Math.ceil(neededAmount);
+  }
+
+  // Wenn keine Packungsgröße bekannt → anhand Einheit abschätzen
+  if (!packageAmount) {
+    // Ohne Packungsinfo: Stück-Logik falls kein Gewicht/Volumen
+    if (!['g', 'kg', 'ml', 'l'].includes(unitLow)) {
+      return Math.ceil(neededAmount);
+    }
+    return 1; // Gewicht/Volumen ohne Packungsinfo → 1 Packung als Fallback
+  }
+
+  // Beide in Basiseinheit umrechnen (g / ml)
+  let neededBase = neededAmount;
+  if (unitLow === 'kg') neededBase = neededAmount * 1000;
+  else if (unitLow === 'l') neededBase = neededAmount * 1000;
+
+  // packageAmount ist bereits in Basiseinheit (g/ml) durch parsePackageSize
+  // Prüfen ob die Einheiten kompatibel sind
+  const weightUnits = ['g', 'kg'];
+  const volumeUnits = ['ml', 'l'];
+  const neededIsWeight = weightUnits.includes(unitLow);
+  const neededIsVolume = volumeUnits.includes(unitLow);
+  const pkgIsWeight = pkgUnitLow === 'g' || pkgUnitLow === 'kg';
+  const pkgIsVolume = pkgUnitLow === 'ml' || pkgUnitLow === 'l';
+
+  if ((neededIsWeight && pkgIsWeight) || (neededIsVolume && pkgIsVolume)) {
+    // Kompatible Einheiten → berechnen
+    return Math.max(1, Math.ceil(neededBase / packageAmount));
+  }
+
+  // Stück ohne explizite Einheit (z.B. nur "2 Halloumi")
+  if (!unitLow && packageAmount) {
+    return Math.ceil(neededAmount);
+  }
+
+  // Inkompatible Einheiten → 1 Packung als Fallback
+  return 1;
+}
+
+/**
  * Sucht das beste REWE-Produkt für eine Zutat
  * Strategie: Relevantestes + günstigstes Produkt
  */
@@ -270,14 +344,20 @@ async function findBestProduct(ingredientName, neededAmount, unit) {
 
   const best = suitable[0] || topTier[0] || sorted[0] || products[0];
 
-  // Überschuss berechnen
-  const surplus = best.parsedAmount ? Math.max(0, best.parsedAmount - neededAmount) : 0;
+  // Wie viele Packungen werden benötigt?
+  const packagesNeeded = calculatePackagesNeeded(neededAmount, unit, best.parsedAmount, best.parsedUnit);
+
+  // Überschuss berechnen (basierend auf Gesamtmenge aller Packungen)
+  const totalPackageAmount = best.parsedAmount ? best.parsedAmount * packagesNeeded : 0;
+  const surplus = totalPackageAmount ? Math.max(0, totalPackageAmount - (neededAmount || 0)) : 0;
 
   return {
     product: best,
     neededAmount,
     unit,
     packageAmount: best.parsedAmount,
+    packagesNeeded,
+    totalPrice: best.price ? best.price * packagesNeeded : null,
     surplus,
     surplusForPantry: surplus > 0 ? {
       ingredient_name: ingredientName,
@@ -372,10 +452,13 @@ export async function matchShoppingListWithRewe(shoppingItems, onProgress, optio
 
       if (found) {
         // Gemerktes Produkt ist noch verfügbar → mit aktuellem Preis verwenden
+        const packagesNeeded = calculatePackagesNeeded(item.amount, item.unit, found.parsedAmount, found.parsedUnit);
         match = {
           product: found,
           neededAmount: item.amount,
           unit: item.unit,
+          packagesNeeded,
+          totalPrice: found.price ? found.price * packagesNeeded : null,
           fromPreference: true,
         };
         fromPreference = true;
@@ -389,14 +472,16 @@ export async function matchShoppingListWithRewe(shoppingItems, onProgress, optio
         const priceChange = found.price !== pref.rewe_price
           ? ` (Preis: ${formatPrice(pref.rewe_price)} → ${formatPrice(found.price)})`
           : '';
-        console.log(`  ★ ${item.name} → ${found.name} (gemerkt${priceChange})`);
+        const qtyInfo = packagesNeeded > 1 ? ` [${packagesNeeded}×]` : '';
+        console.log(`  ★ ${item.name} → ${found.name} (gemerkt${priceChange})${qtyInfo}`);
       } else {
         // Produkt nicht mehr verfügbar → Fallback auf normales Scoring
         console.log(`  ⚠ ${item.name}: Gemerktes Produkt "${pref.rewe_product_name}" nicht mehr verfügbar → suche Alternative…`);
         match = await findBestProduct(item.name, item.amount, item.unit);
         if (match) {
           matchedCount++;
-          console.log(`  ✓ ${item.name} → ${match.product.name} (${match.product.priceFormatted || '?'}) [Ersatz]`);
+          const qtyInfo = match.packagesNeeded > 1 ? ` [${match.packagesNeeded}×]` : '';
+          console.log(`  ✓ ${item.name} → ${match.product.name} (${match.product.priceFormatted || '?'}) [Ersatz]${qtyInfo}`);
         } else {
           console.log(`  ✗ ${item.name} → kein Treffer`);
         }
@@ -407,7 +492,8 @@ export async function matchShoppingListWithRewe(shoppingItems, onProgress, optio
 
       if (match) {
         matchedCount++;
-        console.log(`  ✓ ${item.name} → ${match.product.name} (${match.product.priceFormatted || '?'})`);
+        const qtyInfo = match.packagesNeeded > 1 ? ` [${match.packagesNeeded}×]` : '';
+        console.log(`  ✓ ${item.name} → ${match.product.name} (${match.product.priceFormatted || '?'})${qtyInfo}`);
       } else {
         console.log(`  ✗ ${item.name} → kein Treffer`);
       }
@@ -428,6 +514,7 @@ export async function matchShoppingListWithRewe(shoppingItems, onProgress, optio
         matchedCount,
         productName: match?.product?.name || null,
         price: match?.product?.priceFormatted || null,
+        packagesNeeded: match?.packagesNeeded || null,
         fromPreference,
       });
     }

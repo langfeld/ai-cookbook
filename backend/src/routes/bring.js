@@ -256,7 +256,8 @@ export default async function bringRoutes(app) {
       }
 
       const items = db.prepare(`
-        SELECT ingredient_name, amount, unit, is_checked
+        SELECT ingredient_name, amount, unit, is_checked,
+               rewe_product_name, rewe_quantity, rewe_package_size
         FROM shopping_list_items
         WHERE shopping_list_id = ? AND is_checked = 0
       `).all(activeList.id);
@@ -271,9 +272,18 @@ export default async function bringRoutes(app) {
 
       for (const item of items) {
         try {
-          // Spezifikation zusammenbauen (Menge + Einheit)
+          // Spezifikation zusammenbauen:
+          // Wenn REWE-Produkt zugeordnet → "2× Hochland Halloumi 250g"
+          // Sonst → "2 Stk" (Menge + Einheit aus Einkaufsliste)
           let spec = '';
-          if (item.amount) {
+          const qty = item.rewe_quantity || 1;
+
+          if (item.rewe_product_name) {
+            // REWE-Produkt bekannt → präzise Angabe
+            spec = qty > 1 ? `${qty}× ` : '';
+            spec += item.rewe_product_name;
+            if (item.rewe_package_size) spec += ` (${item.rewe_package_size})`;
+          } else if (item.amount) {
             spec = `${item.amount}`;
             if (item.unit) spec += ` ${item.unit}`;
           } else if (item.unit) {

@@ -236,7 +236,7 @@
                     class="inline-flex items-center gap-1 text-red-500 hover:text-red-700 dark:hover:text-red-400 hover:underline transition-colors cursor-pointer"
                     :title="`Klick: Alternatives Produkt wählen`"
                   >
-                    🏪 {{ item.rewe_product.name }} – {{ formatPrice(item.rewe_product.price) }}
+                    🏪 <span v-if="item.rewe_product.quantity > 1" class="font-semibold">{{ item.rewe_product.quantity }}×</span> {{ item.rewe_product.name }} – {{ formatPrice(item.rewe_product.price * (item.rewe_product.quantity || 1)) }}
                     <ArrowRightLeft class="w-3 h-3 shrink-0" />
                   </button>
                   <a
@@ -362,11 +362,14 @@
                 >
                   <div class="flex-1 min-w-0">
                     <p class="font-medium text-stone-800 dark:text-stone-200 text-sm truncate">{{ item.ingredient_name }}</p>
-                    <p class="text-stone-500 dark:text-stone-400 text-xs truncate">{{ item.rewe_product.name }}</p>
+                    <p class="text-stone-500 dark:text-stone-400 text-xs truncate">
+                      <span v-if="item.rewe_product.quantity > 1" class="font-semibold text-red-500">{{ item.rewe_product.quantity }}×</span>
+                      {{ item.rewe_product.name }}
+                    </p>
                     <p v-if="item.rewe_product.packageSize" class="text-[10px] text-stone-400 dark:text-stone-500">{{ item.rewe_product.packageSize }}</p>
                   </div>
                   <div class="flex items-center gap-2 shrink-0">
-                    <span class="font-semibold tabular-nums text-stone-700 dark:text-stone-300 text-sm">{{ formatPrice(item.rewe_product.price) }}</span>
+                    <span class="font-semibold tabular-nums text-stone-700 dark:text-stone-300 text-sm">{{ formatPrice(item.rewe_product.price * (item.rewe_product.quantity || 1)) }}</span>
                     <a
                       :href="item.rewe_product.url"
                       target="_blank"
@@ -438,7 +441,7 @@
                 <!-- Aktuell zugewiesenes Produkt -->
                 <div v-if="pickerItem.rewe_product" class="flex items-center gap-1.5 bg-green-50 dark:bg-green-900/20 mt-2 px-2.5 py-1.5 border border-green-200 dark:border-green-800 rounded-lg text-green-700 dark:text-green-400 text-xs">
                   <Check class="w-3 h-3 shrink-0" />
-                  Aktuell: {{ pickerItem.rewe_product.name }} – {{ formatPrice(pickerItem.rewe_product.price) }}
+                  Aktuell: <span v-if="pickerItem.rewe_product.quantity > 1">{{ pickerItem.rewe_product.quantity }}× </span>{{ pickerItem.rewe_product.name }} – {{ formatPrice(pickerItem.rewe_product.price * (pickerItem.rewe_product.quantity || 1)) }}
                 </div>
                 <!-- Suchfeld -->
                 <form @submit.prevent="searchInPicker" class="flex gap-2 mt-3">
