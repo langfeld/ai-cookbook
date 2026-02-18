@@ -768,7 +768,13 @@ async function doGenerate() {
 async function toggleCooked(meal) {
   try {
     const data = await store.markCooked(meal.meal_plan_id, meal.id);
-    showSuccess(data.is_cooked ? 'Als gekocht markiert ✅' : 'Markierung entfernt');
+    if (data.is_cooked) {
+      const pantryMsg = data.pantryUpdated ? ` (${data.pantryUpdated} Vorräte angepasst)` : '';
+      showSuccess(`Als gekocht markiert ✅${pantryMsg}`);
+    } else {
+      const pantryMsg = data.pantryUpdated ? ` (${data.pantryUpdated} Vorräte wiederhergestellt)` : '';
+      showSuccess(`Markierung entfernt${pantryMsg}`);
+    }
   } catch { /* useApi */ }
 }
 

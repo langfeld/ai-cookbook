@@ -8,7 +8,7 @@
 
 import db from '../config/database.js';
 import { generateWeekPlan, generateReasoning, saveMealPlan, getMealPlan, getSuggestions } from '../services/meal-planner.js';
-import { getWeekStart } from '../utils/helpers.js';
+import { getWeekStart, scaleIngredient, convertToBaseUnit, normalizeUnit } from '../utils/helpers.js';
 
 export default async function mealplanRoutes(fastify) {
   fastify.addHook('onRequest', fastify.authenticate);
@@ -367,28 +367,81 @@ export default async function mealplanRoutes(fastify) {
   // POST /:planId/entry/:entryId/cooked – Toggle
   // ─────────────────────────────────────────────
   fastify.post('/:planId/entry/:entryId/cooked', {
-    schema: { description: 'Gekocht-Status togglen', tags: ['Wochenplan'], security: [{ bearerAuth: [] }] },
+    schema: { description: 'Gekocht-Status togglen + Vorräte anpassen', tags: ['Wochenplan'], security: [{ bearerAuth: [] }] },
   }, async (request) => {
+    const userId = request.user.id;
     const entry = db.prepare(`
-      SELECT mpe.* FROM meal_plan_entries mpe
+      SELECT mpe.*, r.servings as original_servings FROM meal_plan_entries mpe
       JOIN meal_plans mp ON mpe.meal_plan_id = mp.id
+      JOIN recipes r ON mpe.recipe_id = r.id
       WHERE mpe.id = ? AND mp.user_id = ?
-    `).get(request.params.entryId, request.user.id);
+    `).get(request.params.entryId, userId);
 
     if (!entry) return { error: 'Eintrag nicht gefunden' };
 
     const newState = entry.is_cooked ? 0 : 1;
     db.prepare('UPDATE meal_plan_entries SET is_cooked = ? WHERE id = ?').run(newState, entry.id);
 
+    // Kochhistorie + Rezept-Statistiken
     if (newState === 1) {
       db.prepare('INSERT INTO cooking_history (user_id, recipe_id, servings) VALUES (?, ?, ?)').run(
-        request.user.id, entry.recipe_id, entry.servings
+        userId, entry.recipe_id, entry.servings
       );
       db.prepare('UPDATE recipes SET times_cooked = times_cooked + 1, last_cooked_at = CURRENT_TIMESTAMP WHERE id = ?')
         .run(entry.recipe_id);
     }
 
-    return { message: newState ? 'Als gekocht markiert!' : 'Markierung entfernt', is_cooked: newState };
+    // ── Vorräte anpassen ──
+    const ingredients = db.prepare('SELECT * FROM ingredients WHERE recipe_id = ?').all(entry.recipe_id);
+    let pantryUpdated = 0;
+
+    for (const ing of ingredients) {
+      if (ing.is_optional) continue; // Optionale Zutaten nicht abziehen
+
+      // Menge auf geplante Portionen skalieren
+      const scaledAmount = ing.amount
+        ? scaleIngredient(ing.amount, entry.original_servings, entry.servings)
+        : null;
+
+      if (!scaledAmount || scaledAmount <= 0) continue;
+
+      // In Basiseinheit konvertieren (kg→g, l→ml etc.)
+      const normalized = convertToBaseUnit(scaledAmount, ing.unit);
+
+      // Passenden Vorrat suchen
+      const pantryItem = db.prepare(
+        'SELECT * FROM pantry WHERE user_id = ? AND LOWER(ingredient_name) = LOWER(?)'
+      ).get(userId, ing.name);
+
+      if (!pantryItem) continue; // Kein Vorrat vorhanden → nichts abziehen
+      if (pantryItem.is_permanent) continue; // Dauerhafte Vorräte nicht verbrauchen
+
+      // Vorrat in gleiche Einheit konvertieren
+      const pantryNormalized = convertToBaseUnit(pantryItem.amount, pantryItem.unit);
+
+      // Nur anpassen wenn gleiche Basiseinheit
+      if (pantryNormalized.unit !== normalized.unit) continue;
+
+      if (newState === 1) {
+        // Gekocht → Vorrat abziehen
+        const newAmount = Math.max(0, pantryNormalized.amount - normalized.amount);
+        db.prepare('UPDATE pantry SET amount = ?, unit = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
+          .run(newAmount, pantryNormalized.unit, pantryItem.id);
+        pantryUpdated++;
+      } else {
+        // Rückgängig → Vorrat wieder gutschreiben
+        const newAmount = pantryNormalized.amount + normalized.amount;
+        db.prepare('UPDATE pantry SET amount = ?, unit = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
+          .run(newAmount, pantryNormalized.unit, pantryItem.id);
+        pantryUpdated++;
+      }
+    }
+
+    return {
+      message: newState ? 'Als gekocht markiert!' : 'Markierung entfernt',
+      is_cooked: newState,
+      pantryUpdated,
+    };
   });
 
   // ─────────────────────────────────────────────
