@@ -87,6 +87,13 @@ export const useRecipesStore = defineStore('recipes', () => {
     recipes.value = recipes.value.filter(r => r.id !== id);
   }
 
+  /** Mehrere Rezepte auf einmal löschen (Admin) */
+  async function deleteRecipesBatch(ids) {
+    const data = await api.post('/recipes/batch-delete', { ids });
+    recipes.value = recipes.value.filter(r => !ids.includes(r.id));
+    return data;
+  }
+
   /** Rezept per Foto(s) importieren – unterstützt mehrere Seiten */
   async function importFromPhoto(files) {
     const formData = new FormData();
@@ -187,7 +194,7 @@ export const useRecipesStore = defineStore('recipes', () => {
   return {
     recipes, currentRecipe, categories, loading, filters,
     totalRecipes, favoriteRecipes, recentRecipes,
-    fetchRecipes, fetchRecipe, createRecipe, updateRecipe, deleteRecipe,
+    fetchRecipes, fetchRecipe, createRecipe, updateRecipe, deleteRecipe, deleteRecipesBatch,
     importFromPhoto, importFromText, importFromUrl, toggleFavorite, markAsCooked,
     fetchCategories, createCategory, exportRecipes, importRecipes,
   };

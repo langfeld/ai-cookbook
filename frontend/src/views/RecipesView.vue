@@ -15,6 +15,21 @@
         <p class="text-stone-500 text-sm">{{ recipesStore.totalRecipes }} Rezepte in deiner Sammlung</p>
       </div>
       <div class="flex gap-2">
+        <!-- Auswahl-Modus (nur Admin) -->
+        <button
+          v-if="authStore.isAdmin"
+          @click="toggleSelectMode"
+          :class="[
+            'flex items-center gap-2 px-3 py-2 rounded-lg border text-sm font-medium transition-colors',
+            selectMode
+              ? 'bg-red-50 dark:bg-red-900/20 border-red-300 dark:border-red-700 text-red-700 dark:text-red-300'
+              : 'bg-stone-100 dark:bg-stone-800 border-stone-200 dark:border-stone-700 text-stone-700 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700'
+          ]"
+        >
+          <CheckSquare v-if="selectMode" class="w-4 h-4" />
+          <Square v-else class="w-4 h-4" />
+          <span class="hidden sm:inline">{{ selectMode ? 'Abbrechen' : 'Auswählen' }}</span>
+        </button>
         <!-- Export/Import Button -->
         <button
           @click="showExportImport = true"
@@ -97,16 +112,81 @@
 
     <!-- Rezept-Grid -->
     <div v-if="recipesStore.recipes.length" class="gap-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-      <RecipeCard
+      <div
         v-for="recipe in recipesStore.recipes"
         :key="recipe.id"
-        :recipe="recipe"
-        @toggle-favorite="recipesStore.toggleFavorite(recipe.id)"
-      />
+        class="relative"
+        :class="{ 'cursor-pointer': selectMode }"
+        @click="selectMode ? toggleSelect(recipe.id) : null"
+      >
+        <!-- Auswahl-Checkbox Overlay -->
+        <div
+          v-if="selectMode"
+          class="top-3 left-3 z-10 absolute"
+        >
+          <div
+            :class="[
+              'w-6 h-6 rounded-md border-2 flex items-center justify-center transition-all shadow-sm',
+              selectedIds.has(recipe.id)
+                ? 'bg-red-500 border-red-500 text-white'
+                : 'bg-white/90 dark:bg-stone-800/90 border-stone-300 dark:border-stone-600'
+            ]"
+          >
+            <Check v-if="selectedIds.has(recipe.id)" class="w-4 h-4" />
+          </div>
+        </div>
+        <!-- Auswahl-Ring -->
+        <div v-if="selectMode && selectedIds.has(recipe.id)" class="z-5 absolute inset-0 rounded-xl ring-2 ring-red-500 ring-offset-2 dark:ring-offset-stone-950 pointer-events-none" />
+        <RecipeCard
+          :recipe="recipe"
+          :class="{ 'pointer-events-none': selectMode }"
+          @toggle-favorite="recipesStore.toggleFavorite(recipe.id)"
+        />
+      </div>
     </div>
 
+    <!-- Floating Aktionsleiste bei Auswahl -->
+    <Teleport to="body">
+      <Transition name="slide-up">
+        <div
+          v-if="selectMode && selectedIds.size > 0"
+          class="right-0 bottom-0 left-0 z-40 fixed flex justify-center items-center gap-4 bg-white/95 dark:bg-stone-900/95 shadow-[0_-4px_24px_rgba(0,0,0,0.12)] backdrop-blur-sm px-6 py-4 border-stone-200 dark:border-stone-700 border-t"
+        >
+          <div class="flex items-center gap-2 text-stone-600 dark:text-stone-300 text-sm">
+            <CheckSquare class="w-4 h-4" />
+            <span class="font-medium">{{ selectedIds.size }}</span> ausgewählt
+          </div>
+          <button
+            @click="selectAll"
+            class="hover:bg-stone-100 dark:hover:bg-stone-800 px-3 py-1.5 border border-stone-300 dark:border-stone-600 rounded-lg text-stone-600 dark:text-stone-300 text-sm transition-colors"
+          >
+            Alle ({{ recipesStore.recipes.length }})
+          </button>
+          <button
+            @click="showBatchDeleteConfirm = true"
+            class="flex items-center gap-2 bg-red-600 hover:bg-red-700 px-4 py-1.5 rounded-lg font-medium text-white text-sm transition-colors"
+          >
+            <Trash2 class="w-4 h-4" />
+            Löschen ({{ selectedIds.size }})
+          </button>
+        </div>
+      </Transition>
+    </Teleport>
+
+    <!-- Bestätigungs-Dialog für Batch-Löschen -->
+    <ConfirmDialog
+      v-model="showBatchDeleteConfirm"
+      variant="danger"
+      :title="`${selectedIds.size} Rezept${selectedIds.size !== 1 ? 'e' : ''} löschen?`"
+      :message="`${selectedIds.size} Rezept${selectedIds.size !== 1 ? 'e' : ''} werden unwiderruflich gelöscht, inklusive aller Bilder, Zutaten und Kochschritte.`"
+      confirm-text="Endgültig löschen"
+      cancel-text="Abbrechen"
+      :loading="batchDeleting"
+      @confirm="executeBatchDelete"
+    />
+
     <!-- Leerer Zustand -->
-    <div v-else-if="!recipesStore.loading" class="py-16 text-center">
+    <div v-if="!recipesStore.recipes.length && !recipesStore.loading" class="py-16 text-center">
       <BookOpen class="mx-auto mb-4 w-16 h-16 text-stone-300 dark:text-stone-600" />
       <h3 class="mb-2 font-medium text-stone-600 dark:text-stone-400 text-lg">
         Noch keine Rezepte
@@ -140,16 +220,25 @@
 <script setup>
 import { ref, onMounted } from 'vue';
 import { useRecipesStore } from '@/stores/recipes.js';
-import { Search, Sparkles, Plus, Star, BookOpen, ArrowDownUp } from 'lucide-vue-next';
+import { useAuthStore } from '@/stores/auth.js';
+import { Search, Sparkles, Plus, Star, BookOpen, ArrowDownUp, CheckSquare, Square, Check, Trash2 } from 'lucide-vue-next';
 import RecipeCard from '@/components/recipes/RecipeCard.vue';
 import RecipeImportModal from '@/components/recipes/RecipeImportModal.vue';
 import RecipeImportExportModal from '@/components/recipes/RecipeImportExportModal.vue';
+import ConfirmDialog from '@/components/ui/ConfirmDialog.vue';
 import { useNotification } from '@/composables/useNotification.js';
 
 const recipesStore = useRecipesStore();
-const { showSuccess } = useNotification();
+const authStore = useAuthStore();
+const { showSuccess, showError } = useNotification();
 const showPhotoImport = ref(false);
 const showExportImport = ref(false);
+
+// Mehrfachauswahl (Admin)
+const selectMode = ref(false);
+const selectedIds = ref(new Set());
+const showBatchDeleteConfirm = ref(false);
+const batchDeleting = ref(false);
 
 // Debounced Suche (300ms Verzögerung)
 let searchTimeout;
@@ -174,6 +263,42 @@ function handleExportImportDone(data) {
   showExportImport.value = false;
   recipesStore.fetchRecipes();
   // Success-Notification wird bereits im Modal angezeigt
+}
+
+// Auswahl-Modus
+function toggleSelectMode() {
+  selectMode.value = !selectMode.value;
+  selectedIds.value = new Set();
+}
+
+function toggleSelect(id) {
+  const s = new Set(selectedIds.value);
+  if (s.has(id)) {
+    s.delete(id);
+  } else {
+    s.add(id);
+  }
+  selectedIds.value = s;
+}
+
+function selectAll() {
+  selectedIds.value = new Set(recipesStore.recipes.map(r => r.id));
+}
+
+async function executeBatchDelete() {
+  batchDeleting.value = true;
+  try {
+    const ids = [...selectedIds.value];
+    const result = await recipesStore.deleteRecipesBatch(ids);
+    showSuccess(`${result.deletedCount} Rezept${result.deletedCount !== 1 ? 'e' : ''} gelöscht! 🗑️`);
+    showBatchDeleteConfirm.value = false;
+    selectMode.value = false;
+    selectedIds.value = new Set();
+  } catch {
+    showError('Löschen fehlgeschlagen.');
+  } finally {
+    batchDeleting.value = false;
+  }
 }
 
 onMounted(() => {

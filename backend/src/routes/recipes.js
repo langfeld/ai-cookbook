@@ -670,6 +670,65 @@ export default async function recipesRoutes(fastify) {
   });
 
   /**
+   * POST /api/recipes/batch-delete
+   * Mehrere Rezepte auf einmal löschen (nur Admin)
+   */
+  fastify.post('/batch-delete', {
+    onRequest: fastify.requireAdmin,
+    schema: {
+      description: 'Mehrere Rezepte löschen (Admin)',
+      tags: ['Rezepte'],
+      security: [{ bearerAuth: [] }],
+      body: {
+        type: 'object',
+        required: ['ids'],
+        properties: {
+          ids: { type: 'array', items: { type: 'integer' }, minItems: 1 },
+        },
+      },
+    },
+  }, async (request, reply) => {
+    const { ids } = request.body;
+
+    // Rezepte holen (für Bild-Pfade)
+    const placeholders = ids.map(() => '?').join(',');
+    const recipes = db.prepare(`SELECT id, image_url FROM recipes WHERE id IN (${placeholders})`).all(...ids);
+
+    if (!recipes.length) {
+      return reply.status(404).send({ error: 'Keine Rezepte gefunden' });
+    }
+
+    // Bild-Dateien löschen
+    const { unlinkSync } = await import('fs');
+    for (const recipe of recipes) {
+      if (recipe.image_url) {
+        try {
+          const relPath = recipe.image_url.replace('/api/uploads/', '');
+          const fullPath = safePath(config.upload.path, relPath);
+          if (fullPath) unlinkSync(fullPath);
+        } catch {
+          // Datei existiert nicht mehr – ignorieren
+        }
+      }
+    }
+
+    // Alle Rezepte löschen (CASCADE löscht Zutaten, Schritte, etc.)
+    const deleteStmt = db.prepare('DELETE FROM recipes WHERE id = ?');
+    const deleteAll = db.transaction((recipeIds) => {
+      let deleted = 0;
+      for (const id of recipeIds) {
+        const result = deleteStmt.run(id);
+        deleted += result.changes;
+      }
+      return deleted;
+    });
+
+    const deletedCount = deleteAll(ids);
+
+    return { message: `${deletedCount} Rezept${deletedCount !== 1 ? 'e' : ''} gelöscht`, deletedCount };
+  });
+
+  /**
    * POST /api/recipes/:id/favorite
    * Favoriten-Status umschalten
    */
