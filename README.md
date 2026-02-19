@@ -1,6 +1,6 @@
 # AI Cookbook 🍳🤖
 
-Eine KI-gestützte Rezeptverwaltung mit intelligentem Wochenplaner (Score-Algorithmus + optionales KI-Reasoning), Rezept-Sammlungen, Einkaufsliste mit REWE-Integration, Bring!-Anbindung, Tampermonkey-Userscript, Vorratsschrank und umfangreichem Admin-Bereich.
+Eine KI-gestützte Rezeptverwaltung mit intelligentem Wochenplaner (Score-Algorithmus + optionales KI-Reasoning), Kochmodus, Rezept-Sammlungen, Einkaufsliste mit Zutaten-Zusammenfassung, REWE-Integration, Bring!-Anbindung, Tampermonkey-Userscript, Vorratsschrank und umfangreichem Admin-Bereich.
 
 ![Vue 3](https://img.shields.io/badge/Vue-3.5-4FC08D?logo=vuedotjs&logoColor=white)
 ![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-4-06B6D4?logo=tailwindcss&logoColor=white)
@@ -26,6 +26,13 @@ Eine KI-gestützte Rezeptverwaltung mit intelligentem Wochenplaner (Score-Algori
 - **Kochhistorie** — Protokoll, wann welches Rezept zuletzt gekocht wurde
 - **Favoriten** — Lieblingsrezepte markieren und filtern
 - **Sammlungen** — Rezepte in frei erstellbare Sammlungen organisieren (mit Icon & Farbe). Ein Rezept kann mehreren Sammlungen angehören. Sammlungen lassen sich in der Rezeptübersicht als Filter verwenden
+- **Kochmodus** — Immersiver Vollbild-Kochmodus mit Schritt-für-Schritt-Anleitung:
+  - Swipe-Navigation (Touch oder Tastatur ←/→) zwischen Kochschritten
+  - Zutaten-Seitenleiste (Desktop) oder ausklappbares Overlay (Mobile) mit Emoji-Icons
+  - Farbige Zutatenerkennung im aktiven Schritt
+  - Optionaler persistenter Timer (localStorage-basiert, überlebt Seitenwechsel)
+  - WakeLock-API verhindert Bildschirm-Abdunklung beim Kochen
+  - Automatischer Vorratsabzug beim Abschließen
 
 ### 📅 Wochenplaner
 - **Score-basierter Algorithmus** — Berücksichtigt Kochhistorie, Rezeptrotation, Favoriten, Schwierigkeitsgrad, Zutatensynergien und Vorräte
@@ -43,6 +50,9 @@ Eine KI-gestützte Rezeptverwaltung mit intelligentem Wochenplaner (Score-Algori
 - **Rezept-Verknüpfung** — Zu jedem Artikel sehen, aus welchem Rezept er stammt (mit Thumbnail, ein-/ausblendbar)
 - **Fortschrittsbalken** — Visueller Einkaufsfortschritt
 - **Einkauf abschließen** → Abgehakte Artikel landen automatisch im Vorratsschrank
+- **Zutaten zusammenfassen** — Gleiche Zutaten mit unterschiedlichen Schreibweisen (z. B. „Knoblauch" und „Knoblauchzehe") zu einem Eintrag zusammenführen. Multi-Merge: beliebig viele Artikel gleichzeitig auswählen und den kanonischen Namen wählen
+- **Automatische Alias-Auflösung** — Gespeicherte Zuordnungen (Aliases) werden bei jeder neuen Einkaufslistengenerierung automatisch angewandt, sodass zusammengeführte Zutaten dauerhaft konsolidiert bleiben
+- **Alias-Verwaltung** — Alle gespeicherten Zutatenzuordnungen einsehen und einzeln löschen (Split-Button in der Einkaufsliste)
 
 ### 🏪 REWE-Integration
 - **Automatisches Produkt-Matching** — Alle Zutaten werden per SSE-Stream mit Live-Fortschrittsanzeige REWE-Produkten zugeordnet
