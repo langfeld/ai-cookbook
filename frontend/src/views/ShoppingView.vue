@@ -34,6 +34,62 @@
           <BookX v-else class="w-4 h-4" />
           <span class="hidden sm:inline">{{ showRecipeLinks ? 'Rezepte' : 'Rezepte' }}</span>
         </button>
+        <!-- Verlauf (History-Button mit Dropdown) -->
+        <div class="relative" ref="historyBtnRef">
+          <button
+            @click="openHistoryDropdown"
+            :class="[
+              'flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium transition-colors border',
+              showHistoryDropdown
+                ? 'bg-primary-50 dark:bg-primary-900/30 border-primary-300 dark:border-primary-700 text-primary-700 dark:text-primary-300'
+                : 'bg-stone-100 dark:bg-stone-800 border-stone-300 dark:border-stone-600 text-stone-500 dark:text-stone-400'
+            ]"
+            title="Vorherige Einkaufslisten laden"
+          >
+            <History class="w-4 h-4" />
+            <span class="hidden sm:inline">Verlauf</span>
+          </button>
+          <!-- Backdrop -->
+          <Transition name="fade">
+            <div v-if="showHistoryDropdown" class="z-30 fixed inset-0" @click="showHistoryDropdown = false" />
+          </Transition>
+          <!-- Dropdown -->
+          <Transition name="fade">
+            <div v-if="showHistoryDropdown" class="sm:top-full sm:right-0 z-40 fixed sm:absolute bg-white dark:bg-stone-800 shadow-lg sm:mt-1.5 border border-stone-200 dark:border-stone-700 rounded-xl sm:w-80 overflow-hidden" :style="historyDropdownStyle">
+              <div class="px-4 py-3 border-stone-200 dark:border-stone-700 border-b">
+                <p class="font-semibold text-stone-700 dark:text-stone-200 text-sm">Vorherige Einkaufslisten</p>
+              </div>
+              <div class="max-h-72 overflow-y-auto">
+                <div v-if="shoppingStore.listHistory.length === 0" class="px-4 py-6 text-center">
+                  <p class="text-stone-400 dark:text-stone-500 text-sm italic">Kein Verlauf vorhanden.</p>
+                </div>
+                <div
+                  v-for="hl in shoppingStore.listHistory.slice(0, 15)"
+                  :key="hl.id"
+                  @click="reactivateHistoryList(hl.id); showHistoryDropdown = false"
+                  :class="[
+                    'flex items-center gap-3 px-4 py-2.5 cursor-pointer transition-colors border-b border-stone-100 dark:border-stone-700/50 last:border-b-0',
+                    hl.is_active
+                      ? 'bg-primary-50 dark:bg-primary-900/20'
+                      : 'hover:bg-stone-50 dark:hover:bg-stone-700/50'
+                  ]"
+                >
+                  <div class="flex-1 min-w-0">
+                    <p class="font-medium text-stone-700 dark:text-stone-200 text-sm truncate">
+                      {{ hl.name || 'Einkaufsliste' }}
+                      <span v-if="hl.is_active" class="bg-primary-100 dark:bg-primary-900/40 ml-1.5 px-1.5 py-0.5 rounded font-semibold text-[10px] text-primary-700 dark:text-primary-300">AKTIV</span>
+                    </p>
+                    <p class="text-stone-400 dark:text-stone-500 text-xs">
+                      {{ formatHistoryDate(hl.created_at) }}
+                      · {{ hl.checked_count || 0 }}/{{ hl.item_count || 0 }} erledigt
+                    </p>
+                  </div>
+                  <RotateCcw v-if="!hl.is_active" class="w-3.5 h-3.5 text-stone-400 dark:text-stone-500 shrink-0" />
+                </div>
+              </div>
+            </div>
+          </Transition>
+        </div>
         <!-- Zusammenfassen (Split-Button: Merge + Alias-Verwaltung) -->
         <div v-if="shoppingStore.activeList" class="flex items-stretch">
           <button
@@ -959,12 +1015,45 @@
     </div>
 
     <!-- Keine Liste vorhanden -->
-    <div v-else-if="!shoppingStore.loading" class="py-16 text-center">
+    <div v-else-if="!shoppingStore.loading" class="py-10 text-center">
       <div class="mb-4 text-6xl">🛒</div>
       <h2 class="mb-2 font-semibold text-stone-700 dark:text-stone-300 text-xl">Keine aktive Einkaufsliste</h2>
       <p class="mx-auto mb-6 max-w-md text-stone-500 dark:text-stone-400">
         Erstelle eine Einkaufsliste aus deinem Wochenplan. Vorhandene Vorräte werden automatisch berücksichtigt.
       </p>
+
+      <!-- Verlauf: vorherige Listen -->
+      <div v-if="shoppingStore.listHistory.length > 0" class="mx-auto max-w-lg text-left">
+        <h3 class="flex items-center gap-2 mb-3 font-semibold text-stone-600 dark:text-stone-400 text-sm">
+          <History class="w-4 h-4" />
+          Vorherige Einkaufslisten
+        </h3>
+        <div class="space-y-2">
+          <div
+            v-for="hl in shoppingStore.listHistory.slice(0, 10)"
+            :key="hl.id"
+            class="flex items-center gap-3 bg-white hover:bg-stone-50 dark:bg-stone-900 dark:hover:bg-stone-800 px-4 py-3 border border-stone-200 dark:border-stone-800 rounded-xl transition-colors cursor-pointer"
+            @click="reactivateHistoryList(hl.id)"
+          >
+            <div class="flex-1 min-w-0">
+              <p class="font-medium text-stone-700 dark:text-stone-200 text-sm truncate">
+                {{ hl.name || 'Einkaufsliste' }}
+              </p>
+              <p class="text-stone-400 dark:text-stone-500 text-xs">
+                {{ formatHistoryDate(hl.created_at) }}
+                · {{ hl.checked_count || 0 }}/{{ hl.item_count || 0 }} erledigt
+              </p>
+            </div>
+            <button
+              class="flex items-center gap-1.5 bg-primary-50 hover:bg-primary-100 dark:bg-primary-900/30 dark:hover:bg-primary-900/50 px-3 py-1.5 rounded-lg font-medium text-primary-700 dark:text-primary-300 text-xs transition-colors shrink-0"
+              @click.stop="reactivateHistoryList(hl.id)"
+            >
+              <RotateCcw class="w-3.5 h-3.5" />
+              Laden
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- Laden -->
@@ -1087,12 +1176,12 @@
 </template>
 
 <script setup>
-import { computed, ref, onMounted, watch } from 'vue';
+import { computed, ref, onMounted, watch, nextTick } from 'vue';
 import { useShoppingStore } from '@/stores/shopping.js';
 import { useMealPlanStore } from '@/stores/mealplan.js';
 import { useIngredientAliasStore } from '@/stores/ingredient-aliases.js';
 import { useNotification } from '@/composables/useNotification.js';
-import { ListPlus, Check, ShoppingBag, Plus, Package, BookOpen, BookX, ExternalLink, ShoppingCart, X, ArrowRightLeft, Search, Tag, Trash2, Star, Heart, Archive, Send, Link2, Unlink, ClipboardCopy, LogIn, LogOut, ChevronDown, ChevronLeft, ChevronRight, Loader2, Terminal, Download, Settings, RefreshCw, Merge, ArrowRight } from 'lucide-vue-next';
+import { ListPlus, Check, ShoppingBag, Plus, Package, BookOpen, BookX, ExternalLink, ShoppingCart, X, ArrowRightLeft, Search, Tag, Trash2, Star, Heart, Archive, Send, Link2, Unlink, ClipboardCopy, LogIn, LogOut, ChevronDown, ChevronLeft, ChevronRight, Loader2, Terminal, Download, Settings, RefreshCw, Merge, ArrowRight, History, RotateCcw } from 'lucide-vue-next';
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue';
 
 const shoppingStore = useShoppingStore();
@@ -1103,6 +1192,9 @@ const reweLoading = ref(false);
 
 // Einkaufslisten-Generierung Optionen
 const showGenOptions = ref(false);
+const showHistoryDropdown = ref(false);
+const historyBtnRef = ref(null);
+const historyDropdownTop = ref(0);
 const genIncludePastDays = ref(false); // Standardmäßig: vergangene Tage NICHT einbeziehen
 const genWeekOffset = ref(0); // 0 = aktuelle Woche, -1 = letzte Woche, +1 = nächste Woche
 
@@ -1502,10 +1594,12 @@ async function selectProduct(product) {
   }
 }
 
-onMounted(() => {
-  shoppingStore.fetchActiveList();
+onMounted(async () => {
+  await shoppingStore.fetchActiveList();
   shoppingStore.fetchBringStatus();
   aliasStore.fetchAliases();
+  // Verlauf immer laden (für History-Button)
+  shoppingStore.fetchListHistory();
 });
 
 // Bring!-Listen laden, wenn Modal geöffnet wird
@@ -1689,6 +1783,53 @@ async function deleteAlias(alias) {
   } catch {
     showError('Löschen fehlgeschlagen.');
   }
+}
+
+// ============================================
+// Einkaufslisten-Verlauf
+// ============================================
+
+async function reactivateHistoryList(listId) {
+  try {
+    await shoppingStore.reactivateList(listId);
+    // Verlauf neu laden (Aktiv-Status hat sich geändert)
+    shoppingStore.fetchListHistory();
+    showSuccess('Einkaufsliste wiederhergestellt! 🛒');
+  } catch {
+    showError('Liste konnte nicht geladen werden.');
+  }
+}
+
+const historyDropdownStyle = computed(() => {
+  // Trigger bei Öffnen (macht den computed reaktiv)
+  void historyDropdownTop.value;
+  // Auf Desktop (sm+) → absolute-Positionierung via CSS-Klassen
+  if (typeof window !== 'undefined' && window.innerWidth >= 640) return {};
+  // Auf Mobile → fixed mit sicheren Rändern
+  if (!historyBtnRef.value) return { left: '0.75rem', right: '0.75rem' };
+  const rect = historyBtnRef.value.getBoundingClientRect();
+  return {
+    top: `${rect.bottom + 6}px`,
+    left: '0.75rem',
+    right: '0.75rem',
+  };
+});
+
+async function openHistoryDropdown() {
+  showHistoryDropdown.value = !showHistoryDropdown.value;
+  if (showHistoryDropdown.value) {
+    // Verlauf aktualisieren beim Öffnen
+    shoppingStore.fetchListHistory();
+    // Position nach nächstem Tick neu berechnen (für computed reactivity)
+    await nextTick();
+    historyDropdownTop.value = Date.now(); // Trigger reactivity
+  }
+}
+
+function formatHistoryDate(dateStr) {
+  if (!dateStr) return '';
+  const d = new Date(dateStr);
+  return d.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 </script>
 

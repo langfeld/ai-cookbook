@@ -14,6 +14,7 @@ export const useShoppingStore = defineStore('shopping', () => {
   const items = ref([]);
   const reweMatches = ref([]);
   const loading = ref(false);
+  const listHistory = ref([]);
 
   // REWE-Matching Fortschritt
   const reweProgress = ref(null); // null = kein Matching aktiv
@@ -59,6 +60,27 @@ export const useShoppingStore = defineStore('shopping', () => {
     currentList.value = data.list;
     items.value = data.items || [];
     return data;
+  }
+
+  /** Alle Einkaufslisten (Verlauf) laden */
+  async function fetchListHistory() {
+    const data = await api.get('/shopping/lists');
+    listHistory.value = data.lists || [];
+    return data;
+  }
+
+  /** Bestimmte Einkaufsliste laden (auch inaktive) */
+  async function loadList(listId) {
+    const data = await api.get(`/shopping/lists/${listId}`);
+    currentList.value = data.list;
+    items.value = data.items || [];
+    return data;
+  }
+
+  /** Einkaufsliste (wieder) aktivieren */
+  async function reactivateList(listId) {
+    await api.put(`/shopping/lists/${listId}/activate`);
+    await fetchActiveList();
   }
 
   /** Item abhaken */
@@ -280,9 +302,9 @@ export const useShoppingStore = defineStore('shopping', () => {
   }
 
   return {
-    currentList, items, activeList, reweMatches, loading, reweProgress,
+    currentList, items, activeList, reweMatches, loading, reweProgress, listHistory,
     openItemsCount, estimatedTotal, reweLinkedItems,
-    generateList, fetchActiveList, toggleItem, matchWithRewe, completePurchase, addItem, deleteItem, moveToPantry,
+    generateList, fetchActiveList, fetchListHistory, loadList, reactivateList, toggleItem, matchWithRewe, completePurchase, addItem, deleteItem, moveToPantry,
     searchReweProducts, setReweProduct, fetchPreferences, deletePreference, clearAllPreferences,
     // Bring!
     bringStatus, bringLists, bringSending,

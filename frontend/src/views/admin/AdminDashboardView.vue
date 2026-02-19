@@ -156,6 +156,23 @@
           Export / Import öffnen
         </button>
       </div>
+
+      <!-- REWE-Präferenzen Export / Import -->
+      <div class="bg-white dark:bg-stone-800 mt-4 sm:mt-6 p-4 sm:p-5 border border-stone-200 dark:border-stone-700 rounded-xl">
+        <h2 class="mb-4 font-display font-semibold text-stone-800 dark:text-stone-100 text-lg">
+          🏪 REWE-Präferenzen Export / Import
+        </h2>
+        <p class="mb-4 text-stone-500 dark:text-stone-400 text-sm">
+          Exportiere alle bevorzugten REWE-Produkt-Zuordnungen als JSON-Backup oder importiere Zuordnungen aus einer Export-Datei.
+        </p>
+        <button
+          @click="showRewePrefsExportImport = true"
+          class="flex items-center gap-2 bg-primary-600 hover:bg-primary-700 px-4 py-2.5 rounded-lg font-medium text-white text-sm transition-colors"
+        >
+          <ArrowDownUp class="w-4 h-4" />
+          Export / Import öffnen
+        </button>
+      </div>
     </template>
 
     <!-- Export/Import Modal -->
@@ -174,6 +191,14 @@
       @close="showPantryExportImport = false"
       @imported="handlePantryImported"
     />
+
+    <!-- REWE-Präferenzen Export/Import Modal -->
+    <RewePreferencesImportExportModal
+      v-if="showRewePrefsExportImport"
+      :users="adminUsers"
+      @close="showRewePrefsExportImport = false"
+      @imported="handleRewePrefsImported"
+    />
   </div>
 </template>
 
@@ -182,6 +207,7 @@ import { ref, computed, onMounted } from 'vue';
 import { useApi } from '@/composables/useApi.js';
 import RecipeImportExportModal from '@/components/recipes/RecipeImportExportModal.vue';
 import PantryImportExportModal from '@/components/pantry/PantryImportExportModal.vue';
+import RewePreferencesImportExportModal from '@/components/rewe/RewePreferencesImportExportModal.vue';
 import {
   Users,
   BookOpen,
@@ -200,6 +226,7 @@ const stats = ref(null);
 const logs = ref([]);
 const showExportImport = ref(false);
 const showPantryExportImport = ref(false);
+const showRewePrefsExportImport = ref(false);
 const adminUsers = ref([]);
 
 const statCards = computed(() => {
@@ -242,6 +269,10 @@ function handleImported(data) {
 
 function handlePantryImported(data) {
   showPantryExportImport.value = false;
+}
+
+function handleRewePrefsImported(data) {
+  showRewePrefsExportImport.value = false;
 }
 
 onMounted(async () => {

@@ -168,6 +168,94 @@ export default async function shoppingRoutes(fastify) {
   });
 
   /**
+   * GET /api/shopping/lists/:id
+   * Einzelne Einkaufsliste mit allen Items laden (auch inaktive)
+   */
+  fastify.get('/lists/:id', {
+    schema: { description: 'Einkaufsliste mit Items laden', tags: ['Einkaufsliste'], security: [{ bearerAuth: [] }] },
+  }, async (request, reply) => {
+    const list = db.prepare(
+      'SELECT * FROM shopping_lists WHERE id = ? AND user_id = ?'
+    ).get(request.params.id, request.user.id);
+
+    if (!list) {
+      return reply.status(404).send({ error: 'Einkaufsliste nicht gefunden' });
+    }
+
+    const items = db.prepare(
+      'SELECT * FROM shopping_list_items WHERE shopping_list_id = ? ORDER BY is_checked, ingredient_name'
+    ).all(list.id);
+
+    // Rezept-Infos laden (wie in GET /list)
+    const allRecipeIds = new Set();
+    for (const item of items) {
+      try {
+        const ids = JSON.parse(item.recipe_ids || '[]');
+        ids.forEach(id => allRecipeIds.add(id));
+      } catch { /* ignorieren */ }
+    }
+
+    let recipeLookup = {};
+    if (allRecipeIds.size > 0) {
+      const placeholders = [...allRecipeIds].map(() => '?').join(',');
+      const recipes = db.prepare(
+        `SELECT id, title, image_url FROM recipes WHERE id IN (${placeholders})`
+      ).all(...allRecipeIds);
+      for (const r of recipes) {
+        recipeLookup[r.id] = r;
+      }
+    }
+
+    const enrichedItems = items.map(item => {
+      let recipeIds = [];
+      try { recipeIds = JSON.parse(item.recipe_ids || '[]'); } catch { /* */ }
+
+      const rewe_product = item.rewe_product_id ? {
+        id: item.rewe_product_id,
+        name: item.rewe_product_name,
+        price: item.rewe_price,
+        quantity: item.rewe_quantity || 1,
+        packageSize: item.rewe_package_size,
+        url: buildReweProductUrl(item.rewe_product_name, item.rewe_product_id),
+      } : null;
+
+      return {
+        ...item,
+        recipes: recipeIds.map(id => recipeLookup[id]).filter(Boolean),
+        rewe_product,
+      };
+    });
+
+    return { list, items: enrichedItems };
+  });
+
+  /**
+   * PUT /api/shopping/lists/:id/activate
+   * Einkaufsliste (wieder) aktivieren
+   */
+  fastify.put('/lists/:id/activate', {
+    schema: { description: 'Einkaufsliste reaktivieren', tags: ['Einkaufsliste'], security: [{ bearerAuth: [] }] },
+  }, async (request, reply) => {
+    const userId = request.user.id;
+    const listId = Number(request.params.id);
+
+    // Prüfen ob Liste existiert und dem User gehört
+    const list = db.prepare(
+      'SELECT * FROM shopping_lists WHERE id = ? AND user_id = ?'
+    ).get(listId, userId);
+
+    if (!list) {
+      return reply.status(404).send({ error: 'Einkaufsliste nicht gefunden' });
+    }
+
+    // Alle anderen Listen deaktivieren, diese aktivieren
+    db.prepare('UPDATE shopping_lists SET is_active = 0 WHERE user_id = ?').run(userId);
+    db.prepare('UPDATE shopping_lists SET is_active = 1 WHERE id = ?').run(listId);
+
+    return { message: 'Einkaufsliste aktiviert', listId };
+  });
+
+  /**
    * PUT /api/shopping/item/:id/check
    * Einkaufsitem abhaken/entabhaken
    */

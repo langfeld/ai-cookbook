@@ -51,6 +51,7 @@ Eine KI-gestützte Rezeptverwaltung mit intelligentem Wochenplaner (Score-Algori
 - **Rezept-Verknüpfung** — Zu jedem Artikel sehen, aus welchem Rezept er stammt (mit Thumbnail, ein-/ausblendbar)
 - **Fortschrittsbalken** — Visueller Einkaufsfortschritt
 - **Einkauf abschließen** → Abgehakte Artikel landen automatisch im Vorratsschrank
+- **Einkaufslisten-Verlauf** — Vorherige Einkaufslisten bleiben erhalten und können jederzeit wieder geladen/reaktiviert werden (auch nach Seiten-Reload). Übersicht mit Datum, Fortschritt und „Laden"-Button
 - **Zutaten zusammenfassen** — Gleiche Zutaten mit unterschiedlichen Schreibweisen (z. B. „Knoblauch" und „Knoblauchzehe") zu einem Eintrag zusammenführen. Multi-Merge: beliebig viele Artikel gleichzeitig auswählen und den kanonischen Namen wählen
 - **Automatische Alias-Auflösung** — Gespeicherte Zuordnungen (Aliases) werden bei jeder neuen Einkaufslistengenerierung automatisch angewandt, sodass zusammengeführte Zutaten dauerhaft konsolidiert bleiben
 - **Alias-Verwaltung** — Alle gespeicherten Zutatenzuordnungen einsehen und einzeln löschen (Split-Button in der Einkaufsliste)
@@ -98,6 +99,7 @@ Eine KI-gestützte Rezeptverwaltung mit intelligentem Wochenplaner (Score-Algori
 - **Datei-Bereinigung** — Verwaiste Upload-Dateien automatisch erkennen und entfernen
 - **Rezept Export/Import** — Alle Rezepte (oder pro Benutzer) als JSON exportieren/importieren, mit Benutzer-Zuweisung beim Import
 - **Vorratsschrank Export/Import** — Vorräte aller Benutzer exportieren (oder nach Benutzer filtern), importieren mit Zielbenutzer-Auswahl
+- **REWE-Präferenzen Export/Import** — Alle gespeicherten REWE-Produkt-Zuordnungen exportieren/importieren (pro Benutzer filterbar). Ideal für Backup/Migration der bevorzugten Produktzuweisungen
 - **Aktivitätslog** — Alle Admin-Aktionen werden protokolliert (Wer hat was wann gemacht?)
 
 ---

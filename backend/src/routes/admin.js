@@ -935,4 +935,184 @@ export default async function adminRoutes(fastify) {
       errors: errors.length ? errors : undefined,
     };
   });
+
+  // ============================================
+  // REWE Produkt-Präferenzen Export / Import
+  // ============================================
+
+  /**
+   * GET /api/admin/export/rewe-preferences
+   * Alle REWE Produkt-Präferenzen als JSON exportieren
+   * ?user_id=123 — Nur Präferenzen eines bestimmten Users
+   */
+  fastify.get('/export/rewe-preferences', {
+    schema: {
+      description: 'REWE Produkt-Präferenzen exportieren (Admin)',
+      tags: ['Admin'],
+      security: [{ bearerAuth: [] }],
+      querystring: {
+        type: 'object',
+        properties: {
+          user_id: { type: 'integer' },
+        },
+      },
+    },
+  }, async (request, reply) => {
+    const filterUserId = request.query.user_id;
+
+    let prefs;
+    if (filterUserId) {
+      prefs = db.prepare(`
+        SELECT rpp.*, u.username as owner
+        FROM rewe_product_preferences rpp JOIN users u ON rpp.user_id = u.id
+        WHERE rpp.user_id = ?
+        ORDER BY u.username, rpp.ingredient_name
+      `).all(filterUserId);
+    } else {
+      prefs = db.prepare(`
+        SELECT rpp.*, u.username as owner
+        FROM rewe_product_preferences rpp JOIN users u ON rpp.user_id = u.id
+        ORDER BY u.username, rpp.ingredient_name
+      `).all();
+    }
+
+    const exportData = {
+      version: '1.0',
+      exported_at: new Date().toISOString(),
+      source: 'AI Cookbook (Admin-Export)',
+      type: 'rewe-preferences',
+      preference_count: prefs.length,
+      preferences: prefs.map(p => ({
+        ingredient_name: p.ingredient_name,
+        rewe_product_id: p.rewe_product_id,
+        rewe_product_name: p.rewe_product_name,
+        rewe_price: p.rewe_price,
+        rewe_package_size: p.rewe_package_size,
+        times_selected: p.times_selected,
+        owner: p.owner,
+      })),
+    };
+
+    const suffix = filterUserId ? `-user-${filterUserId}` : '-alle';
+    reply.header('Content-Type', 'application/json');
+    reply.header('Content-Disposition', `attachment; filename="admin-rewe-prefs-export${suffix}-${new Date().toISOString().split('T')[0]}.json"`);
+    return exportData;
+  });
+
+  /**
+   * POST /api/admin/import/rewe-preferences
+   * REWE Produkt-Präferenzen aus JSON importieren (Admin)
+   */
+  fastify.post('/import/rewe-preferences', {
+    schema: {
+      description: 'REWE Produkt-Präferenzen importieren (Admin)',
+      tags: ['Admin'],
+      security: [{ bearerAuth: [] }],
+    },
+  }, async (request, reply) => {
+    let importData;
+    let targetUserId;
+
+    const contentType = request.headers['content-type'] || '';
+
+    if (contentType.includes('multipart')) {
+      const parts = request.parts();
+      for await (const part of parts) {
+        if (part.type === 'file') {
+          const buffer = await part.toBuffer();
+          try {
+            importData = JSON.parse(buffer.toString('utf-8'));
+          } catch {
+            return reply.status(400).send({ error: 'Ungültiges JSON-Format in der Datei.' });
+          }
+        } else if (part.fieldname === 'user_id') {
+          targetUserId = parseInt(part.value, 10);
+        }
+      }
+    } else {
+      importData = request.body?.data || request.body;
+      targetUserId = request.body?.user_id;
+    }
+
+    if (!importData?.preferences || !Array.isArray(importData.preferences)) {
+      return reply.status(400).send({ error: 'Ungültiges Export-Format. Erwartet: { preferences: [...] }' });
+    }
+
+    if (importData.preferences.length === 0) {
+      return reply.status(400).send({ error: 'Keine Präferenzen zum Importieren gefunden.' });
+    }
+
+    if (importData.preferences.length > 5000) {
+      return reply.status(400).send({ error: 'Maximal 5000 Präferenzen pro Import erlaubt.' });
+    }
+
+    const userId = targetUserId || request.user.id;
+    const targetUser = db.prepare('SELECT id, username FROM users WHERE id = ?').get(userId);
+    if (!targetUser) {
+      return reply.status(404).send({ error: 'Ziel-Benutzer nicht gefunden.' });
+    }
+
+    let imported = 0;
+    let updated = 0;
+    let skipped = 0;
+    const errors = [];
+
+    const upsertPref = db.prepare(`
+      INSERT INTO rewe_product_preferences (user_id, ingredient_name, rewe_product_id, rewe_product_name, rewe_price, rewe_package_size, times_selected, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+      ON CONFLICT(user_id, ingredient_name) DO UPDATE SET
+        rewe_product_id = excluded.rewe_product_id,
+        rewe_product_name = excluded.rewe_product_name,
+        rewe_price = excluded.rewe_price,
+        rewe_package_size = excluded.rewe_package_size,
+        times_selected = excluded.times_selected,
+        updated_at = CURRENT_TIMESTAMP
+    `);
+
+    const findExisting = db.prepare(
+      'SELECT id FROM rewe_product_preferences WHERE user_id = ? AND LOWER(ingredient_name) = LOWER(?)'
+    );
+
+    const transaction = db.transaction(() => {
+      for (const pref of importData.preferences) {
+        try {
+          const ingredientName = String(pref.ingredient_name || '').trim();
+          if (!ingredientName) { skipped++; continue; }
+
+          const productId = String(pref.rewe_product_id || '').trim();
+          if (!productId) { skipped++; continue; }
+
+          const productName = String(pref.rewe_product_name || '').trim();
+          const price = pref.rewe_price || null;
+          const packageSize = pref.rewe_package_size || null;
+          const timesSelected = parseInt(pref.times_selected) || 1;
+
+          const existing = findExisting.get(userId, ingredientName);
+          upsertPref.run(userId, ingredientName, productId, productName, price, packageSize, timesSelected);
+
+          if (existing) {
+            updated++;
+          } else {
+            imported++;
+          }
+        } catch (err) {
+          skipped++;
+          errors.push(`Fehler bei "${pref.ingredient_name || '?'}": ${err.message}`);
+        }
+      }
+    });
+
+    transaction();
+
+    logAdminAction(request.user.id, 'REWE-Präferenzen importiert', `${imported} neu, ${updated} aktualisiert für ${targetUser.username}`);
+
+    return {
+      message: `${imported} neu importiert, ${updated} aktualisiert, ${skipped} übersprungen für "${targetUser.username}".`,
+      imported,
+      updated,
+      skipped,
+      target_user: targetUser.username,
+      errors: errors.length ? errors : undefined,
+    };
+  });
 }
