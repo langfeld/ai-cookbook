@@ -102,7 +102,7 @@
               Hinweis für Benutzer-Exporte
             </p>
             <p class="mt-1 text-stone-500 dark:text-stone-400 text-sm">
-              Reguläre Benutzer können ihre eigenen Rezepte und Vorräte auch direkt in den jeweiligen Ansichten exportieren.
+              Reguläre Benutzer haben eine eigene <strong class="text-stone-600 dark:text-stone-300">„Meine Daten"</strong>-Seite für ihre persönlichen Exports/Imports.
               Diese Admin-Seite exportiert <strong class="text-stone-600 dark:text-stone-300">alle Daten aller Benutzer</strong>.
             </p>
           </div>
