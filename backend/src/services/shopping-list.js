@@ -60,12 +60,24 @@ export function generateShoppingList(userId, mealPlanId, options = {}) {
   // --- 2. Zutaten sammeln und Mengen umrechnen ---
   const ingredientMap = new Map(); // Key: normalisierter Name + Einheit
 
+  // Alias-Tabelle laden: alias_name → canonical_name
+  const aliasRows = db.prepare(
+    'SELECT alias_name, canonical_name FROM ingredient_aliases WHERE user_id = ?'
+  ).all(userId);
+  const aliasMap = new Map();
+  for (const row of aliasRows) {
+    aliasMap.set(row.alias_name.toLowerCase(), row.canonical_name);
+  }
+
   for (const entry of filteredEntries) {
     const ingredients = db.prepare(
       'SELECT * FROM ingredients WHERE recipe_id = ?'
     ).all(entry.recipe_id);
 
     for (const ing of ingredients) {
+      // Alias auflösen: Falls der Zutatname ein Alias ist, kanonischen Namen verwenden
+      const resolvedName = aliasMap.get(ing.name.toLowerCase()) || ing.name;
+
       // Menge auf geplante Portionen umrechnen
       const scaledAmount = ing.amount
         ? scaleIngredient(ing.amount, entry.original_servings, entry.planned_servings)
@@ -76,7 +88,7 @@ export function generateShoppingList(userId, mealPlanId, options = {}) {
         ? convertToBaseUnit(scaledAmount, ing.unit)
         : { amount: null, unit: normalizeUnit(ing.unit) };
 
-      const key = `${ing.name.toLowerCase()}_${normalized.unit}`;
+      const key = `${resolvedName.toLowerCase()}_${normalized.unit}`;
 
       if (ingredientMap.has(key)) {
         const existing = ingredientMap.get(key);
@@ -87,7 +99,7 @@ export function generateShoppingList(userId, mealPlanId, options = {}) {
         }
       } else {
         ingredientMap.set(key, {
-          name: ing.name,
+          name: resolvedName,
           amount: normalized.amount,
           unit: normalized.unit,
           recipes: [entry.recipe_title],

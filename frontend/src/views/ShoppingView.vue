@@ -34,6 +34,36 @@
           <BookX v-else class="w-4 h-4" />
           <span class="hidden sm:inline">{{ showRecipeLinks ? 'Rezepte' : 'Rezepte' }}</span>
         </button>
+        <!-- Zusammenfassen (Split-Button: Merge + Alias-Verwaltung) -->
+        <div v-if="shoppingStore.activeList" class="flex items-stretch">
+          <button
+            @click="toggleMergeMode"
+            :class="[
+              'flex items-center gap-1.5 px-3 py-2 text-sm font-medium transition-colors border border-r-0',
+              mergeMode
+                ? 'bg-violet-50 dark:bg-violet-900/30 border-violet-300 dark:border-violet-700 text-violet-700 dark:text-violet-300'
+                : 'bg-stone-100 dark:bg-stone-800 border-stone-300 dark:border-stone-600 text-stone-500 dark:text-stone-400',
+              aliasStore.aliases.length > 0 ? 'rounded-l-xl' : 'rounded-xl border-r'
+            ]"
+            :title="mergeMode ? 'Zusammenfassen beenden' : 'Zutaten zusammenfassen'"
+          >
+            <Merge class="w-4 h-4" />
+            <span class="hidden sm:inline">Zusammenfassen</span>
+          </button>
+          <button
+            v-if="aliasStore.aliases.length > 0"
+            @click="showAliasManager = true"
+            :class="[
+              'flex items-center px-2 rounded-r-xl text-sm transition-colors border border-l-0',
+              mergeMode
+                ? 'bg-violet-50 dark:bg-violet-900/30 border-violet-300 dark:border-violet-700 text-violet-500 dark:text-violet-400 hover:text-violet-700'
+                : 'bg-stone-100 dark:bg-stone-800 border-stone-300 dark:border-stone-600 text-stone-400 dark:text-stone-500 hover:text-stone-600'
+            ]"
+            title="Gespeicherte Zusammenfassungen verwalten"
+          >
+            <Settings class="w-3.5 h-3.5" />
+          </button>
+        </div>
         <!-- Aus Wochenplan erstellen (Split-Button) -->
         <div class="relative flex items-stretch">
           <button
@@ -215,6 +245,35 @@
 
     <!-- Einkaufsliste -->
     <div v-if="shoppingStore.activeList" class="space-y-6">
+      <!-- Merge-Mode Hinweis -->
+      <Transition name="slide">
+        <div v-if="mergeMode" class="flex items-center gap-3 bg-violet-50 dark:bg-violet-900/20 p-4 border border-violet-200 dark:border-violet-800 rounded-xl">
+          <Merge class="w-5 h-5 text-violet-600 dark:text-violet-400 shrink-0" />
+          <div class="flex-1">
+            <p class="font-medium text-violet-800 dark:text-violet-200 text-sm">
+              <template v-if="mergeSelection.length === 0">Klicke auf die Zutaten, die zusammengefasst werden sollen.</template>
+              <template v-else>
+                <span v-for="(sel, i) in mergeSelection" :key="sel.id">
+                  <span v-if="i > 0" class="text-violet-400"> + </span>
+                  <span class="bg-violet-200 dark:bg-violet-800 px-1.5 py-0.5 rounded font-semibold">{{ sel.ingredient_name }}</span>
+                </span>
+                <span v-if="mergeSelection.length < 2" class="ml-1">– wähle weitere aus.</span>
+              </template>
+            </p>
+          </div>
+          <button
+            v-if="mergeSelection.length >= 2"
+            @click="openMergeDialog"
+            class="bg-violet-600 hover:bg-violet-700 px-3 py-1.5 rounded-lg font-medium text-white text-sm transition-colors shrink-0"
+          >
+            Zusammenfassen ({{ mergeSelection.length }})
+          </button>
+          <button @click="toggleMergeMode" class="hover:bg-violet-100 dark:hover:bg-violet-800/50 p-1.5 rounded-lg text-violet-500 transition-colors">
+            <X class="w-4 h-4" />
+          </button>
+        </div>
+      </Transition>
+
       <!-- Kategorien als Masonry-Layout auf breiten Screens -->
       <div class="gap-6 space-y-6 lg:columns-2">
         <div
@@ -234,13 +293,21 @@
             <div
               v-for="item in items"
               :key="item.id"
+              @click="mergeMode ? handleMergeClick(item) : null"
               :class="[
-                'group flex items-center gap-3 px-4 py-2.5 transition-all hover:bg-stone-50 dark:hover:bg-stone-800/30',
-                item.is_checked ? 'opacity-50' : ''
+                'group flex items-center gap-3 px-4 py-2.5 transition-all',
+                mergeMode
+                  ? 'cursor-pointer hover:bg-violet-50 dark:hover:bg-violet-900/20'
+                  : 'hover:bg-stone-50 dark:hover:bg-stone-800/30',
+                item.is_checked ? 'opacity-50' : '',
+                mergeMode && mergeSelection.some(s => s.id === item.id)
+                  ? 'bg-violet-100 dark:bg-violet-900/30 ring-2 ring-violet-400 ring-inset'
+                  : ''
               ]"
             >
-              <!-- Checkbox -->
+              <!-- Checkbox (im Merge-Modus ausgeblendet) -->
               <button
+                v-if="!mergeMode"
                 @click="toggleItem(item)"
                 :class="[
                   'w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-all',
@@ -251,6 +318,18 @@
               >
                 <Check v-if="item.is_checked" class="w-3 h-3 text-white" />
               </button>
+              <!-- Merge-Auswahl-Indikator -->
+              <div
+                v-else
+                :class="[
+                  'w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-all',
+                  mergeSelection.some(s => s.id === item.id)
+                    ? 'bg-violet-500 border-violet-500'
+                    : 'border-violet-300 dark:border-violet-600'
+                ]"
+              >
+                <Check v-if="mergeSelection.some(s => s.id === item.id)" class="w-3 h-3 text-white" />
+              </div>
 
               <!-- Artikelname + Rezept-Thumbnails + Vorrats-Hinweis -->
               <div class="flex-1 min-w-0">
@@ -903,6 +982,107 @@
       cancel-text="Nein, noch nicht"
       @confirm="confirmCompletePurchase"
     />
+
+    <!-- Merge-Dialog -->
+    <Teleport to="body">
+      <Transition name="fade">
+        <div v-if="showMergeDialog" class="z-50 fixed inset-0 flex justify-center items-end sm:items-center bg-black/50 p-4" @click.self="cancelMerge">
+          <div class="bg-white dark:bg-stone-900 shadow-2xl rounded-2xl w-full max-w-sm overflow-hidden">
+            <!-- Header -->
+            <div class="flex justify-between items-center px-5 py-4 border-stone-200 dark:border-stone-700 border-b">
+              <h2 class="flex items-center gap-2 font-display font-bold text-stone-800 dark:text-stone-100 text-lg">
+                <Merge class="w-5 h-5 text-violet-600" />
+                {{ mergeSelection.length }} Zutaten zusammenfassen
+              </h2>
+              <button @click="cancelMerge" class="hover:bg-stone-100 dark:hover:bg-stone-800 p-1.5 rounded-lg text-stone-400 transition-colors">
+                <X class="w-5 h-5" />
+              </button>
+            </div>
+            <div class="space-y-4 p-5">
+              <p class="text-stone-600 dark:text-stone-300 text-sm">Welchen Namen soll die zusammengefasste Zutat tragen?</p>
+              <!-- Dynamische Optionen aus allen ausgewählten Items (unique names) -->
+              <label
+                v-for="name in mergeUniqueNames"
+                :key="name"
+                :class="[
+                  'flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all',
+                  mergeName === name
+                    ? 'bg-violet-50 dark:bg-violet-900/20 border-violet-300 dark:border-violet-700'
+                    : 'bg-stone-50 dark:bg-stone-800 border-stone-200 dark:border-stone-700 hover:border-stone-300'
+                ]"
+              >
+                <input type="radio" :value="name" v-model="mergeName" class="accent-violet-600" />
+                <div>
+                  <p class="font-medium text-stone-800 dark:text-stone-200 text-sm">{{ name }}</p>
+                  <p class="text-stone-400 text-xs">
+                    {{ mergeSelection.filter(s => s.ingredient_name === name).map(s => `${s.amount || '–'} ${s.unit || ''}`).join(', ') }}
+                  </p>
+                </div>
+              </label>
+              <!-- Info -->
+              <div class="bg-stone-50 dark:bg-stone-800 px-3 py-2 rounded-lg text-stone-500 dark:text-stone-400 text-xs">
+                💡 Die Zusammenfassung wird gespeichert und künftig bei neuen Einkaufslisten automatisch angewandt.
+              </div>
+              <!-- Aktionen -->
+              <div class="flex gap-2">
+                <button @click="cancelMerge" class="flex-1 bg-stone-100 hover:bg-stone-200 dark:bg-stone-800 dark:hover:bg-stone-700 py-2.5 rounded-xl font-medium text-stone-700 dark:text-stone-300 text-sm transition-colors">
+                  Abbrechen
+                </button>
+                <button @click="confirmMerge" class="flex-1 bg-violet-600 hover:bg-violet-700 py-2.5 rounded-xl font-medium text-white text-sm transition-colors">
+                  Zusammenfassen
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
+
+    <!-- Alias-Verwaltung Modal -->
+    <Teleport to="body">
+      <Transition name="fade">
+        <div v-if="showAliasManager" class="z-50 fixed inset-0 flex justify-center items-end sm:items-center bg-black/50 p-4" @click.self="showAliasManager = false">
+          <div class="flex flex-col bg-white dark:bg-stone-900 shadow-2xl rounded-2xl w-full max-w-md max-h-[80vh] overflow-hidden">
+            <!-- Header -->
+            <div class="flex justify-between items-center px-5 py-4 border-stone-200 dark:border-stone-700 border-b">
+              <div>
+                <h2 class="font-display font-bold text-stone-800 dark:text-stone-100 text-lg">🔗 Zutaten-Zusammenfassungen</h2>
+                <p class="mt-0.5 text-stone-500 dark:text-stone-400 text-xs">{{ aliasStore.aliases.length }} gespeicherte Regeln</p>
+              </div>
+              <button @click="showAliasManager = false" class="hover:bg-stone-100 dark:hover:bg-stone-800 p-1.5 rounded-lg text-stone-400 transition-colors">
+                <X class="w-5 h-5" />
+              </button>
+            </div>
+            <!-- Alias-Liste -->
+            <div class="flex-1 p-4 overflow-y-auto">
+              <div v-if="aliasStore.aliases.length === 0" class="py-8 text-stone-400 dark:text-stone-500 text-sm text-center">
+                Keine Zusammenfassungen vorhanden.
+              </div>
+              <div v-else class="space-y-2">
+                <div
+                  v-for="alias in aliasStore.aliases"
+                  :key="alias.id"
+                  class="flex justify-between items-center bg-stone-50 dark:bg-stone-800 px-4 py-3 rounded-xl"
+                >
+                  <div class="flex items-center gap-2 min-w-0">
+                    <span class="text-stone-500 dark:text-stone-400 text-sm truncate">{{ alias.alias_name }}</span>
+                    <ArrowRight class="w-3.5 h-3.5 text-stone-300 dark:text-stone-600 shrink-0" />
+                    <span class="font-medium text-stone-800 dark:text-stone-200 text-sm truncate">{{ alias.canonical_name }}</span>
+                  </div>
+                  <button
+                    @click="deleteAlias(alias)"
+                    class="hover:bg-red-50 dark:hover:bg-red-900/30 ml-2 p-1.5 rounded-lg text-stone-300 hover:text-red-500 dark:hover:text-red-400 dark:text-stone-600 transition-all shrink-0"
+                    title="Zusammenfassung löschen"
+                  >
+                    <Trash2 class="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
   </div>
 </template>
 
@@ -910,12 +1090,14 @@
 import { computed, ref, onMounted, watch } from 'vue';
 import { useShoppingStore } from '@/stores/shopping.js';
 import { useMealPlanStore } from '@/stores/mealplan.js';
+import { useIngredientAliasStore } from '@/stores/ingredient-aliases.js';
 import { useNotification } from '@/composables/useNotification.js';
-import { ListPlus, Check, ShoppingBag, Plus, Package, BookOpen, BookX, ExternalLink, ShoppingCart, X, ArrowRightLeft, Search, Tag, Trash2, Star, Heart, Archive, Send, Link2, Unlink, ClipboardCopy, LogIn, LogOut, ChevronDown, ChevronLeft, ChevronRight, Loader2, Terminal, Download, Settings, RefreshCw } from 'lucide-vue-next';
+import { ListPlus, Check, ShoppingBag, Plus, Package, BookOpen, BookX, ExternalLink, ShoppingCart, X, ArrowRightLeft, Search, Tag, Trash2, Star, Heart, Archive, Send, Link2, Unlink, ClipboardCopy, LogIn, LogOut, ChevronDown, ChevronLeft, ChevronRight, Loader2, Terminal, Download, Settings, RefreshCw, Merge, ArrowRight } from 'lucide-vue-next';
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue';
 
 const shoppingStore = useShoppingStore();
 const mealPlanStore = useMealPlanStore();
+const aliasStore = useIngredientAliasStore();
 const { showSuccess, showError } = useNotification();
 const reweLoading = ref(false);
 
@@ -1007,6 +1189,15 @@ function toggleRecipeLinks() {
   showRecipeLinks.value = !showRecipeLinks.value;
   localStorage.setItem('shopping_showRecipeLinks', showRecipeLinks.value);
 }
+
+// Zusammenfassen-Modus (Merge) – Multi-Select
+const mergeMode = ref(false);
+const mergeSelection = ref([]);  // Ausgewählte Items
+const showMergeDialog = ref(false);
+const mergeName = ref('');       // Gewählter Name für das zusammengefasste Item
+
+// Alias-Verwaltung
+const showAliasManager = ref(false);
 
 const totalCount = computed(() => shoppingStore.activeList?.items?.length || 0);
 const checkedCount = computed(() => shoppingStore.activeList?.items?.filter(i => i.is_checked).length || 0);
@@ -1314,6 +1505,7 @@ async function selectProduct(product) {
 onMounted(() => {
   shoppingStore.fetchActiveList();
   shoppingStore.fetchBringStatus();
+  aliasStore.fetchAliases();
 });
 
 // Bring!-Listen laden, wenn Modal geöffnet wird
@@ -1424,6 +1616,78 @@ function installUserscript() {
     showSuccess('Userscript wird geöffnet – bestätige die Installation in Tampermonkey!');
   } catch {
     showError('Userscript-URL konnte nicht generiert werden.');
+  }
+}
+
+// ============================================
+// Zusammenfassen (Merge) Funktionen
+// ============================================
+
+function toggleMergeMode() {
+  mergeMode.value = !mergeMode.value;
+  mergeSelection.value = [];
+  showMergeDialog.value = false;
+}
+
+function handleMergeClick(item) {
+  if (!mergeMode.value) return;
+  const idx = mergeSelection.value.findIndex(s => s.id === item.id);
+  if (idx >= 0) {
+    // Item abwählen
+    mergeSelection.value.splice(idx, 1);
+  } else {
+    // Item hinzufügen
+    mergeSelection.value.push(item);
+  }
+}
+
+// Eindeutige Namen aus der Auswahl (für Radio-Buttons im Dialog)
+const mergeUniqueNames = computed(() => {
+  const names = mergeSelection.value.map(s => s.ingredient_name);
+  return [...new Set(names)];
+});
+
+function openMergeDialog() {
+  if (mergeSelection.value.length < 2) return;
+  mergeName.value = mergeSelection.value[0].ingredient_name;
+  showMergeDialog.value = true;
+}
+
+async function confirmMerge() {
+  if (mergeSelection.value.length < 2 || !mergeName.value.trim()) return;
+  try {
+    // Erstes Item wird Ziel, alle anderen sind Sources
+    const targetItem = mergeSelection.value[0];
+    const sourceItems = mergeSelection.value.slice(1);
+    await aliasStore.mergeItems(
+      sourceItems.map(s => s.id),
+      targetItem.id,
+      mergeName.value.trim()
+    );
+    await shoppingStore.fetchActiveList();
+    await aliasStore.fetchAliases();
+    showSuccess(`${mergeSelection.value.length} Zutaten zusammengefasst! "${mergeName.value}" wird künftig automatisch erkannt. ✅`);
+    showMergeDialog.value = false;
+    mergeSelection.value = [];
+  } catch {
+    showError('Zusammenfassen fehlgeschlagen.');
+  }
+}
+
+function cancelMerge() {
+  showMergeDialog.value = false;
+}
+
+// ============================================
+// Alias-Verwaltung
+// ============================================
+
+async function deleteAlias(alias) {
+  try {
+    await aliasStore.deleteAlias(alias.id);
+    showSuccess(`Zusammenfassung "${alias.alias_name}" gelöscht.`);
+  } catch {
+    showError('Löschen fehlgeschlagen.');
   }
 }
 </script>

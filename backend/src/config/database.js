@@ -348,6 +348,21 @@ export function initializeDatabase() {
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     );
+
+    -- ============================================
+    -- Zutaten-Aliase (Zusammenfassung ähnlicher Zutaten)
+    -- ============================================
+    CREATE TABLE IF NOT EXISTS ingredient_aliases (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      canonical_name TEXT NOT NULL COLLATE NOCASE,  -- Der Hauptname (z.B. "Gurke-Mini")
+      alias_name TEXT NOT NULL COLLATE NOCASE,       -- Die Variante (z.B. "Gurke Mini")
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      UNIQUE(user_id, alias_name)
+    );
+    CREATE INDEX IF NOT EXISTS idx_ingredient_aliases_user ON ingredient_aliases(user_id);
+    CREATE INDEX IF NOT EXISTS idx_ingredient_aliases_lookup ON ingredient_aliases(user_id, alias_name);
   `);
 
   // ============================================
