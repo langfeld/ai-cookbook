@@ -7,7 +7,7 @@
 
 import db from '../config/database.js';
 import { generateShoppingList, saveShoppingList, processPurchase } from '../services/shopping-list.js';
-import { buildReweProductUrl, calculatePackagesNeeded } from '../services/rewe-api.js';
+import { buildReweProductUrl, calculatePackagesNeeded, parsePackageSize } from '../services/rewe-api.js';
 
 export default async function shoppingRoutes(fastify) {
   fastify.addHook('onRequest', fastify.authenticate);
@@ -372,8 +372,31 @@ export default async function shoppingRoutes(fastify) {
     }
 
     const ingredientName = item.ingredient_name.trim();
-    const amount = item.amount || 1;
-    const unit = item.unit || 'Stk.';
+    let amount = item.amount || 1;
+    let unit = item.unit || 'Stk.';
+
+    // Wenn REWE-Produkt zugeordnet: tatsächlich gekaufte Menge berechnen
+    if (item.rewe_package_size) {
+      const parsed = parsePackageSize(item.rewe_package_size);
+      if (parsed.amount && parsed.unit) {
+        const reweQty = item.rewe_quantity || 1;
+        let totalPurchased = parsed.amount * reweQty;
+        let purchasedUnit = parsed.unit;
+
+        // Einheit an die Rezept-/Listen-Einheit angleichen
+        const origUnit = (item.unit || '').toLowerCase();
+        if (origUnit === 'kg' && purchasedUnit === 'g') {
+          totalPurchased /= 1000;
+          purchasedUnit = 'kg';
+        } else if (origUnit === 'l' && purchasedUnit === 'ml') {
+          totalPurchased /= 1000;
+          purchasedUnit = 'l';
+        }
+
+        amount = totalPurchased;
+        unit = purchasedUnit;
+      }
+    }
 
     // Prüfen ob Zutat schon im Vorratsschrank existiert → Menge addieren
     const existing = db.prepare(
@@ -444,7 +467,7 @@ export default async function shoppingRoutes(fastify) {
     if (!purchasedItems?.length) {
       const condition = includeAll ? '' : ' AND is_checked = 1';
       purchasedItems = db.prepare(
-        `SELECT ingredient_name, amount, unit FROM shopping_list_items WHERE shopping_list_id = ?${condition}`
+        `SELECT ingredient_name, amount, unit, rewe_package_size, rewe_quantity FROM shopping_list_items WHERE shopping_list_id = ?${condition}`
       ).all(listId);
     }
 

@@ -12,6 +12,7 @@
 
 import db from '../config/database.js';
 import { convertToBaseUnit, normalizeUnit, scaleIngredient, unitsCompatible } from '../utils/helpers.js';
+import { parsePackageSize } from './rewe-api.js';
 
 /**
  * Generiert eine Einkaufsliste aus einem Wochenplan
@@ -244,9 +245,14 @@ export function saveShoppingList(userId, mealPlanId, items, name = 'Einkaufslist
 
 /**
  * Verarbeitet den Einkauf: Gekaufte Items in den Vorratsschrank
+ *
+ * Wenn ein REWE-Produkt zugeordnet wurde, wird die tatsächlich gekaufte Menge
+ * (Packungsgröße × Anzahl Packungen) verwendet, nicht die Rezeptmenge.
+ * Beispiel: Rezept braucht 500g Kartoffeln → REWE 3kg-Sack gewählt → 3000g im Vorrat.
+ *
  * @param {number} userId - Benutzer-ID
  * @param {number} listId - Einkaufslisten-ID
- * @param {object[]} purchasedItems - Gekaufte Items (abgehakte Artikel)
+ * @param {object[]} purchasedItems - Gekaufte Items (mit optionalen REWE-Daten)
  */
 export function processPurchase(userId, listId, purchasedItems) {
   const upsertPantry = db.prepare(`
@@ -259,12 +265,38 @@ export function processPurchase(userId, listId, purchasedItems) {
 
   const transaction = db.transaction(() => {
     for (const item of purchasedItems) {
-      if (item.amount > 0) {
+      let amount = item.amount;
+      let unit = item.unit || 'Stk';
+
+      // Wenn REWE-Produkt zugeordnet: tatsächlich gekaufte Menge berechnen
+      if (item.rewe_package_size) {
+        const parsed = parsePackageSize(item.rewe_package_size);
+        if (parsed.amount && parsed.unit) {
+          const reweQty = item.rewe_quantity || 1;
+          let totalPurchased = parsed.amount * reweQty; // z.B. 3000g bei "3kg"-Sack
+          let purchasedUnit = parsed.unit;               // parsePackageSize liefert immer g / ml
+
+          // Einheit an die Rezept-/Listen-Einheit angleichen
+          const origUnit = (item.unit || '').toLowerCase();
+          if (origUnit === 'kg' && purchasedUnit === 'g') {
+            totalPurchased /= 1000;
+            purchasedUnit = 'kg';
+          } else if (origUnit === 'l' && purchasedUnit === 'ml') {
+            totalPurchased /= 1000;
+            purchasedUnit = 'l';
+          }
+
+          amount = totalPurchased;
+          unit = purchasedUnit;
+        }
+      }
+
+      if (amount > 0) {
         upsertPantry.run(
           userId,
           item.ingredient_name || item.name,
-          item.amount,
-          item.unit || 'Stk',
+          amount,
+          unit,
           item.category || 'Sonstiges'
         );
       }

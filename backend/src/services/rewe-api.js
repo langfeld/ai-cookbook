@@ -442,7 +442,7 @@ async function findBestProduct(ingredientName, neededAmount, unit) {
  * Dies ist unabhängig von amount/unit und hilft bei der Mengenberechnung,
  * wenn Stückzahlen benötigt aber Gewichtspackungen gefunden werden.
  */
-function parsePackageSize(sizeStr) {
+export function parsePackageSize(sizeStr) {
   if (!sizeStr) return { amount: null, unit: null, raw: null, pieceCount: null };
 
   // Verschiedene Formate: "500g", "1kg", "1,5l", "250 ml", "6 Stück", "4x250ml"
