@@ -78,6 +78,7 @@ export default async function adminRoutes(fastify) {
     const cookingCount = db.prepare('SELECT COUNT(*) as count FROM cooking_history').get().count;
     const rewePrefsCount = db.prepare('SELECT COUNT(*) as count FROM rewe_product_preferences').get().count;
     const aliasCount = db.prepare('SELECT COUNT(*) as count FROM ingredient_aliases').get().count;
+    const recipeBlockCount = db.prepare('SELECT COUNT(*) as count FROM recipe_blocks').get().count;
 
     // Top 10 beliebteste Rezepte
     const popularRecipes = db.prepare(`
@@ -137,6 +138,7 @@ export default async function adminRoutes(fastify) {
       total_cook_count: cookingCount,
       rewe_preferences: rewePrefsCount,
       ingredient_aliases: aliasCount,
+      recipe_blocks: recipeBlockCount,
       storage_size: storageSize,
       db_size: dbSize?.size || 0,
       popular_recipes: popularRecipes,
@@ -1436,6 +1438,470 @@ export default async function adminRoutes(fastify) {
       skipped,
       target_user: targetUser.username,
       errors: errorsArr.length ? errorsArr : undefined,
+    };
+  });
+
+  // ============================================
+  // Wochenplan Export/Import (Admin)
+  // ============================================
+
+  /**
+   * GET /api/admin/export/meal-plans
+   * Alle Wochenpläne aller Benutzer als JSON exportieren
+   */
+  fastify.get('/export/meal-plans', {
+    schema: {
+      description: 'Alle Wochenpläne exportieren (Admin)',
+      tags: ['Admin'],
+      security: [{ bearerAuth: [] }],
+      querystring: {
+        type: 'object',
+        properties: { user_id: { type: 'integer' } },
+      },
+    },
+  }, async (request, reply) => {
+    const filterUserId = request.query.user_id;
+
+    let plans;
+    if (filterUserId) {
+      plans = db.prepare(`
+        SELECT mp.*, u.username as owner
+        FROM meal_plans mp JOIN users u ON mp.user_id = u.id
+        WHERE mp.user_id = ?
+        ORDER BY u.username, mp.week_start DESC
+      `).all(filterUserId);
+    } else {
+      plans = db.prepare(`
+        SELECT mp.*, u.username as owner
+        FROM meal_plans mp JOIN users u ON mp.user_id = u.id
+        ORDER BY u.username, mp.week_start DESC
+      `).all();
+    }
+
+    const planIds = plans.map(p => p.id);
+    let entries = [];
+    if (planIds.length) {
+      entries = db.prepare(`
+        SELECT mpe.*, r.title as recipe_title
+        FROM meal_plan_entries mpe
+        LEFT JOIN recipes r ON mpe.recipe_id = r.id
+        WHERE mpe.meal_plan_id IN (${planIds.map(() => '?').join(',')})
+        ORDER BY mpe.meal_plan_id, mpe.day_of_week, mpe.meal_type
+      `).all(...planIds);
+    }
+
+    const plansWithEntries = plans.map(plan => ({
+      week_start: plan.week_start,
+      created_at: plan.created_at,
+      owner: plan.owner,
+      entries: entries
+        .filter(e => e.meal_plan_id === plan.id)
+        .map(e => ({
+          recipe_title: e.recipe_title,
+          recipe_id: e.recipe_id,
+          day_of_week: e.day_of_week,
+          meal_type: e.meal_type,
+          servings: e.servings,
+          is_cooked: e.is_cooked,
+        })),
+    }));
+
+    const exportData = {
+      version: '1.0',
+      exported_at: new Date().toISOString(),
+      source: 'AI Cookbook (Admin-Export)',
+      type: 'meal_plans',
+      plan_count: plansWithEntries.length,
+      plans: plansWithEntries,
+    };
+
+    const suffix = filterUserId ? `-user-${filterUserId}` : '-alle';
+    reply.header('Content-Type', 'application/json');
+    reply.header('Content-Disposition', `attachment; filename="admin-wochenplaene-export${suffix}-${new Date().toISOString().split('T')[0]}.json"`);
+    return exportData;
+  });
+
+  /**
+   * POST /api/admin/import/meal-plans
+   * Wochenpläne importieren und einem Benutzer zuweisen (Admin)
+   */
+  fastify.post('/import/meal-plans', {
+    schema: {
+      description: 'Wochenpläne importieren (Admin)',
+      tags: ['Admin'],
+      security: [{ bearerAuth: [] }],
+    },
+  }, async (request, reply) => {
+    let importData;
+    let targetUserId;
+
+    const contentType = request.headers['content-type'] || '';
+    if (contentType.includes('multipart')) {
+      const parts = request.parts();
+      for await (const part of parts) {
+        if (part.type === 'file') {
+          const buffer = await part.toBuffer();
+          try { importData = JSON.parse(buffer.toString('utf-8')); } catch {
+            return reply.status(400).send({ error: 'Ungültiges JSON-Format.' });
+          }
+        } else if (part.fieldname === 'user_id') {
+          targetUserId = parseInt(part.value, 10);
+        }
+      }
+    } else {
+      importData = request.body?.data || request.body;
+      targetUserId = request.body?.user_id;
+    }
+
+    if (!importData?.plans || !Array.isArray(importData.plans)) {
+      return reply.status(400).send({ error: 'Ungültiges Export-Format. Erwartet: { plans: [...] }' });
+    }
+
+    const userId = targetUserId || request.user.id;
+    const targetUser = db.prepare('SELECT id, username FROM users WHERE id = ?').get(userId);
+    if (!targetUser) return reply.status(404).send({ error: 'Ziel-Benutzer nicht gefunden.' });
+
+    let imported = 0, skipped = 0, entriesImported = 0;
+
+    const insertPlan = db.prepare('INSERT INTO meal_plans (user_id, week_start) VALUES (?, ?)');
+    const insertEntry = db.prepare(
+      'INSERT INTO meal_plan_entries (meal_plan_id, recipe_id, day_of_week, meal_type, servings, is_cooked) VALUES (?, ?, ?, ?, ?, ?)'
+    );
+    const findRecipe = db.prepare('SELECT id FROM recipes WHERE user_id = ? AND LOWER(title) = LOWER(?)');
+    const existingPlan = db.prepare('SELECT id FROM meal_plans WHERE user_id = ? AND week_start = ?');
+
+    const transaction = db.transaction(() => {
+      for (const plan of importData.plans) {
+        if (!plan.week_start) { skipped++; continue; }
+        if (existingPlan.get(userId, plan.week_start)) { skipped++; continue; }
+
+        const { lastInsertRowid } = insertPlan.run(userId, plan.week_start);
+        const planId = Number(lastInsertRowid);
+        imported++;
+
+        if (plan.entries?.length) {
+          for (const entry of plan.entries) {
+            let recipeId = entry.recipe_id;
+            if (entry.recipe_title && !recipeId) {
+              const recipe = findRecipe.get(userId, entry.recipe_title);
+              if (recipe) recipeId = recipe.id;
+            }
+            if (!recipeId) continue;
+            insertEntry.run(planId, recipeId, entry.day_of_week ?? 0, entry.meal_type || 'mittag', entry.servings || 2, entry.is_cooked ? 1 : 0);
+            entriesImported++;
+          }
+        }
+      }
+    });
+    transaction();
+
+    logAdminAction(request.user.id, 'Wochenpläne importiert', `${imported} Pläne, ${entriesImported} Einträge für ${targetUser.username}`);
+
+    return {
+      message: `${imported} Pläne importiert, ${entriesImported} Einträge, ${skipped} übersprungen für "${targetUser.username}".`,
+      imported,
+      entries_imported: entriesImported,
+      skipped,
+      target_user: targetUser.username,
+    };
+  });
+
+  // ============================================
+  // Einkaufslisten Export/Import (Admin)
+  // ============================================
+
+  /**
+   * GET /api/admin/export/shopping-lists
+   * Alle Einkaufslisten aller Benutzer als JSON exportieren
+   */
+  fastify.get('/export/shopping-lists', {
+    schema: {
+      description: 'Alle Einkaufslisten exportieren (Admin)',
+      tags: ['Admin'],
+      security: [{ bearerAuth: [] }],
+      querystring: {
+        type: 'object',
+        properties: { user_id: { type: 'integer' } },
+      },
+    },
+  }, async (request, reply) => {
+    const filterUserId = request.query.user_id;
+
+    let lists;
+    if (filterUserId) {
+      lists = db.prepare(`
+        SELECT sl.*, u.username as owner
+        FROM shopping_lists sl JOIN users u ON sl.user_id = u.id
+        WHERE sl.user_id = ?
+        ORDER BY u.username, sl.created_at DESC
+      `).all(filterUserId);
+    } else {
+      lists = db.prepare(`
+        SELECT sl.*, u.username as owner
+        FROM shopping_lists sl JOIN users u ON sl.user_id = u.id
+        ORDER BY u.username, sl.created_at DESC
+      `).all();
+    }
+
+    const listIds = lists.map(l => l.id);
+    let items = [];
+    if (listIds.length) {
+      items = db.prepare(`
+        SELECT sli.*, r.title as recipe_title
+        FROM shopping_list_items sli
+        LEFT JOIN recipes r ON sli.recipe_id = r.id
+        WHERE sli.shopping_list_id IN (${listIds.map(() => '?').join(',')})
+        ORDER BY sli.shopping_list_id, sli.ingredient_name
+      `).all(...listIds);
+    }
+
+    const listsWithItems = lists.map(list => ({
+      name: list.name,
+      is_active: list.is_active,
+      created_at: list.created_at,
+      owner: list.owner,
+      items: items
+        .filter(i => i.shopping_list_id === list.id)
+        .map(i => ({
+          ingredient_name: i.ingredient_name,
+          amount: i.amount,
+          unit: i.unit,
+          is_checked: i.is_checked,
+          recipe_title: i.recipe_title,
+          rewe_product_name: i.rewe_product_name,
+          rewe_price: i.rewe_price,
+        })),
+    }));
+
+    const exportData = {
+      version: '1.0',
+      exported_at: new Date().toISOString(),
+      source: 'AI Cookbook (Admin-Export)',
+      type: 'shopping_lists',
+      list_count: listsWithItems.length,
+      lists: listsWithItems,
+    };
+
+    const suffix = filterUserId ? `-user-${filterUserId}` : '-alle';
+    reply.header('Content-Type', 'application/json');
+    reply.header('Content-Disposition', `attachment; filename="admin-einkaufslisten-export${suffix}-${new Date().toISOString().split('T')[0]}.json"`);
+    return exportData;
+  });
+
+  /**
+   * POST /api/admin/import/shopping-lists
+   * Einkaufslisten importieren und einem Benutzer zuweisen (Admin)
+   */
+  fastify.post('/import/shopping-lists', {
+    schema: {
+      description: 'Einkaufslisten importieren (Admin)',
+      tags: ['Admin'],
+      security: [{ bearerAuth: [] }],
+    },
+  }, async (request, reply) => {
+    let importData;
+    let targetUserId;
+
+    const contentType = request.headers['content-type'] || '';
+    if (contentType.includes('multipart')) {
+      const parts = request.parts();
+      for await (const part of parts) {
+        if (part.type === 'file') {
+          const buffer = await part.toBuffer();
+          try { importData = JSON.parse(buffer.toString('utf-8')); } catch {
+            return reply.status(400).send({ error: 'Ungültiges JSON-Format.' });
+          }
+        } else if (part.fieldname === 'user_id') {
+          targetUserId = parseInt(part.value, 10);
+        }
+      }
+    } else {
+      importData = request.body?.data || request.body;
+      targetUserId = request.body?.user_id;
+    }
+
+    if (!importData?.lists || !Array.isArray(importData.lists)) {
+      return reply.status(400).send({ error: 'Ungültiges Export-Format. Erwartet: { lists: [...] }' });
+    }
+
+    const userId = targetUserId || request.user.id;
+    const targetUser = db.prepare('SELECT id, username FROM users WHERE id = ?').get(userId);
+    if (!targetUser) return reply.status(404).send({ error: 'Ziel-Benutzer nicht gefunden.' });
+
+    let imported = 0, itemsImported = 0;
+
+    const insertList = db.prepare('INSERT INTO shopping_lists (user_id, name, is_active) VALUES (?, ?, ?)');
+    const insertItem = db.prepare(
+      'INSERT INTO shopping_list_items (shopping_list_id, ingredient_name, amount, unit, is_checked) VALUES (?, ?, ?, ?, ?)'
+    );
+
+    const transaction = db.transaction(() => {
+      for (const list of importData.lists) {
+        const name = list.name || `Admin-Import ${new Date().toLocaleDateString('de-DE')}`;
+        const { lastInsertRowid } = insertList.run(userId, name, 0);
+        const listId = Number(lastInsertRowid);
+        imported++;
+
+        if (list.items?.length) {
+          for (const item of list.items) {
+            if (!item.ingredient_name) continue;
+            insertItem.run(listId, item.ingredient_name, item.amount || null, item.unit || null, item.is_checked ? 1 : 0);
+            itemsImported++;
+          }
+        }
+      }
+    });
+    transaction();
+
+    logAdminAction(request.user.id, 'Einkaufslisten importiert', `${imported} Listen, ${itemsImported} Artikel für ${targetUser.username}`);
+
+    return {
+      message: `${imported} Listen importiert, ${itemsImported} Artikel für "${targetUser.username}".`,
+      imported,
+      items_imported: itemsImported,
+      target_user: targetUser.username,
+    };
+  });
+
+  // ============================================
+  // Rezept-Sperren Export/Import (Admin)
+  // ============================================
+
+  /**
+   * GET /api/admin/export/recipe-blocks
+   * Alle Rezept-Sperren aller Benutzer als JSON exportieren
+   */
+  fastify.get('/export/recipe-blocks', {
+    schema: {
+      description: 'Alle Rezept-Sperren exportieren (Admin)',
+      tags: ['Admin'],
+      security: [{ bearerAuth: [] }],
+      querystring: {
+        type: 'object',
+        properties: { user_id: { type: 'integer' } },
+      },
+    },
+  }, async (request, reply) => {
+    const filterUserId = request.query.user_id;
+
+    let blocks;
+    if (filterUserId) {
+      blocks = db.prepare(`
+        SELECT rb.*, r.title as recipe_title, u.username as owner
+        FROM recipe_blocks rb
+        JOIN recipes r ON rb.recipe_id = r.id
+        JOIN users u ON rb.user_id = u.id
+        WHERE rb.user_id = ?
+        ORDER BY u.username, rb.blocked_until ASC
+      `).all(filterUserId);
+    } else {
+      blocks = db.prepare(`
+        SELECT rb.*, r.title as recipe_title, u.username as owner
+        FROM recipe_blocks rb
+        JOIN recipes r ON rb.recipe_id = r.id
+        JOIN users u ON rb.user_id = u.id
+        ORDER BY u.username, rb.blocked_until ASC
+      `).all();
+    }
+
+    const exportData = {
+      version: '1.0',
+      exported_at: new Date().toISOString(),
+      source: 'AI Cookbook (Admin-Export)',
+      type: 'recipe_blocks',
+      block_count: blocks.length,
+      blocks: blocks.map(b => ({
+        recipe_title: b.recipe_title,
+        recipe_id: b.recipe_id,
+        blocked_until: b.blocked_until,
+        reason: b.reason,
+        created_at: b.created_at,
+        owner: b.owner,
+      })),
+    };
+
+    const suffix = filterUserId ? `-user-${filterUserId}` : '-alle';
+    reply.header('Content-Type', 'application/json');
+    reply.header('Content-Disposition', `attachment; filename="admin-rezept-sperren-export${suffix}-${new Date().toISOString().split('T')[0]}.json"`);
+    return exportData;
+  });
+
+  /**
+   * POST /api/admin/import/recipe-blocks
+   * Rezept-Sperren importieren und einem Benutzer zuweisen (Admin)
+   */
+  fastify.post('/import/recipe-blocks', {
+    schema: {
+      description: 'Rezept-Sperren importieren (Admin)',
+      tags: ['Admin'],
+      security: [{ bearerAuth: [] }],
+    },
+  }, async (request, reply) => {
+    let importData;
+    let targetUserId;
+
+    const contentType = request.headers['content-type'] || '';
+    if (contentType.includes('multipart')) {
+      const parts = request.parts();
+      for await (const part of parts) {
+        if (part.type === 'file') {
+          const buffer = await part.toBuffer();
+          try { importData = JSON.parse(buffer.toString('utf-8')); } catch {
+            return reply.status(400).send({ error: 'Ungültiges JSON-Format.' });
+          }
+        } else if (part.fieldname === 'user_id') {
+          targetUserId = parseInt(part.value, 10);
+        }
+      }
+    } else {
+      importData = request.body?.data || request.body;
+      targetUserId = request.body?.user_id;
+    }
+
+    if (!importData?.blocks || !Array.isArray(importData.blocks)) {
+      return reply.status(400).send({ error: 'Ungültiges Export-Format. Erwartet: { blocks: [...] }' });
+    }
+
+    const userId = targetUserId || request.user.id;
+    const targetUser = db.prepare('SELECT id, username FROM users WHERE id = ?').get(userId);
+    if (!targetUser) return reply.status(404).send({ error: 'Ziel-Benutzer nicht gefunden.' });
+
+    let imported = 0, updated = 0, skipped = 0;
+
+    const findRecipe = db.prepare('SELECT id FROM recipes WHERE user_id = ? AND LOWER(title) = LOWER(?)');
+    const findExisting = db.prepare('SELECT id FROM recipe_blocks WHERE user_id = ? AND recipe_id = ?');
+    const insertBlock = db.prepare('INSERT INTO recipe_blocks (user_id, recipe_id, blocked_until, reason) VALUES (?, ?, ?, ?)');
+    const updateBlock = db.prepare('UPDATE recipe_blocks SET blocked_until = ?, reason = ?, created_at = CURRENT_TIMESTAMP WHERE id = ?');
+
+    const transaction = db.transaction(() => {
+      for (const block of importData.blocks) {
+        let recipeId = block.recipe_id;
+        if (block.recipe_title) {
+          const recipe = findRecipe.get(userId, block.recipe_title);
+          if (recipe) recipeId = recipe.id;
+        }
+        if (!recipeId || !block.blocked_until) { skipped++; continue; }
+
+        const existing = findExisting.get(userId, recipeId);
+        if (existing) {
+          updateBlock.run(block.blocked_until, block.reason || null, existing.id);
+          updated++;
+        } else {
+          insertBlock.run(userId, recipeId, block.blocked_until, block.reason || null);
+          imported++;
+        }
+      }
+    });
+    transaction();
+
+    logAdminAction(request.user.id, 'Rezept-Sperren importiert', `${imported} neu, ${updated} aktualisiert für ${targetUser.username}`);
+
+    return {
+      message: `${imported} neu importiert, ${updated} aktualisiert, ${skipped} übersprungen für "${targetUser.username}".`,
+      imported,
+      updated,
+      skipped,
+      target_user: targetUser.username,
     };
   });
 

@@ -121,6 +121,7 @@
 
     <PantryImportExportModal
       v-if="activeModal === 'pantry'"
+      :is-admin="true"
       :users="adminUsers"
       @close="activeModal = null"
       @imported="handleImported"
@@ -145,6 +146,30 @@
       @close="activeModal = null"
       @imported="handleImported"
     />
+
+    <MealPlanImportExportModal
+      v-if="activeModal === 'meal-plans'"
+      :is-admin="true"
+      :users="adminUsers"
+      @close="activeModal = null"
+      @imported="handleImported"
+    />
+
+    <ShoppingListImportExportModal
+      v-if="activeModal === 'shopping-lists'"
+      :is-admin="true"
+      :users="adminUsers"
+      @close="activeModal = null"
+      @imported="handleImported"
+    />
+
+    <RecipeBlocksImportExportModal
+      v-if="activeModal === 'recipe-blocks'"
+      :is-admin="true"
+      :users="adminUsers"
+      @close="activeModal = null"
+      @imported="handleImported"
+    />
   </div>
 </template>
 
@@ -159,6 +184,9 @@ import PantryImportExportModal from '@/components/pantry/PantryImportExportModal
 import RewePreferencesImportExportModal from '@/components/rewe/RewePreferencesImportExportModal.vue';
 import UsersImportExportModal from '@/components/admin/UsersImportExportModal.vue';
 import IngredientAliasesImportExportModal from '@/components/admin/IngredientAliasesImportExportModal.vue';
+import MealPlanImportExportModal from '@/components/mealplan/MealPlanImportExportModal.vue';
+import ShoppingListImportExportModal from '@/components/shopping/ShoppingListImportExportModal.vue';
+import RecipeBlocksImportExportModal from '@/components/recipes/RecipeBlocksImportExportModal.vue';
 
 import {
   Users,
@@ -171,6 +199,8 @@ import {
   Info,
   Loader2,
   DatabaseBackup,
+  Calendar,
+  Ban,
 } from 'lucide-vue-next';
 
 const api = useApi();
@@ -189,6 +219,9 @@ const counts = ref({
   pantry: 0,
   rewePrefs: 0,
   aliases: 0,
+  mealPlans: 0,
+  shoppingLists: 0,
+  recipeBlocks: 0,
 });
 
 const dataCategories = computed(() => [
@@ -247,6 +280,39 @@ const dataCategories = computed(() => [
     count: counts.value.aliases,
     action: () => { activeModal.value = 'aliases'; },
   },
+  {
+    key: 'meal-plans',
+    emoji: '📅',
+    label: 'Wochenpläne',
+    description: 'Alle Wochenpläne aller Benutzer inkl. Einträgen exportieren/importieren.',
+    icon: Calendar,
+    bgClass: 'bg-indigo-50 dark:bg-indigo-900/30',
+    iconClass: 'text-indigo-600 dark:text-indigo-400',
+    count: counts.value.mealPlans,
+    action: () => { activeModal.value = 'meal-plans'; },
+  },
+  {
+    key: 'shopping-lists',
+    emoji: '🛒',
+    label: 'Einkaufslisten',
+    description: 'Alle Einkaufslisten aller Benutzer inkl. Artikeln exportieren/importieren.',
+    icon: ShoppingCart,
+    bgClass: 'bg-cyan-50 dark:bg-cyan-900/30',
+    iconClass: 'text-cyan-600 dark:text-cyan-400',
+    count: counts.value.shoppingLists,
+    action: () => { activeModal.value = 'shopping-lists'; },
+  },
+  {
+    key: 'recipe-blocks',
+    emoji: '🚫',
+    label: 'Rezept-Sperren',
+    description: 'Alle Rezept-Sperren aller Benutzer exportieren/importieren.',
+    icon: Ban,
+    bgClass: 'bg-red-50 dark:bg-red-900/30',
+    iconClass: 'text-red-600 dark:text-red-400',
+    count: counts.value.recipeBlocks,
+    action: () => { activeModal.value = 'recipe-blocks'; },
+  },
 ]);
 
 // ============================================
@@ -301,6 +367,9 @@ async function fetchCounts() {
       pantry: stats.total_pantry_items || 0,
       rewePrefs: stats.rewe_preferences || 0,
       aliases: stats.ingredient_aliases || 0,
+      mealPlans: stats.total_meal_plans || 0,
+      shoppingLists: stats.total_shopping_lists || 0,
+      recipeBlocks: stats.recipe_blocks || 0,
     };
   } catch {
     // Ignorieren

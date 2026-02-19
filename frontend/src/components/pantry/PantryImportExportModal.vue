@@ -16,7 +16,7 @@
         <!-- Header -->
         <div class="flex justify-between items-center p-5 border-stone-200 dark:border-stone-700 border-b">
           <h2 class="font-display font-bold text-stone-800 dark:text-stone-100 text-xl">
-            🗄️ Vorratsschrank Export/Import
+            {{ isAdmin ? '🗄️ Admin Vorratsschrank' : '🗄️ Vorratsschrank Export/Import' }}
           </h2>
           <button
             @click="$emit('close')"
@@ -60,11 +60,11 @@
           <!-- EXPORT TAB -->
           <div v-if="activeTab === 'export'" class="space-y-4">
             <p class="text-stone-600 dark:text-stone-400 text-sm">
-              Exportiere alle Vorräte als JSON-Datei (Backup).
+              {{ isAdmin ? 'Exportiere alle Vorräte als JSON-Datei (Backup).' : 'Exportiere deine Vorräte als JSON-Datei.' }}
             </p>
 
-            <!-- User-Filter -->
-            <div v-if="users.length" class="space-y-2">
+            <!-- User-Filter (nur Admin) -->
+            <div v-if="isAdmin && users.length" class="space-y-2">
               <label class="font-medium text-stone-700 dark:text-stone-300 text-sm">Benutzer filtern</label>
               <select
                 v-model="exportUserId"
@@ -95,8 +95,8 @@
               Importiere Vorräte aus einer zuvor exportierten JSON-Datei.
             </p>
 
-            <!-- Ziel-User -->
-            <div v-if="users.length" class="space-y-2">
+            <!-- Ziel-User (nur Admin) -->
+            <div v-if="isAdmin && users.length" class="space-y-2">
               <label class="font-medium text-stone-700 dark:text-stone-300 text-sm">Importieren für Benutzer</label>
               <select
                 v-model="importUserId"
@@ -208,6 +208,7 @@ import { useNotification } from '@/composables/useNotification.js';
 import { useApi } from '@/composables/useApi.js';
 
 const props = defineProps({
+  isAdmin: { type: Boolean, default: false },
   users: { type: Array, default: () => [] },
 });
 
@@ -234,15 +235,16 @@ const importUserId = ref(props.users[0]?.id || null);
 async function handleExport() {
   exporting.value = true;
   try {
+    const base = props.isAdmin ? '/api/admin/export/pantry' : '/api/pantry/export';
     const params = new URLSearchParams();
-    if (exportUserId.value) params.set('user_id', exportUserId.value);
+    if (props.isAdmin && exportUserId.value) params.set('user_id', exportUserId.value);
 
-    const response = await fetch(`/api/admin/export/pantry?${params}`, {
+    const response = await fetch(`${base}?${params}`, {
       headers: { Authorization: `Bearer ${authStore.token}` },
     });
     if (!response.ok) throw new Error('Export fehlgeschlagen');
     const blob = await response.blob();
-    downloadBlob(blob, `admin-vorrat-export-${new Date().toISOString().split('T')[0]}.json`);
+    downloadBlob(blob, `vorrat-export-${new Date().toISOString().split('T')[0]}.json`);
     showSuccess('Vorräte erfolgreich exportiert!');
   } catch (err) {
     showError(err.message || 'Export fehlgeschlagen');
@@ -310,12 +312,13 @@ async function handleImport() {
   importResult.value = null;
 
   try {
+    const base = props.isAdmin ? '/admin/import/pantry' : '/pantry/import';
     const formData = new FormData();
     formData.append('file', selectedFile.value);
-    if (importUserId.value) {
+    if (props.isAdmin && importUserId.value) {
       formData.append('user_id', importUserId.value);
     }
-    const data = await api.upload('/admin/import/pantry', formData);
+    const data = await api.upload(base, formData);
     importResult.value = data;
     showSuccess(data.message);
     emit('imported', data);

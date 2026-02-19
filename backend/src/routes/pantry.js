@@ -231,6 +231,45 @@ export default async function pantryRoutes(fastify) {
   });
 
   /**
+   * GET /api/pantry/export
+   * Eigene Vorräte als JSON exportieren
+   */
+  fastify.get('/export', {
+    schema: {
+      description: 'Eigene Vorräte als JSON exportieren',
+      tags: ['Vorratsschrank'],
+      security: [{ bearerAuth: [] }],
+    },
+  }, async (request, reply) => {
+    const userId = request.user.id;
+
+    const items = db.prepare(`
+      SELECT * FROM pantry WHERE user_id = ?
+      ORDER BY category, ingredient_name
+    `).all(userId);
+
+    const exportData = {
+      version: '1.0',
+      exported_at: new Date().toISOString(),
+      source: 'AI Cookbook',
+      type: 'pantry',
+      item_count: items.length,
+      items: items.map(i => ({
+        ingredient_name: i.ingredient_name,
+        amount: i.amount,
+        unit: i.unit,
+        category: i.category,
+        expiry_date: i.expiry_date,
+        notes: i.notes,
+      })),
+    };
+
+    reply.header('Content-Type', 'application/json');
+    reply.header('Content-Disposition', `attachment; filename="vorrat-export-${new Date().toISOString().split('T')[0]}.json"`);
+    return exportData;
+  });
+
+  /**
    * POST /api/pantry/import
    * Vorräte aus JSON oder CSV importieren
    */

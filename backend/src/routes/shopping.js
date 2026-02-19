@@ -574,4 +574,149 @@ export default async function shoppingRoutes(fastify) {
       pantryItemsAdded: purchasedItems.length,
     };
   });
+
+  // ─────────────────────────────────────────────
+  // GET /export – Einkaufslisten exportieren
+  // ─────────────────────────────────────────────
+  fastify.get('/export', {
+    schema: {
+      description: 'Eigene Einkaufslisten als JSON exportieren',
+      tags: ['Einkaufsliste'],
+      security: [{ bearerAuth: [] }],
+    },
+  }, async (request, reply) => {
+    const userId = request.user.id;
+
+    const lists = db.prepare(`
+      SELECT sl.*, u.username as owner
+      FROM shopping_lists sl
+      JOIN users u ON sl.user_id = u.id
+      WHERE sl.user_id = ?
+      ORDER BY sl.created_at DESC
+    `).all(userId);
+
+    const items = db.prepare(`
+      SELECT sli.*, r.title as recipe_title
+      FROM shopping_list_items sli
+      JOIN shopping_lists sl ON sli.shopping_list_id = sl.id
+      LEFT JOIN recipes r ON sli.recipe_id = r.id
+      WHERE sl.user_id = ?
+      ORDER BY sli.shopping_list_id, sli.ingredient_name
+    `).all(userId);
+
+    const listsWithItems = lists.map(list => ({
+      name: list.name,
+      is_active: list.is_active,
+      created_at: list.created_at,
+      owner: list.owner,
+      items: items
+        .filter(i => i.shopping_list_id === list.id)
+        .map(i => ({
+          ingredient_name: i.ingredient_name,
+          amount: i.amount,
+          unit: i.unit,
+          is_checked: i.is_checked,
+          recipe_title: i.recipe_title,
+          rewe_product_name: i.rewe_product_name,
+          rewe_price: i.rewe_price,
+        })),
+    }));
+
+    const exportData = {
+      version: '1.0',
+      exported_at: new Date().toISOString(),
+      source: 'AI Cookbook',
+      type: 'shopping_lists',
+      list_count: listsWithItems.length,
+      lists: listsWithItems,
+    };
+
+    reply.header('Content-Type', 'application/json');
+    reply.header('Content-Disposition', `attachment; filename="einkaufslisten-export-${new Date().toISOString().split('T')[0]}.json"`);
+    return exportData;
+  });
+
+  // ─────────────────────────────────────────────
+  // POST /import – Einkaufslisten importieren
+  // ─────────────────────────────────────────────
+  fastify.post('/import', {
+    schema: {
+      description: 'Einkaufslisten aus JSON importieren',
+      tags: ['Einkaufsliste'],
+      security: [{ bearerAuth: [] }],
+    },
+  }, async (request, reply) => {
+    const userId = request.user.id;
+    let importData;
+
+    const contentType = request.headers['content-type'] || '';
+    if (contentType.includes('multipart')) {
+      const parts = request.parts();
+      for await (const part of parts) {
+        if (part.type === 'file') {
+          const buffer = await part.toBuffer();
+          try {
+            importData = JSON.parse(buffer.toString('utf-8'));
+          } catch {
+            return reply.status(400).send({ error: 'Ungültiges JSON-Format.' });
+          }
+        }
+      }
+    } else {
+      importData = request.body;
+    }
+
+    if (!importData?.lists || !Array.isArray(importData.lists)) {
+      return reply.status(400).send({ error: 'Ungültiges Export-Format. Erwartet: { lists: [...] }' });
+    }
+
+    if (importData.lists.length === 0) {
+      return reply.status(400).send({ error: 'Keine Einkaufslisten zum Importieren gefunden.' });
+    }
+
+    if (importData.lists.length > 500) {
+      return reply.status(400).send({ error: 'Maximal 500 Listen pro Import erlaubt.' });
+    }
+
+    let imported = 0;
+    let itemsImported = 0;
+
+    const insertList = db.prepare(
+      'INSERT INTO shopping_lists (user_id, name, is_active) VALUES (?, ?, ?)'
+    );
+    const insertItem = db.prepare(
+      'INSERT INTO shopping_list_items (shopping_list_id, ingredient_name, amount, unit, is_checked) VALUES (?, ?, ?, ?, ?)'
+    );
+
+    const transaction = db.transaction(() => {
+      for (const list of importData.lists) {
+        const name = list.name || `Import ${new Date().toLocaleDateString('de-DE')}`;
+        const { lastInsertRowid } = insertList.run(userId, name, 0); // Importierte Listen immer inaktiv
+        const listId = Number(lastInsertRowid);
+        imported++;
+
+        if (list.items?.length) {
+          for (const item of list.items) {
+            if (!item.ingredient_name) continue;
+            insertItem.run(
+              listId,
+              item.ingredient_name,
+              item.amount || null,
+              item.unit || null,
+              item.is_checked ? 1 : 0
+            );
+            itemsImported++;
+          }
+        }
+      }
+    });
+
+    transaction();
+
+    return {
+      message: `${imported} Listen importiert, ${itemsImported} Artikel.`,
+      imported,
+      items_imported: itemsImported,
+    };
+  });
 }

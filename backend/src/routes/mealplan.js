@@ -472,4 +472,169 @@ export default async function mealplanRoutes(fastify) {
     if (result.changes === 0) return reply.status(404).send({ error: 'Plan nicht gefunden' });
     return { message: 'Wochenplan gelöscht' };
   });
+
+  // ─────────────────────────────────────────────
+  // GET /export – Wochenpläne exportieren
+  // ─────────────────────────────────────────────
+  fastify.get('/export', {
+    schema: {
+      description: 'Eigene Wochenpläne als JSON exportieren',
+      tags: ['Wochenplan'],
+      security: [{ bearerAuth: [] }],
+    },
+  }, async (request, reply) => {
+    const userId = request.user.id;
+
+    const plans = db.prepare(`
+      SELECT mp.*, u.username as owner
+      FROM meal_plans mp
+      JOIN users u ON mp.user_id = u.id
+      WHERE mp.user_id = ?
+      ORDER BY mp.week_start DESC
+    `).all(userId);
+
+    const entries = db.prepare(`
+      SELECT mpe.*, r.title as recipe_title
+      FROM meal_plan_entries mpe
+      JOIN meal_plans mp ON mpe.meal_plan_id = mp.id
+      LEFT JOIN recipes r ON mpe.recipe_id = r.id
+      WHERE mp.user_id = ?
+      ORDER BY mpe.meal_plan_id, mpe.day_of_week, mpe.meal_type
+    `).all(userId);
+
+    // Entries den Plans zuordnen
+    const plansWithEntries = plans.map(plan => ({
+      week_start: plan.week_start,
+      created_at: plan.created_at,
+      owner: plan.owner,
+      entries: entries
+        .filter(e => e.meal_plan_id === plan.id)
+        .map(e => ({
+          recipe_title: e.recipe_title,
+          recipe_id: e.recipe_id,
+          day_of_week: e.day_of_week,
+          meal_type: e.meal_type,
+          servings: e.servings,
+          is_cooked: e.is_cooked,
+        })),
+    }));
+
+    const exportData = {
+      version: '1.0',
+      exported_at: new Date().toISOString(),
+      source: 'AI Cookbook',
+      type: 'meal_plans',
+      plan_count: plansWithEntries.length,
+      plans: plansWithEntries,
+    };
+
+    reply.header('Content-Type', 'application/json');
+    reply.header('Content-Disposition', `attachment; filename="wochenplaene-export-${new Date().toISOString().split('T')[0]}.json"`);
+    return exportData;
+  });
+
+  // ─────────────────────────────────────────────
+  // POST /import – Wochenpläne importieren
+  // ─────────────────────────────────────────────
+  fastify.post('/import', {
+    schema: {
+      description: 'Wochenpläne aus JSON importieren',
+      tags: ['Wochenplan'],
+      security: [{ bearerAuth: [] }],
+    },
+  }, async (request, reply) => {
+    const userId = request.user.id;
+    let importData;
+
+    const contentType = request.headers['content-type'] || '';
+    if (contentType.includes('multipart')) {
+      const parts = request.parts();
+      for await (const part of parts) {
+        if (part.type === 'file') {
+          const buffer = await part.toBuffer();
+          try {
+            importData = JSON.parse(buffer.toString('utf-8'));
+          } catch {
+            return reply.status(400).send({ error: 'Ungültiges JSON-Format.' });
+          }
+        }
+      }
+    } else {
+      importData = request.body;
+    }
+
+    if (!importData?.plans || !Array.isArray(importData.plans)) {
+      return reply.status(400).send({ error: 'Ungültiges Export-Format. Erwartet: { plans: [...] }' });
+    }
+
+    if (importData.plans.length === 0) {
+      return reply.status(400).send({ error: 'Keine Wochenpläne zum Importieren gefunden.' });
+    }
+
+    if (importData.plans.length > 200) {
+      return reply.status(400).send({ error: 'Maximal 200 Pläne pro Import erlaubt.' });
+    }
+
+    let imported = 0;
+    let skipped = 0;
+    let entriesImported = 0;
+
+    const insertPlan = db.prepare(
+      'INSERT INTO meal_plans (user_id, week_start) VALUES (?, ?)'
+    );
+    const insertEntry = db.prepare(
+      'INSERT INTO meal_plan_entries (meal_plan_id, recipe_id, day_of_week, meal_type, servings, is_cooked) VALUES (?, ?, ?, ?, ?, ?)'
+    );
+    const findRecipe = db.prepare(
+      'SELECT id FROM recipes WHERE user_id = ? AND LOWER(title) = LOWER(?)'
+    );
+    const existingPlan = db.prepare(
+      'SELECT id FROM meal_plans WHERE user_id = ? AND week_start = ?'
+    );
+
+    const transaction = db.transaction(() => {
+      for (const plan of importData.plans) {
+        if (!plan.week_start) { skipped++; continue; }
+
+        // Prüfen ob Plan für diese Woche bereits existiert
+        const existing = existingPlan.get(userId, plan.week_start);
+        if (existing) { skipped++; continue; }
+
+        const { lastInsertRowid } = insertPlan.run(userId, plan.week_start);
+        const planId = Number(lastInsertRowid);
+        imported++;
+
+        if (plan.entries?.length) {
+          for (const entry of plan.entries) {
+            // Rezept per Titel finden
+            let recipeId = entry.recipe_id;
+            if (entry.recipe_title && !recipeId) {
+              const recipe = findRecipe.get(userId, entry.recipe_title);
+              if (recipe) recipeId = recipe.id;
+            }
+            if (!recipeId) continue;
+
+            insertEntry.run(
+              planId,
+              recipeId,
+              entry.day_of_week ?? 0,
+              entry.meal_type || 'mittag',
+              entry.servings || 2,
+              entry.is_cooked ? 1 : 0
+            );
+            entriesImported++;
+          }
+        }
+      }
+    });
+
+    transaction();
+
+    return {
+      message: `${imported} Pläne importiert, ${entriesImported} Einträge, ${skipped} übersprungen.`,
+      imported,
+      entries_imported: entriesImported,
+      skipped,
+    };
+  });
 }

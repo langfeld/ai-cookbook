@@ -175,4 +175,138 @@ export default async function recipeBlockRoutes(fastify) {
 
     return { message: 'Sperre aufgehoben' };
   });
+
+  // ─────────────────────────────────────────────
+  // GET /export – Rezept-Sperren exportieren
+  // ─────────────────────────────────────────────
+  fastify.get('/export', {
+    schema: {
+      description: 'Eigene Rezept-Sperren als JSON exportieren',
+      tags: ['Rezept-Sperren'],
+      security: [{ bearerAuth: [] }],
+    },
+  }, async (request, reply) => {
+    const userId = request.user.id;
+
+    const blocks = db.prepare(`
+      SELECT rb.*, r.title as recipe_title, u.username as owner
+      FROM recipe_blocks rb
+      JOIN recipes r ON rb.recipe_id = r.id
+      JOIN users u ON rb.user_id = u.id
+      WHERE rb.user_id = ?
+      ORDER BY rb.blocked_until ASC
+    `).all(userId);
+
+    const exportData = {
+      version: '1.0',
+      exported_at: new Date().toISOString(),
+      source: 'AI Cookbook',
+      type: 'recipe_blocks',
+      block_count: blocks.length,
+      blocks: blocks.map(b => ({
+        recipe_title: b.recipe_title,
+        recipe_id: b.recipe_id,
+        blocked_until: b.blocked_until,
+        reason: b.reason,
+        created_at: b.created_at,
+        owner: b.owner,
+      })),
+    };
+
+    reply.header('Content-Type', 'application/json');
+    reply.header('Content-Disposition', `attachment; filename="rezept-sperren-export-${new Date().toISOString().split('T')[0]}.json"`);
+    return exportData;
+  });
+
+  // ─────────────────────────────────────────────
+  // POST /import – Rezept-Sperren importieren
+  // ─────────────────────────────────────────────
+  fastify.post('/import', {
+    schema: {
+      description: 'Rezept-Sperren aus JSON importieren',
+      tags: ['Rezept-Sperren'],
+      security: [{ bearerAuth: [] }],
+    },
+  }, async (request, reply) => {
+    const userId = request.user.id;
+    let importData;
+
+    const contentType = request.headers['content-type'] || '';
+    if (contentType.includes('multipart')) {
+      const parts = request.parts();
+      for await (const part of parts) {
+        if (part.type === 'file') {
+          const buffer = await part.toBuffer();
+          try {
+            importData = JSON.parse(buffer.toString('utf-8'));
+          } catch {
+            return reply.status(400).send({ error: 'Ungültiges JSON-Format.' });
+          }
+        }
+      }
+    } else {
+      importData = request.body;
+    }
+
+    if (!importData?.blocks || !Array.isArray(importData.blocks)) {
+      return reply.status(400).send({ error: 'Ungültiges Export-Format. Erwartet: { blocks: [...] }' });
+    }
+
+    if (importData.blocks.length === 0) {
+      return reply.status(400).send({ error: 'Keine Sperren zum Importieren gefunden.' });
+    }
+
+    if (importData.blocks.length > 500) {
+      return reply.status(400).send({ error: 'Maximal 500 Sperren pro Import erlaubt.' });
+    }
+
+    let imported = 0;
+    let updated = 0;
+    let skipped = 0;
+
+    const findRecipe = db.prepare(
+      'SELECT id FROM recipes WHERE user_id = ? AND LOWER(title) = LOWER(?)'
+    );
+    const findExisting = db.prepare(
+      'SELECT id FROM recipe_blocks WHERE user_id = ? AND recipe_id = ?'
+    );
+    const insertBlock = db.prepare(
+      'INSERT INTO recipe_blocks (user_id, recipe_id, blocked_until, reason) VALUES (?, ?, ?, ?)'
+    );
+    const updateBlock = db.prepare(
+      'UPDATE recipe_blocks SET blocked_until = ?, reason = ?, created_at = CURRENT_TIMESTAMP WHERE id = ?'
+    );
+
+    const transaction = db.transaction(() => {
+      for (const block of importData.blocks) {
+        // Rezept per Titel oder ID finden
+        let recipeId = block.recipe_id;
+        if (block.recipe_title) {
+          const recipe = findRecipe.get(userId, block.recipe_title);
+          if (recipe) recipeId = recipe.id;
+        }
+        if (!recipeId) { skipped++; continue; }
+
+        if (!block.blocked_until) { skipped++; continue; }
+
+        const existing = findExisting.get(userId, recipeId);
+        if (existing) {
+          updateBlock.run(block.blocked_until, block.reason || null, existing.id);
+          updated++;
+        } else {
+          insertBlock.run(userId, recipeId, block.blocked_until, block.reason || null);
+          imported++;
+        }
+      }
+    });
+
+    transaction();
+
+    return {
+      message: `${imported} neu importiert, ${updated} aktualisiert, ${skipped} übersprungen.`,
+      imported,
+      updated,
+      skipped,
+    };
+  });
 }

@@ -58,6 +58,12 @@ const routes = [
     component: () => import('@/views/PantryView.vue'),
     meta: { requiresAuth: true, title: 'Vorratsschrank' },
   },
+  {
+    path: '/my-data',
+    name: 'my-data',
+    component: () => import('@/views/UserDataManagementView.vue'),
+    meta: { requiresAuth: true, title: 'Meine Daten' },
+  },
   // --- Admin-Routen ---
   {
     path: '/admin',
