@@ -123,91 +123,33 @@
         </div>
       </div>
 
-      <!-- Export / Import -->
+      <!-- Export / Import → Link zur Datenverwaltung -->
       <div class="bg-white dark:bg-stone-800 mt-4 sm:mt-6 p-4 sm:p-5 border border-stone-200 dark:border-stone-700 rounded-xl">
-        <h2 class="mb-4 font-display font-semibold text-stone-800 dark:text-stone-100 text-lg">
-          📦 Rezept Export / Import
-        </h2>
-        <p class="mb-4 text-stone-500 dark:text-stone-400 text-sm">
-          Exportiere alle Rezepte als JSON-Backup oder importiere Rezepte aus einer Export-Datei.
-        </p>
-        <button
-          @click="showExportImport = true"
-          class="flex items-center gap-2 bg-primary-600 hover:bg-primary-700 px-4 py-2.5 rounded-lg font-medium text-white text-sm transition-colors"
-        >
-          <ArrowDownUp class="w-4 h-4" />
-          Export / Import öffnen
-        </button>
-      </div>
-
-      <!-- Vorratsschrank Export / Import -->
-      <div class="bg-white dark:bg-stone-800 mt-4 sm:mt-6 p-4 sm:p-5 border border-stone-200 dark:border-stone-700 rounded-xl">
-        <h2 class="mb-4 font-display font-semibold text-stone-800 dark:text-stone-100 text-lg">
-          🗄️ Vorratsschrank Export / Import
-        </h2>
-        <p class="mb-4 text-stone-500 dark:text-stone-400 text-sm">
-          Exportiere alle Vorräte aller Benutzer als JSON-Backup oder importiere Vorräte aus einer Export-Datei.
-        </p>
-        <button
-          @click="showPantryExportImport = true"
-          class="flex items-center gap-2 bg-primary-600 hover:bg-primary-700 px-4 py-2.5 rounded-lg font-medium text-white text-sm transition-colors"
-        >
-          <ArrowDownUp class="w-4 h-4" />
-          Export / Import öffnen
-        </button>
-      </div>
-
-      <!-- REWE-Präferenzen Export / Import -->
-      <div class="bg-white dark:bg-stone-800 mt-4 sm:mt-6 p-4 sm:p-5 border border-stone-200 dark:border-stone-700 rounded-xl">
-        <h2 class="mb-4 font-display font-semibold text-stone-800 dark:text-stone-100 text-lg">
-          🏪 REWE-Präferenzen Export / Import
-        </h2>
-        <p class="mb-4 text-stone-500 dark:text-stone-400 text-sm">
-          Exportiere alle bevorzugten REWE-Produkt-Zuordnungen als JSON-Backup oder importiere Zuordnungen aus einer Export-Datei.
-        </p>
-        <button
-          @click="showRewePrefsExportImport = true"
-          class="flex items-center gap-2 bg-primary-600 hover:bg-primary-700 px-4 py-2.5 rounded-lg font-medium text-white text-sm transition-colors"
-        >
-          <ArrowDownUp class="w-4 h-4" />
-          Export / Import öffnen
-        </button>
+        <div class="flex sm:flex-row flex-col sm:items-center gap-4">
+          <div class="flex-1">
+            <h2 class="font-display font-semibold text-stone-800 dark:text-stone-100 text-lg">
+              � Datenverwaltung
+            </h2>
+            <p class="mt-1 text-stone-500 dark:text-stone-400 text-sm">
+              Export, Import und Backups für alle Daten zentral verwalten — Benutzer, Rezepte, Vorräte, REWE-Präferenzen und mehr.
+            </p>
+          </div>
+          <router-link
+            to="/admin/data"
+            class="flex justify-center items-center gap-2 bg-primary-600 hover:bg-primary-700 px-5 py-2.5 rounded-lg font-medium text-white text-sm transition-colors shrink-0"
+          >
+            <ArrowDownUp class="w-4 h-4" />
+            Datenverwaltung öffnen
+          </router-link>
+        </div>
       </div>
     </template>
-
-    <!-- Export/Import Modal -->
-    <RecipeImportExportModal
-      v-if="showExportImport"
-      :is-admin="true"
-      :users="adminUsers"
-      @close="showExportImport = false"
-      @imported="handleImported"
-    />
-
-    <!-- Pantry Export/Import Modal -->
-    <PantryImportExportModal
-      v-if="showPantryExportImport"
-      :users="adminUsers"
-      @close="showPantryExportImport = false"
-      @imported="handlePantryImported"
-    />
-
-    <!-- REWE-Präferenzen Export/Import Modal -->
-    <RewePreferencesImportExportModal
-      v-if="showRewePrefsExportImport"
-      :users="adminUsers"
-      @close="showRewePrefsExportImport = false"
-      @imported="handleRewePrefsImported"
-    />
   </div>
 </template>
 
 <script setup>
 import { ref, computed, onMounted } from 'vue';
 import { useApi } from '@/composables/useApi.js';
-import RecipeImportExportModal from '@/components/recipes/RecipeImportExportModal.vue';
-import PantryImportExportModal from '@/components/pantry/PantryImportExportModal.vue';
-import RewePreferencesImportExportModal from '@/components/rewe/RewePreferencesImportExportModal.vue';
 import {
   Users,
   BookOpen,
@@ -224,10 +166,6 @@ const api = useApi();
 const loading = ref(true);
 const stats = ref(null);
 const logs = ref([]);
-const showExportImport = ref(false);
-const showPantryExportImport = ref(false);
-const showRewePrefsExportImport = ref(false);
-const adminUsers = ref([]);
 
 const statCards = computed(() => {
   if (!stats.value) return [];
@@ -263,28 +201,14 @@ function logDotColor(action) {
   return 'bg-blue-500';
 }
 
-function handleImported(data) {
-  showExportImport.value = false;
-}
-
-function handlePantryImported(data) {
-  showPantryExportImport.value = false;
-}
-
-function handleRewePrefsImported(data) {
-  showRewePrefsExportImport.value = false;
-}
-
 onMounted(async () => {
   try {
-    const [statsData, logsData, usersData] = await Promise.all([
+    const [statsData, logsData] = await Promise.all([
       api.get('/admin/stats'),
       api.get('/admin/logs?limit=10'),
-      api.get('/admin/users'),
     ]);
     stats.value = statsData;
     logs.value = logsData.logs || [];
-    adminUsers.value = usersData.users || [];
   } catch {
     // Fehler wird von useApi gehandelt
   } finally {

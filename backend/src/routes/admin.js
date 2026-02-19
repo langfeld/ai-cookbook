@@ -76,6 +76,8 @@ export default async function adminRoutes(fastify) {
     const shoppingListCount = db.prepare('SELECT COUNT(*) as count FROM shopping_lists').get().count;
     const pantryItemCount = db.prepare('SELECT COUNT(*) as count FROM pantry').get().count;
     const cookingCount = db.prepare('SELECT COUNT(*) as count FROM cooking_history').get().count;
+    const rewePrefsCount = db.prepare('SELECT COUNT(*) as count FROM rewe_product_preferences').get().count;
+    const aliasCount = db.prepare('SELECT COUNT(*) as count FROM ingredient_aliases').get().count;
 
     // Top 10 beliebteste Rezepte
     const popularRecipes = db.prepare(`
@@ -133,6 +135,8 @@ export default async function adminRoutes(fastify) {
       total_shopping_lists: shoppingListCount,
       total_pantry_items: pantryItemCount,
       total_cook_count: cookingCount,
+      rewe_preferences: rewePrefsCount,
+      ingredient_aliases: aliasCount,
       storage_size: storageSize,
       db_size: dbSize?.size || 0,
       popular_recipes: popularRecipes,
@@ -1114,5 +1118,360 @@ export default async function adminRoutes(fastify) {
       target_user: targetUser.username,
       errors: errors.length ? errors : undefined,
     };
+  });
+
+  // ============================================
+  // Benutzer Export / Import
+  // ============================================
+
+  /**
+   * GET /api/admin/export/users
+   * Alle Benutzerkonten als JSON exportieren (ohne Passwörter)
+   */
+  fastify.get('/export/users', {
+    schema: {
+      description: 'Benutzerkonten exportieren (Admin)',
+      tags: ['Admin'],
+      security: [{ bearerAuth: [] }],
+    },
+  }, async (request, reply) => {
+    const users = db.prepare(`
+      SELECT id, username, email, display_name, role, is_active, created_at, updated_at
+      FROM users
+      ORDER BY id
+    `).all();
+
+    // Zusatzdaten pro Benutzer sammeln
+    const enrichedUsers = users.map(u => {
+      const recipeCount = db.prepare('SELECT COUNT(*) as c FROM recipes WHERE user_id = ?').get(u.id).c;
+      const pantryCount = db.prepare('SELECT COUNT(*) as c FROM pantry WHERE user_id = ?').get(u.id).c;
+      const cookCount = db.prepare('SELECT COUNT(*) as c FROM cooking_history WHERE user_id = ?').get(u.id).c;
+
+      // Bring!-Einstellungen (ohne Passwort)
+      const bring = db.prepare('SELECT default_list_uuid, default_list_name FROM bring_settings WHERE user_id = ?').get(u.id);
+
+      return {
+        ...u,
+        stats: { recipes: recipeCount, pantry_items: pantryCount, times_cooked: cookCount },
+        bring_settings: bring ? { default_list_uuid: bring.default_list_uuid, default_list_name: bring.default_list_name } : null,
+      };
+    });
+
+    const exportData = {
+      version: '1.0',
+      exported_at: new Date().toISOString(),
+      source: 'AI Cookbook (Admin-Export)',
+      type: 'users',
+      user_count: enrichedUsers.length,
+      users: enrichedUsers,
+    };
+
+    reply.header('Content-Type', 'application/json');
+    reply.header('Content-Disposition', `attachment; filename="admin-users-export-${new Date().toISOString().split('T')[0]}.json"`);
+    return exportData;
+  });
+
+  /**
+   * POST /api/admin/import/users
+   * Benutzerkonten aus JSON importieren (Admin)
+   * Erstellt Konten mit temporärem Passwort
+   */
+  fastify.post('/import/users', {
+    schema: {
+      description: 'Benutzerkonten importieren (Admin)',
+      tags: ['Admin'],
+      security: [{ bearerAuth: [] }],
+    },
+  }, async (request, reply) => {
+    let importData;
+
+    const contentType = request.headers['content-type'] || '';
+
+    if (contentType.includes('multipart')) {
+      const parts = request.parts();
+      for await (const part of parts) {
+        if (part.type === 'file') {
+          const buffer = await part.toBuffer();
+          try {
+            importData = JSON.parse(buffer.toString('utf-8'));
+          } catch {
+            return reply.status(400).send({ error: 'Ungültiges JSON-Format in der Datei.' });
+          }
+        }
+      }
+    } else {
+      importData = request.body?.data || request.body;
+    }
+
+    if (!importData?.users || !Array.isArray(importData.users)) {
+      return reply.status(400).send({ error: 'Ungültiges Export-Format. Erwartet: { users: [...] }' });
+    }
+
+    if (importData.users.length === 0) {
+      return reply.status(400).send({ error: 'Keine Benutzer zum Importieren gefunden.' });
+    }
+
+    if (importData.users.length > 500) {
+      return reply.status(400).send({ error: 'Maximal 500 Benutzer pro Import erlaubt.' });
+    }
+
+    let imported = 0;
+    let skipped = 0;
+    const errors = [];
+    const tempPassword = 'Changeme123!';
+    const hashedTempPw = bcrypt.hashSync(tempPassword, 10);
+
+    const insertUser = db.prepare(`
+      INSERT INTO users (username, email, display_name, role, is_active, password_hash, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP))
+    `);
+
+    const checkUsername = db.prepare('SELECT id FROM users WHERE LOWER(username) = LOWER(?)');
+    const checkEmail = db.prepare('SELECT id FROM users WHERE LOWER(email) = LOWER(?)');
+
+    const transaction = db.transaction(() => {
+      for (const user of importData.users) {
+        try {
+          const username = String(user.username || '').trim();
+          const email = String(user.email || '').trim();
+
+          if (!username || !email) {
+            skipped++;
+            errors.push(`Übersprungen: Benutzername oder E-Mail fehlt.`);
+            continue;
+          }
+
+          // Doppelten Benutzernamen/E-Mail prüfen
+          if (checkUsername.get(username)) {
+            skipped++;
+            errors.push(`"${username}" existiert bereits.`);
+            continue;
+          }
+          if (checkEmail.get(email)) {
+            skipped++;
+            errors.push(`E-Mail "${email}" existiert bereits.`);
+            continue;
+          }
+
+          const displayName = user.display_name || username;
+          const role = (user.role === 'admin') ? 'admin' : 'user';
+          const isActive = user.is_active !== undefined ? (user.is_active ? 1 : 0) : 1;
+
+          insertUser.run(username, email, displayName, role, isActive, hashedTempPw, user.created_at || null);
+          imported++;
+        } catch (err) {
+          skipped++;
+          errors.push(`Fehler bei "${user.username || '?'}": ${err.message}`);
+        }
+      }
+    });
+
+    transaction();
+
+    logAdminAction(request.user.id, 'Benutzer importiert', `${imported} Benutzer importiert`);
+
+    return {
+      message: `${imported} Benutzer importiert, ${skipped} übersprungen.`,
+      imported,
+      skipped,
+      temp_password: imported > 0 ? tempPassword : undefined,
+      errors: errors.length ? errors : undefined,
+    };
+  });
+
+  // ============================================
+  // Zutaten-Aliase Export / Import
+  // ============================================
+
+  /**
+   * GET /api/admin/export/ingredient-aliases
+   * Alle Zutaten-Aliase als JSON exportieren
+   */
+  fastify.get('/export/ingredient-aliases', {
+    schema: {
+      description: 'Zutaten-Aliase exportieren (Admin)',
+      tags: ['Admin'],
+      security: [{ bearerAuth: [] }],
+      querystring: {
+        type: 'object',
+        properties: {
+          user_id: { type: 'integer' },
+        },
+      },
+    },
+  }, async (request, reply) => {
+    const filterUserId = request.query.user_id;
+
+    let aliases;
+    if (filterUserId) {
+      aliases = db.prepare(`
+        SELECT ia.*, u.username as owner
+        FROM ingredient_aliases ia JOIN users u ON ia.user_id = u.id
+        WHERE ia.user_id = ?
+        ORDER BY u.username, ia.canonical_name, ia.alias_name
+      `).all(filterUserId);
+    } else {
+      aliases = db.prepare(`
+        SELECT ia.*, u.username as owner
+        FROM ingredient_aliases ia JOIN users u ON ia.user_id = u.id
+        ORDER BY u.username, ia.canonical_name, ia.alias_name
+      `).all();
+    }
+
+    const exportData = {
+      version: '1.0',
+      exported_at: new Date().toISOString(),
+      source: 'AI Cookbook (Admin-Export)',
+      type: 'ingredient-aliases',
+      alias_count: aliases.length,
+      aliases: aliases.map(a => ({
+        canonical_name: a.canonical_name,
+        alias_name: a.alias_name,
+        owner: a.owner,
+      })),
+    };
+
+    const suffix = filterUserId ? `-user-${filterUserId}` : '-alle';
+    reply.header('Content-Type', 'application/json');
+    reply.header('Content-Disposition', `attachment; filename="admin-ingredient-aliases-export${suffix}-${new Date().toISOString().split('T')[0]}.json"`);
+    return exportData;
+  });
+
+  /**
+   * POST /api/admin/import/ingredient-aliases
+   * Zutaten-Aliase aus JSON importieren (Admin)
+   */
+  fastify.post('/import/ingredient-aliases', {
+    schema: {
+      description: 'Zutaten-Aliase importieren (Admin)',
+      tags: ['Admin'],
+      security: [{ bearerAuth: [] }],
+    },
+  }, async (request, reply) => {
+    let importData;
+    let targetUserId;
+
+    const contentType = request.headers['content-type'] || '';
+
+    if (contentType.includes('multipart')) {
+      const parts = request.parts();
+      for await (const part of parts) {
+        if (part.type === 'file') {
+          const buffer = await part.toBuffer();
+          try {
+            importData = JSON.parse(buffer.toString('utf-8'));
+          } catch {
+            return reply.status(400).send({ error: 'Ungültiges JSON-Format in der Datei.' });
+          }
+        } else if (part.fieldname === 'user_id') {
+          targetUserId = parseInt(part.value, 10);
+        }
+      }
+    } else {
+      importData = request.body?.data || request.body;
+      targetUserId = request.body?.user_id;
+    }
+
+    if (!importData?.aliases || !Array.isArray(importData.aliases)) {
+      return reply.status(400).send({ error: 'Ungültiges Export-Format. Erwartet: { aliases: [...] }' });
+    }
+
+    if (importData.aliases.length === 0) {
+      return reply.status(400).send({ error: 'Keine Aliase zum Importieren gefunden.' });
+    }
+
+    if (importData.aliases.length > 5000) {
+      return reply.status(400).send({ error: 'Maximal 5000 Aliase pro Import erlaubt.' });
+    }
+
+    const userId = targetUserId || request.user.id;
+    const targetUser = db.prepare('SELECT id, username FROM users WHERE id = ?').get(userId);
+    if (!targetUser) {
+      return reply.status(404).send({ error: 'Ziel-Benutzer nicht gefunden.' });
+    }
+
+    let imported = 0;
+    let updated = 0;
+    let skipped = 0;
+    const errorsArr = [];
+
+    const upsertAlias = db.prepare(`
+      INSERT INTO ingredient_aliases (user_id, canonical_name, alias_name)
+      VALUES (?, ?, ?)
+      ON CONFLICT(user_id, alias_name) DO UPDATE SET
+        canonical_name = excluded.canonical_name
+    `);
+
+    const findExisting = db.prepare(
+      'SELECT id FROM ingredient_aliases WHERE user_id = ? AND LOWER(alias_name) = LOWER(?)'
+    );
+
+    const transaction = db.transaction(() => {
+      for (const alias of importData.aliases) {
+        try {
+          const canonicalName = String(alias.canonical_name || '').trim();
+          const aliasName = String(alias.alias_name || '').trim();
+
+          if (!canonicalName || !aliasName) { skipped++; continue; }
+
+          const existing = findExisting.get(userId, aliasName);
+          upsertAlias.run(userId, canonicalName, aliasName);
+
+          if (existing) { updated++; } else { imported++; }
+        } catch (err) {
+          skipped++;
+          errorsArr.push(`Fehler bei "${alias.alias_name || '?'}": ${err.message}`);
+        }
+      }
+    });
+
+    transaction();
+
+    logAdminAction(request.user.id, 'Zutaten-Aliase importiert', `${imported} neu, ${updated} aktualisiert für ${targetUser.username}`);
+
+    return {
+      message: `${imported} neu importiert, ${updated} aktualisiert, ${skipped} übersprungen für "${targetUser.username}".`,
+      imported,
+      updated,
+      skipped,
+      target_user: targetUser.username,
+      errors: errorsArr.length ? errorsArr : undefined,
+    };
+  });
+
+  // ============================================
+  // Komplett-Backup (SQLite DB Download)
+  // ============================================
+
+  /**
+   * GET /api/admin/backup/download
+   * SQLite-Datenbank als Datei herunterladen
+   */
+  fastify.get('/backup/download', {
+    schema: {
+      description: 'Komplette Datenbank als Backup herunterladen (Admin)',
+      tags: ['Admin'],
+      security: [{ bearerAuth: [] }],
+    },
+  }, async (request, reply) => {
+    const dbPath = config.database.path;
+    if (!existsSync(dbPath)) {
+      return reply.status(404).send({ error: 'Datenbank-Datei nicht gefunden.' });
+    }
+
+    // WAL checkpoint, damit alle Daten in der Hauptdatei sind
+    try {
+      db.pragma('wal_checkpoint(TRUNCATE)');
+    } catch { /* Ignorieren falls kein WAL-Modus */ }
+
+    const dbBuffer = readFileSync(dbPath);
+    const dateStr = new Date().toISOString().split('T')[0];
+
+    logAdminAction(request.user.id, 'Datenbank-Backup heruntergeladen', `${(dbBuffer.length / 1024 / 1024).toFixed(1)} MB`);
+
+    reply.header('Content-Type', 'application/x-sqlite3');
+    reply.header('Content-Disposition', `attachment; filename="cookbook-backup-${dateStr}.db"`);
+    reply.header('Content-Length', dbBuffer.length);
+    return reply.send(dbBuffer);
   });
 }

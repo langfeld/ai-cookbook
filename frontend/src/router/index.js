@@ -83,6 +83,12 @@ const routes = [
     component: () => import('@/views/admin/AdminIngredientIconsView.vue'),
     meta: { requiresAuth: true, requiresAdmin: true, title: 'Zutaten-Icons' },
   },
+  {
+    path: '/admin/data',
+    name: 'admin-data',
+    component: () => import('@/views/admin/AdminDataManagementView.vue'),
+    meta: { requiresAuth: true, requiresAdmin: true, title: 'Datenverwaltung' },
+  },
   // Fallback: 404
   {
     path: '/:pathMatch(.*)*',

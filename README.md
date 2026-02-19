@@ -97,9 +97,13 @@ Eine KI-gestützte Rezeptverwaltung mit intelligentem Wochenplaner (Score-Algori
 - **Systemeinstellungen** — Registrierung aktivieren/deaktivieren, Wartungsmodus, KI-Anbieter wählen, Upload-Größe konfigurieren, REWE-Markt-ID/PLZ
 - **Zutaten-Icons** — Keyword→Emoji-Mappings verwalten (Hinzufügen, Bearbeiten, Löschen), integrierter Emoji-Picker, Tabs für Mappings/verwendete/fehlende Zutaten
 - **Datei-Bereinigung** — Verwaiste Upload-Dateien automatisch erkennen und entfernen
-- **Rezept Export/Import** — Alle Rezepte (oder pro Benutzer) als JSON exportieren/importieren, mit Benutzer-Zuweisung beim Import
-- **Vorratsschrank Export/Import** — Vorräte aller Benutzer exportieren (oder nach Benutzer filtern), importieren mit Zielbenutzer-Auswahl
-- **REWE-Präferenzen Export/Import** — Alle gespeicherten REWE-Produkt-Zuordnungen exportieren/importieren (pro Benutzer filterbar). Ideal für Backup/Migration der bevorzugten Produktzuweisungen
+- **Datenverwaltung** — Zentrale Seite für alle Export/Import-Funktionen und Backups:
+  - **Benutzer Export/Import** — Benutzerkonten als JSON exportieren/importieren (ohne Passwörter; importierte Benutzer erhalten ein temporäres Passwort)
+  - **Rezept Export/Import** — Alle Rezepte (oder pro Benutzer) als JSON exportieren/importieren, mit Benutzer-Zuweisung beim Import
+  - **Vorratsschrank Export/Import** — Vorräte aller Benutzer exportieren (oder nach Benutzer filtern), importieren mit Zielbenutzer-Auswahl
+  - **REWE-Präferenzen Export/Import** — Alle gespeicherten REWE-Produkt-Zuordnungen exportieren/importieren (pro Benutzer filterbar)
+  - **Zutaten-Aliase Export/Import** — Zutaten-Zusammenfassungen exportieren/importieren (z. B. „Gurke Mini" → „Mini-Gurke")
+  - **Komplett-Backup** — Komplette SQLite-Datenbank als Datei herunterladen
 - **Aktivitätslog** — Alle Admin-Aktionen werden protokolliert (Wer hat was wann gemacht?)
 
 ---
