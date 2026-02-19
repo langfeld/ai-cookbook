@@ -124,7 +124,7 @@
               v-if="selectedFile"
               @click="handleImport"
               :disabled="importing"
-              class="flex justify-center items-center gap-2 bg-accent-600 hover:bg-accent-700 disabled:opacity-50 px-4 py-3 rounded-lg w-full font-medium text-white text-sm transition-colors"
+              class="flex justify-center items-center gap-2 disabled:opacity-50 px-4 py-3 rounded-lg w-full font-medium text-white text-sm transition-colors bg-accent-600 hover:bg-accent-700"
             >
               <Loader2 v-if="importing" class="w-4 h-4 animate-spin" />
               <Upload v-else class="w-4 h-4" />
