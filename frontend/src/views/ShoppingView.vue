@@ -56,8 +56,30 @@
             <div v-if="showGenOptions" class="z-30 fixed inset-0" @click="showGenOptions = false" />
           </Transition>
           <Transition name="fade">
-            <div v-if="showGenOptions" class="top-full right-0 z-30 absolute bg-white dark:bg-stone-800 shadow-lg mt-1.5 border border-stone-200 dark:border-stone-700 rounded-xl w-64 overflow-hidden">
-              <div class="p-3">
+            <div v-if="showGenOptions" class="top-full sm:right-0 left-0 sm:left-auto z-30 absolute bg-white dark:bg-stone-800 shadow-lg mt-1.5 border border-stone-200 dark:border-stone-700 rounded-xl w-72 overflow-hidden">
+              <div class="space-y-3 p-3">
+                <!-- Wochen-Auswahl -->
+                <div>
+                  <p class="mb-2 font-medium text-stone-500 dark:text-stone-400 text-xs uppercase tracking-wide">Woche auswählen</p>
+                  <div class="flex items-center gap-1">
+                    <button @click="genWeekOffset--" class="hover:bg-stone-100 dark:hover:bg-stone-700 p-1.5 rounded-lg transition-colors">
+                      <ChevronLeft class="w-4 h-4 text-stone-500" />
+                    </button>
+                    <button @click="genWeekOffset = 0"
+                      class="flex-1 py-1.5 rounded-lg font-medium text-sm text-center transition-colors"
+                      :class="genWeekOffset === 0
+                        ? 'bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300'
+                        : 'hover:bg-stone-100 dark:hover:bg-stone-700 text-stone-700 dark:text-stone-200'"
+                    >
+                      {{ genWeekLabel }}
+                    </button>
+                    <button @click="genWeekOffset++" class="hover:bg-stone-100 dark:hover:bg-stone-700 p-1.5 rounded-lg transition-colors">
+                      <ChevronRight class="w-4 h-4 text-stone-500" />
+                    </button>
+                  </div>
+                </div>
+
+                <!-- Vergangene Tage Toggle -->
                 <label class="group flex items-center gap-3 cursor-pointer select-none">
                   <div class="relative">
                     <input type="checkbox" v-model="genIncludePastDays" class="sr-only peer" />
@@ -889,7 +911,7 @@ import { computed, ref, onMounted, watch } from 'vue';
 import { useShoppingStore } from '@/stores/shopping.js';
 import { useMealPlanStore } from '@/stores/mealplan.js';
 import { useNotification } from '@/composables/useNotification.js';
-import { ListPlus, Check, ShoppingBag, Plus, Package, BookOpen, BookX, ExternalLink, ShoppingCart, X, ArrowRightLeft, Search, Tag, Trash2, Star, Heart, Archive, Send, Link2, Unlink, ClipboardCopy, LogIn, LogOut, ChevronDown, Loader2, Terminal, Download, Settings, RefreshCw } from 'lucide-vue-next';
+import { ListPlus, Check, ShoppingBag, Plus, Package, BookOpen, BookX, ExternalLink, ShoppingCart, X, ArrowRightLeft, Search, Tag, Trash2, Star, Heart, Archive, Send, Link2, Unlink, ClipboardCopy, LogIn, LogOut, ChevronDown, ChevronLeft, ChevronRight, Loader2, Terminal, Download, Settings, RefreshCw } from 'lucide-vue-next';
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue';
 
 const shoppingStore = useShoppingStore();
@@ -900,6 +922,27 @@ const reweLoading = ref(false);
 // Einkaufslisten-Generierung Optionen
 const showGenOptions = ref(false);
 const genIncludePastDays = ref(false); // Standardmäßig: vergangene Tage NICHT einbeziehen
+const genWeekOffset = ref(0); // 0 = aktuelle Woche, -1 = letzte Woche, +1 = nächste Woche
+
+// Wochen-Start für die Generierung (Montag als YYYY-MM-DD)
+const genWeekStart = computed(() => {
+  const today = new Date();
+  const day = today.getDay();
+  const monday = new Date(today);
+  monday.setDate(today.getDate() - day + (day === 0 ? -6 : 1) + genWeekOffset.value * 7);
+  return monday.toISOString().split('T')[0];
+});
+
+// Label für die gewählte Woche
+const genWeekLabel = computed(() => {
+  const [y, m, d] = genWeekStart.value.split('-').map(Number);
+  const monday = new Date(y, m - 1, d);
+  const sunday = new Date(monday);
+  sunday.setDate(monday.getDate() + 6);
+  const fmt = (dt) => dt.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' });
+  if (genWeekOffset.value === 0) return `Diese Woche (${fmt(monday)} – ${fmt(sunday)})`;
+  return `${fmt(monday)} – ${fmt(sunday)}`;
+});
 
 // REWE-Einstellungen (persistent)
 const showReweSettings = ref(false);
@@ -1114,13 +1157,11 @@ async function moveToPantry(item) {
 
 async function generateList() {
   showGenOptions.value = false;
-  // Aktuellen Wochenplan laden, falls noch nicht vorhanden
-  if (!mealPlanStore.currentPlan) {
-    await mealPlanStore.fetchCurrentPlan();
-  }
+  // Wochenplan für die gewählte Woche laden
+  await mealPlanStore.fetchCurrentPlan(genWeekStart.value);
   const planId = mealPlanStore.currentPlan?.id;
   if (!planId) {
-    showError('Kein Wochenplan vorhanden. Erstelle zuerst einen Plan im Wochenplaner.');
+    showError('Kein Wochenplan für diese Woche vorhanden. Erstelle zuerst einen Plan im Wochenplaner.');
     return;
   }
   try {
