@@ -39,11 +39,11 @@
           <button
             @click="toggleMergeMode"
             :class="[
-              'flex items-center gap-1.5 px-3 py-2 text-sm font-medium transition-colors border border-r-0',
+              'flex items-center gap-1.5 px-3 py-2 text-sm font-medium transition-colors border',
               mergeMode
                 ? 'bg-violet-50 dark:bg-violet-900/30 border-violet-300 dark:border-violet-700 text-violet-700 dark:text-violet-300'
                 : 'bg-stone-100 dark:bg-stone-800 border-stone-300 dark:border-stone-600 text-stone-500 dark:text-stone-400',
-              aliasStore.aliases.length > 0 ? 'rounded-l-xl' : 'rounded-xl border-r'
+              aliasStore.aliases.length > 0 ? 'rounded-l-xl border-r-0' : 'rounded-xl'
             ]"
             :title="mergeMode ? 'Zusammenfassen beenden' : 'Zutaten zusammenfassen'"
           >
@@ -54,10 +54,10 @@
             v-if="aliasStore.aliases.length > 0"
             @click="showAliasManager = true"
             :class="[
-              'flex items-center px-2 rounded-r-xl text-sm transition-colors border border-l-0',
+              'flex items-center px-2 rounded-r-xl text-sm transition-colors border',
               mergeMode
-                ? 'bg-violet-50 dark:bg-violet-900/30 border-violet-300 dark:border-violet-700 text-violet-500 dark:text-violet-400 hover:text-violet-700'
-                : 'bg-stone-100 dark:bg-stone-800 border-stone-300 dark:border-stone-600 text-stone-400 dark:text-stone-500 hover:text-stone-600'
+                ? 'bg-violet-50 dark:bg-violet-900/30 border-violet-300 dark:border-violet-700 border-l-violet-400 dark:border-l-violet-600 text-violet-500 dark:text-violet-400 hover:text-violet-700'
+                : 'bg-stone-100 dark:bg-stone-800 border-stone-300 dark:border-stone-600 border-l-stone-400 dark:border-l-stone-500 text-stone-400 dark:text-stone-500 hover:text-stone-600'
             ]"
             title="Gespeicherte Zusammenfassungen verwalten"
           >
