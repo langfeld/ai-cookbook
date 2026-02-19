@@ -313,7 +313,7 @@
 import { ref, reactive, computed, onMounted } from 'vue';
 import { usePantryStore } from '@/stores/pantry.js';
 import { useNotification } from '@/composables/useNotification.js';
-import { Plus, Minus, Trash2, AlertTriangle, Download, Loader2, Infinity, Check, CheckSquare, Square } from 'lucide-vue-next';
+import { Plus, Minus, Trash2, AlertTriangle, Download, Infinity, Check, CheckSquare, Square } from 'lucide-vue-next';
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue';
 
 const pantryStore = usePantryStore();
