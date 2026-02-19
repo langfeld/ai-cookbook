@@ -319,6 +319,9 @@
                   <button @click="removeEntry(getMeal(selectedDayIdx, mt.key))" class="day-action-btn day-action-btn--danger">
                     <X class="w-3.5 h-3.5" /> Entfernen
                   </button>
+                  <button @click="openBlockDialog(getMeal(selectedDayIdx, mt.key))" class="day-action-btn day-action-btn--danger">
+                    <Ban class="w-3.5 h-3.5" /> Sperren
+                  </button>
                 </div>
               </div>
             </div>
@@ -468,6 +471,38 @@
               </label>
             </div>
 
+            <!-- Gesperrte Rezepte -->
+            <div class="mb-6">
+              <div class="flex justify-between items-center mb-2">
+                <span class="font-medium text-stone-700 dark:text-stone-300 text-sm">🚫 Gesperrte Rezepte</span>
+                <span v-if="blocksStore.activeBlocks.length" class="bg-red-100 dark:bg-red-900/40 px-2 py-0.5 rounded-full font-medium text-red-600 dark:text-red-400 text-xs">
+                  {{ blocksStore.activeBlocks.length }}
+                </span>
+              </div>
+              <div v-if="!blocksStore.activeBlocks.length"
+                class="py-3 text-stone-400 text-xs text-center">
+                Keine Rezepte gesperrt
+              </div>
+              <div v-else class="space-y-1.5 max-h-40 overflow-y-auto">
+                <div v-for="block in blocksStore.activeBlocks" :key="block.id"
+                  class="flex items-center gap-2.5 bg-stone-50 dark:bg-stone-800 px-3 py-2 rounded-lg">
+                  <Ban class="w-3.5 h-3.5 text-red-400 shrink-0" />
+                  <div class="flex-1 min-w-0">
+                    <div class="font-medium text-stone-700 dark:text-stone-300 text-sm truncate">{{ block.recipe_title }}</div>
+                    <div class="text-stone-400 text-xs">
+                      bis {{ new Date(block.blocked_until).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' }) }}
+                      <span v-if="block.reason" class="ml-1 text-stone-400 dark:text-stone-500">· {{ block.reason }}</span>
+                    </div>
+                  </div>
+                  <button @click="doUnblockRecipe(block.id)"
+                    class="hover:bg-red-100 dark:hover:bg-red-900/40 p-1 rounded-lg transition-colors shrink-0"
+                    title="Sperre aufheben">
+                    <ShieldOff class="w-3.5 h-3.5 text-red-400 hover:text-red-600" />
+                  </button>
+                </div>
+              </div>
+            </div>
+
             <!-- Aktive Einstellungen Zusammenfassung -->
             <div class="bg-stone-50 dark:bg-stone-800 mb-4 p-3 rounded-lg">
               <p class="text-stone-600 dark:text-stone-400 text-xs">
@@ -475,6 +510,7 @@
                 {{ genSourceMode === 'all' ? 'Alle Rezepte' : `${genCollectionIds.length} Sammlung(en)` }}
                 · {{ genDeduplicate ? 'Duplikate werden vermieden' : 'Duplikate erlaubt' }}
                 · {{ genAiReasoning ? 'KI-Begründung an' : 'KI-Begründung aus' }}
+                <span v-if="blocksStore.activeBlocks.length"> · {{ blocksStore.activeBlocks.length }} Rezept{{ blocksStore.activeBlocks.length > 1 ? 'e' : '' }} gesperrt</span>
               </p>
             </div>
 
@@ -552,7 +588,7 @@
     <Teleport to="body">
       <Transition name="modal">
         <div v-if="selectedMeal" class="z-50 fixed inset-0 flex justify-center items-center bg-black/40 p-4" @click.self="selectedMeal = null">
-          <div class="bg-white dark:bg-stone-900 shadow-2xl border border-stone-200 dark:border-stone-700 rounded-2xl w-full max-w-md overflow-hidden">
+          <div class="bg-white dark:bg-stone-900 shadow-2xl border border-stone-200 dark:border-stone-700 rounded-2xl w-full max-w-xl overflow-hidden">
             <!-- Bild -->
             <div class="relative bg-stone-100 dark:bg-stone-800 h-56">
               <img v-if="selectedMeal.image_url" :src="selectedMeal.image_url"
@@ -589,7 +625,59 @@
                 <button @click="removeEntry(selectedMeal); selectedMeal = null;" class="action-pill action-pill--danger">
                   <X class="w-4 h-4" /> Entfernen
                 </button>
+                <button @click="openBlockDialog(selectedMeal)" class="action-pill action-pill--danger">
+                  <Ban class="w-4 h-4" /> Sperren
+                </button>
               </div>
+            </div>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
+
+    <!-- ═══════════════════ SPERR-DIALOG ═══════════════════ -->
+    <Teleport to="body">
+      <Transition name="modal">
+        <div v-if="blockDialog.show" class="z-50 fixed inset-0 flex justify-center items-center bg-black/40 p-4" @click.self="blockDialog.show = false">
+          <div class="bg-white dark:bg-stone-900 shadow-2xl p-6 border border-stone-200 dark:border-stone-700 rounded-2xl w-full max-w-sm">
+            <h2 class="flex items-center gap-2 mb-1 font-bold text-stone-800 dark:text-stone-100 text-lg">
+              <Ban class="w-5 h-5 text-red-500" /> Rezept sperren
+            </h2>
+            <p class="mb-5 text-stone-500 dark:text-stone-400 text-sm">
+              „{{ blockDialog.recipeTitle }}" wird für die Wochenplan-Generierung ausgeschlossen.
+            </p>
+
+            <!-- Wochen-Auswahl -->
+            <div class="mb-4">
+              <label class="block mb-2 font-medium text-stone-700 dark:text-stone-300 text-sm">Wie lange sperren?</label>
+              <div class="flex flex-wrap gap-2">
+                <button v-for="w in [1, 2, 4, 8, 12, 26]" :key="w" @click="blockWeeks = w"
+                  :class="['px-3 py-1.5 rounded-lg text-sm font-medium transition-colors border',
+                    blockWeeks === w
+                      ? 'bg-red-50 dark:bg-red-950 border-red-300 dark:border-red-800 text-red-700 dark:text-red-300'
+                      : 'border-stone-200 dark:border-stone-700 text-stone-600 dark:text-stone-400 hover:bg-stone-50 dark:hover:bg-stone-800']">
+                  {{ w }} {{ w === 1 ? 'Woche' : 'Wochen' }}
+                </button>
+              </div>
+            </div>
+
+            <!-- Optionaler Grund -->
+            <div class="mb-5">
+              <label class="block mb-1.5 font-medium text-stone-700 dark:text-stone-300 text-sm">Grund (optional)</label>
+              <input v-model="blockReason" type="text" maxlength="200"
+                placeholder="z.B. Kürbis hat keine Saison"
+                class="dark:bg-stone-800 px-3 py-2 border border-stone-300 dark:border-stone-700 rounded-lg outline-none focus:ring-2 focus:ring-red-300 dark:focus:ring-red-800 w-full dark:text-stone-200 placeholder:text-stone-400 text-sm" />
+            </div>
+
+            <div class="flex justify-end gap-2">
+              <button @click="blockDialog.show = false"
+                class="hover:bg-stone-100 dark:hover:bg-stone-800 px-4 py-2 rounded-xl text-stone-600 dark:text-stone-400 text-sm transition-colors">
+                Abbrechen
+              </button>
+              <button @click="doBlockRecipe"
+                class="flex items-center gap-2 bg-red-600 hover:bg-red-700 px-4 py-2 rounded-xl font-medium text-white text-sm transition-colors">
+                <Ban class="w-4 h-4" /> Sperren
+              </button>
             </div>
           </div>
         </div>
@@ -602,15 +690,18 @@
 import { computed, onMounted, ref, watch } from 'vue';
 import { useMealPlanStore } from '@/stores/mealplan.js';
 import { useCollectionsStore } from '@/stores/collections.js';
+import { useRecipeBlocksStore } from '@/stores/recipe-blocks.js';
 import { useNotification } from '@/composables/useNotification.js';
 import {
   Sparkles, ChevronLeft, ChevronRight, Check, Eye, RefreshCw,
   X, Clock, ChefHat, UtensilsCrossed, Plus, Star, Trash2,
   LayoutGrid, CalendarDays, Settings, Settings2, FolderOpen, Info,
+  Ban, ShieldOff,
 } from 'lucide-vue-next';
 
 const store = useMealPlanStore();
 const collectionsStore = useCollectionsStore();
+const blocksStore = useRecipeBlocksStore();
 const { showSuccess } = useNotification();
 
 // ─── State ───
@@ -651,6 +742,11 @@ watch([genMealTypes, genPersons, visibleSlots, genSourceMode, genCollectionIds, 
 const swapModal = ref({ show: false, entry: null, suggestions: [], loading: false });
 const dragSource = ref(null);
 const dragTarget = ref(null);
+
+// Sperr-Dialog
+const blockDialog = ref({ show: false, recipeId: null, recipeTitle: '' });
+const blockWeeks = ref(4);
+const blockReason = ref('');
 
 // ─── Meal-Types ───
 const allMealTypes = [
@@ -863,11 +959,36 @@ async function onDrop(dayIdx, mealKey) {
   } catch { /* useApi */ }
 }
 
+// ─── Sperren ───
+function openBlockDialog(meal) {
+  blockDialog.value = { show: true, recipeId: meal.recipe_id, recipeTitle: meal.recipe_title };
+  blockWeeks.value = 4;
+  blockReason.value = '';
+  selectedMeal.value = null;
+}
+
+async function doBlockRecipe() {
+  const { recipeId } = blockDialog.value;
+  try {
+    const data = await blocksStore.blockRecipe(recipeId, blockWeeks.value, blockReason.value);
+    showSuccess(data.message);
+    blockDialog.value.show = false;
+  } catch { /* useApi */ }
+}
+
+async function doUnblockRecipe(blockId) {
+  try {
+    await blocksStore.unblockById(blockId);
+    showSuccess('Sperre aufgehoben');
+  } catch { /* useApi */ }
+}
+
 // ─── Init ───
 onMounted(async () => {
   await store.fetchCurrentPlan(currentWeekStart.value);
   store.fetchHistory();
   collectionsStore.fetchCollections();
+  blocksStore.fetchBlocks();
 });
 </script>
 

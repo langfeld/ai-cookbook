@@ -363,6 +363,23 @@ export function initializeDatabase() {
     );
     CREATE INDEX IF NOT EXISTS idx_ingredient_aliases_user ON ingredient_aliases(user_id);
     CREATE INDEX IF NOT EXISTS idx_ingredient_aliases_lookup ON ingredient_aliases(user_id, alias_name);
+
+    -- ============================================
+    -- Rezept-Sperren (für Wochenplanung)
+    -- ============================================
+    CREATE TABLE IF NOT EXISTS recipe_blocks (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      recipe_id INTEGER NOT NULL,
+      blocked_until DATE NOT NULL,           -- Gesperrt bis (Datum)
+      reason TEXT,                            -- Optionaler Grund (z.B. "Kein Kürbis verfügbar")
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      FOREIGN KEY (recipe_id) REFERENCES recipes(id) ON DELETE CASCADE,
+      UNIQUE(user_id, recipe_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_recipe_blocks_user ON recipe_blocks(user_id);
+    CREATE INDEX IF NOT EXISTS idx_recipe_blocks_until ON recipe_blocks(user_id, blocked_until);
   `);
 
   // ============================================

@@ -40,6 +40,7 @@ Eine KI-gestützte Rezeptverwaltung mit intelligentem Wochenplaner (Score-Algori
 - **4 Mahlzeiten/Tag** — Frühstück, Mittag, Abendessen, Snack
 - **Horizontal scrollbares 7-Tage-Raster** — Auch auf Mobile voll nutzbar
 - **Sammlungs-Filter** — Plan-Generierung optional auf bestimmte Sammlungen beschränken (Mehrfachauswahl). Mit Deduplizierungs-Option für Rezepte, die in mehreren Sammlungen vorkommen
+- **Rezept-Sperren** — Einzelne Rezepte für 1–52 Wochen aus der Generierung ausschließen (z. B. saisonale Zutaten nicht verfügbar). Mit optionalem Grund, Verwaltung in den Einstellungen und automatischem Ablauf
 
 ### 🛒 Einkaufsliste
 - **Automatisch generiert** — Aus dem Wochenplan, mit intelligenter Duplikat-Konsolidierung und Einheiten-Normalisierung

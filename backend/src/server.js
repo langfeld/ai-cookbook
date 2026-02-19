@@ -33,6 +33,7 @@ import ingredientIconRoutes from './routes/ingredient-icons.js';
 import bringRoutes from './routes/bring.js';
 import collectionsRoutes from './routes/collections.js';
 import ingredientAliasRoutes from './routes/ingredient-aliases.js';
+import recipeBlockRoutes from './routes/recipe-blocks.js';
 
 // Upload-Verzeichnisse sicherstellen (inkl. Unterordner)
 const uploadPath = resolve(config.upload.path);
@@ -191,6 +192,7 @@ await app.register(ingredientIconRoutes, { prefix: '/api/ingredient-icons' });
 await app.register(bringRoutes, { prefix: '/api/bring' });
 await app.register(collectionsRoutes, { prefix: '/api/collections' });
     await app.register(ingredientAliasRoutes, { prefix: '/api/ingredient-aliases' });
+    await app.register(recipeBlockRoutes, { prefix: '/api/recipe-blocks' });
 
 // ============================================
 // Health Check Endpoint

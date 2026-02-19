@@ -204,6 +204,12 @@ export function getSuggestions(userId, { dayIdx = 0, mealType = 'mittag', exclud
   const pantrySet = new Set(pantryItems.map(p => p.ingredient_name.toLowerCase()));
   const excludeSet = new Set(excludeRecipeIds);
 
+  // Gesperrte Rezepte laden und ausschließen
+  const blockedIds = db.prepare(
+    "SELECT recipe_id FROM recipe_blocks WHERE user_id = ? AND blocked_until >= date('now')"
+  ).all(userId).map(b => b.recipe_id);
+  blockedIds.forEach(id => excludeSet.add(id));
+
   // Zutaten aller Rezepte im aktuellen Plan sammeln (für Einkaufsüberlappung)
   let planIngredients = null;
   if (planId) {
@@ -336,6 +342,13 @@ export async function generateWeekPlan(userId, options = {}) {
   } = options;
 
   // --- 1. Alle Rezepte des Benutzers laden (ggf. gefiltert nach Sammlungen) ---
+
+  // Gesperrte Rezepte laden
+  const blockedRecipeIds = db.prepare(
+    "SELECT recipe_id FROM recipe_blocks WHERE user_id = ? AND blocked_until >= date('now')"
+  ).all(userId).map(b => b.recipe_id);
+  const allExcludeIds = [...new Set([...excludeRecipeIds, ...blockedRecipeIds])];
+
   let collectionFilter = '';
   if (collectionIds.length > 0) {
     if (deduplicateCollections) {
@@ -363,7 +376,7 @@ export async function generateWeekPlan(userId, options = {}) {
     LEFT JOIN recipe_categories rc ON r.id = rc.recipe_id
     LEFT JOIN categories c ON rc.category_id = c.id
     WHERE r.user_id = ?
-    ${excludeRecipeIds.length ? `AND r.id NOT IN (${excludeRecipeIds.join(',')})` : ''}
+    ${allExcludeIds.length ? `AND r.id NOT IN (${allExcludeIds.join(',')})` : ''}
     ${collectionFilter}
     GROUP BY r.id
     ORDER BY r.last_cooked_at ASC NULLS FIRST, r.times_cooked ASC
