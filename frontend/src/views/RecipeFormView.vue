@@ -15,7 +15,7 @@
       {{ isEdit ? 'Rezept bearbeiten' : 'Neues Rezept' }}
     </h1>
 
-    <form @submit.prevent="saveRecipe" class="space-y-6">
+    <form id="recipe-form" @submit.prevent="saveRecipe" class="space-y-6">
       <!-- Grunddaten -->
       <section class="space-y-4 card">
         <h2 class="font-semibold text-stone-800 dark:text-stone-100 text-lg">📝 Grunddaten</h2>
@@ -179,10 +179,16 @@
         </button>
       </section>
 
-      <!-- Absenden -->
-      <div class="flex gap-3">
+      <!-- Spacer für floating Buttons -->
+      <div class="h-20"></div>
+    </form>
+
+    <!-- Floating Speichern/Abbrechen -->
+    <div class="right-0 bottom-0 left-0 z-40 fixed bg-white/90 dark:bg-stone-950/90 shadow-[0_-2px_10px_rgba(0,0,0,0.08)] backdrop-blur-sm px-4 sm:px-6 py-3 border-stone-200 dark:border-stone-800 border-t">
+      <div class="flex justify-center gap-3 mx-auto max-w-3xl">
         <button
           type="submit"
+          form="recipe-form"
           :disabled="saving"
           class="flex items-center gap-2 bg-primary-600 hover:bg-primary-700 disabled:opacity-50 px-6 py-3 rounded-xl font-medium text-white transition-colors"
         >
@@ -196,7 +202,7 @@
           Abbrechen
         </router-link>
       </div>
-    </form>
+    </div>
 
     <!-- Bild-Zuschnitt Modal -->
     <ImageCropModal

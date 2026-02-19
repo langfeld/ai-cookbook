@@ -78,7 +78,7 @@
           </button>
           <Transition name="fade">
             <div v-if="showSlotSettings"
-              class="right-0 z-30 absolute bg-white dark:bg-stone-900 shadow-lg mt-2 p-3 border border-stone-200 dark:border-stone-700 rounded-xl w-52">
+              class="sm:right-0 left-0 sm:left-auto z-30 absolute bg-white dark:bg-stone-900 shadow-lg mt-2 p-3 border border-stone-200 dark:border-stone-700 rounded-xl w-52">
               <p class="mb-2 font-medium text-stone-700 dark:text-stone-300 text-xs uppercase tracking-wide">Sichtbare Zeitslots</p>
               <label v-for="mt in allMealTypes" :key="mt.key"
                 class="flex items-center gap-2 hover:bg-stone-50 dark:hover:bg-stone-800 px-2 py-1.5 rounded-lg transition-colors cursor-pointer">

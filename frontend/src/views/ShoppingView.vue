@@ -19,7 +19,7 @@
           {{ checkedCount }} / {{ totalCount }} erledigt
         </p>
       </div>
-      <div class="flex gap-2">
+      <div class="flex flex-wrap items-stretch gap-2">
         <button
           @click="toggleRecipeLinks"
           :title="showRecipeLinks ? 'Rezept-Links ausblenden' : 'Rezept-Links einblenden'"
