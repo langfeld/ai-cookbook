@@ -126,15 +126,17 @@
           </div>
 
           <!-- Zutaten in der Gruppe -->
-          <div v-for="(ing, iIdx) in group.items" :key="iIdx" class="flex flex-wrap sm:flex-nowrap items-start gap-2">
-            <input v-model.number="ing.amount" type="number" step="0.01" min="0" class="w-full sm:w-20 form-input" placeholder="Menge" />
-            <input v-model="ing.unit" type="text" class="w-full sm:w-20 form-input" placeholder="Einheit" />
-            <input v-model="ing.name" type="text" class="flex-1 min-w-0 form-input" placeholder="Zutat" required />
-            <label class="flex items-center gap-1 mt-2 text-stone-400 text-xs cursor-pointer shrink-0">
+          <div v-for="(ing, iIdx) in group.items" :key="iIdx"
+               class="items-start gap-2 grid grid-cols-[1fr_1fr] sm:grid-cols-[5rem_6rem_1fr_auto_auto]"
+          >
+            <input v-model.number="ing.amount" type="number" step="0.01" min="0" class="form-input" placeholder="Menge" />
+            <input v-model="ing.unit" type="text" class="form-input" placeholder="Einheit" />
+            <input v-model="ing.name" type="text" class="col-span-2 sm:col-span-1 form-input" placeholder="Zutat (z.B. Kartoffeln)" required />
+            <label class="flex items-center gap-1 py-2 text-stone-400 text-xs cursor-pointer">
               <input type="checkbox" v-model="ing.is_optional" class="rounded" />
               opt.
             </label>
-            <button type="button" @click="group.items.splice(iIdx, 1)" class="mt-2 text-red-400 hover:text-red-500 shrink-0">
+            <button type="button" @click="group.items.splice(iIdx, 1)" class="py-2 text-red-400 hover:text-red-500">
               <Trash2 class="w-4 h-4" />
             </button>
           </div>
