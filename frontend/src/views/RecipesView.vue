@@ -58,9 +58,9 @@
     </div>
 
     <!-- Filter-Leiste -->
-    <div class="flex flex-wrap items-center gap-3 bg-white dark:bg-stone-900 p-4 border border-stone-200 dark:border-stone-800 rounded-xl">
+    <div class="sm:flex sm:flex-wrap sm:items-center gap-3 grid grid-cols-2 bg-white dark:bg-stone-900 p-4 border border-stone-200 dark:border-stone-800 rounded-xl">
       <!-- Suche -->
-      <div class="relative flex-1 min-w-48">
+      <div class="relative sm:flex-1 col-span-2 sm:min-w-48">
         <Search class="top-1/2 left-3 absolute w-4 h-4 text-stone-400 -translate-y-1/2" />
         <input
           v-model="recipesStore.filters.search"
@@ -75,7 +75,7 @@
       <select
         v-model="recipesStore.filters.category"
         @change="recipesStore.fetchRecipes()"
-        class="bg-stone-50 dark:bg-stone-800 px-3 py-2 border border-stone-200 dark:border-stone-700 rounded-lg outline-none text-stone-700 dark:text-stone-300 text-sm"
+        class="bg-stone-50 dark:bg-stone-800 px-3 py-2 border border-stone-200 dark:border-stone-700 rounded-lg outline-none w-full sm:w-auto text-stone-700 dark:text-stone-300 text-sm"
       >
         <option value="">Alle Kategorien</option>
         <option v-for="cat in recipesStore.categories" :key="cat.id" :value="cat.name">
@@ -87,7 +87,7 @@
       <select
         v-model="selectedCollectionFilter"
         @change="applyCollectionFilter"
-        class="bg-stone-50 dark:bg-stone-800 px-3 py-2 border border-stone-200 dark:border-stone-700 rounded-lg outline-none text-stone-700 dark:text-stone-300 text-sm"
+        class="bg-stone-50 dark:bg-stone-800 px-3 py-2 border border-stone-200 dark:border-stone-700 rounded-lg outline-none w-full sm:w-auto text-stone-700 dark:text-stone-300 text-sm"
       >
         <option value="">Alle Sammlungen</option>
         <option v-for="col in collectionsStore.collections" :key="col.id" :value="col.id">
@@ -99,7 +99,7 @@
       <select
         v-model="recipesStore.filters.difficulty"
         @change="recipesStore.fetchRecipes()"
-        class="bg-stone-50 dark:bg-stone-800 px-3 py-2 border border-stone-200 dark:border-stone-700 rounded-lg outline-none text-stone-700 dark:text-stone-300 text-sm"
+        class="bg-stone-50 dark:bg-stone-800 px-3 py-2 border border-stone-200 dark:border-stone-700 rounded-lg outline-none w-full sm:w-auto text-stone-700 dark:text-stone-300 text-sm"
       >
         <option value="">Alle Schwierigkeiten</option>
         <option value="leicht">🟢 Leicht</option>
