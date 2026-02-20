@@ -17,7 +17,7 @@
         <!-- Header -->
         <div class="flex justify-between items-center p-5 border-stone-200 dark:border-stone-700 border-b">
           <h2 class="font-display font-bold text-stone-800 dark:text-stone-100 text-xl">
-            🔗 Zutaten-Aliase Export/Import
+            🔗 Zutaten-Einstellungen Export/Import
           </h2>
           <button
             @click="$emit('close')"
@@ -61,8 +61,7 @@
           <!-- EXPORT TAB -->
           <div v-if="activeTab === 'export'" class="space-y-4">
             <p class="text-stone-600 dark:text-stone-400 text-sm">
-              Exportiere alle Zutaten-Aliase als JSON-Datei (Backup).
-              Damit bleiben die Zusammenfassungen ähnlicher Zutaten erhalten.
+              Exportiere alle Zutaten-Einstellungen (Aliase + geblockte Zutaten) als JSON-Datei (Backup).
             </p>
 
             <!-- User-Filter -->
@@ -87,14 +86,14 @@
             >
               <Loader2 v-if="exporting" class="w-4 h-4 animate-spin" />
               <Download v-else class="w-4 h-4" />
-              {{ exporting ? 'Exportiere...' : 'Aliase exportieren' }}
+              {{ exporting ? 'Exportiere...' : 'Zutaten-Einstellungen exportieren' }}
             </button>
           </div>
 
           <!-- IMPORT TAB -->
           <div v-if="activeTab === 'import'" class="space-y-4">
             <p class="text-stone-600 dark:text-stone-400 text-sm">
-              Importiere Zutaten-Aliase aus einer zuvor exportierten JSON-Datei.
+              Importiere Zutaten-Einstellungen (Aliase + geblockte Zutaten) aus einer zuvor exportierten JSON-Datei.
               Bestehende Aliase für gleiche Zutatennamen werden aktualisiert.
             </p>
 
@@ -160,15 +159,15 @@
                 📋 Vorschau
               </p>
               <p class="text-stone-500 dark:text-stone-400 text-xs">
-                {{ filePreview.alias_count }} Aliase gefunden
+                {{ filePreview.alias_count }} Aliase, {{ filePreview.blocked_count }} geblockte Zutaten
                 <span v-if="filePreview.exported_at"> · Exportiert am {{ formatDate(filePreview.exported_at) }}</span>
               </p>
               <div v-if="filePreview.sample_items?.length" class="space-y-1 mt-2">
                 <p v-for="item in filePreview.sample_items" :key="item" class="text-stone-600 dark:text-stone-400 text-xs">
                   • {{ item }}
                 </p>
-                <p v-if="filePreview.alias_count > 5" class="text-stone-400 text-xs italic">
-                  ... und {{ filePreview.alias_count - 5 }} weitere
+                <p v-if="(filePreview.alias_count + filePreview.blocked_count) > 5" class="text-stone-400 text-xs italic">
+                  ... und {{ (filePreview.alias_count + filePreview.blocked_count) - filePreview.sample_items.length }} weitere
                 </p>
               </div>
             </div>
@@ -181,7 +180,7 @@
             >
               <Loader2 v-if="importing" class="w-4 h-4 animate-spin" />
               <Upload v-else class="w-4 h-4" />
-              {{ importing ? 'Importiere...' : 'Aliase importieren' }}
+              {{ importing ? 'Importiere...' : 'Zutaten-Einstellungen importieren' }}
             </button>
 
             <!-- Ergebnis -->
@@ -245,8 +244,8 @@ async function handleExport() {
     });
     if (!response.ok) throw new Error('Export fehlgeschlagen');
     const blob = await response.blob();
-    downloadBlob(blob, `admin-ingredient-aliases-export-${new Date().toISOString().split('T')[0]}.json`);
-    showSuccess('Zutaten-Aliase erfolgreich exportiert!');
+    downloadBlob(blob, `admin-zutaten-einstellungen-export-${new Date().toISOString().split('T')[0]}.json`);
+    showSuccess('Zutaten-Einstellungen erfolgreich exportiert!');
   } catch (err) {
     showError(err.message || 'Export fehlgeschlagen');
   } finally {
@@ -289,17 +288,30 @@ async function processFile(file) {
   try {
     const text = await file.text();
     const data = JSON.parse(text);
-    if (data.aliases?.length) {
+    const aliasCount = data.aliases?.length || 0;
+    const blockedCount = data.blocked_ingredients?.length || 0;
+
+    if (aliasCount > 0 || blockedCount > 0) {
+      const sampleItems = [];
+      if (data.aliases?.length) {
+        sampleItems.push(...data.aliases.slice(0, 3).map(a =>
+          `🔗 ${a.alias_name} → ${a.canonical_name}${a.owner ? ' [' + a.owner + ']' : ''}`
+        ));
+      }
+      if (data.blocked_ingredients?.length) {
+        sampleItems.push(...data.blocked_ingredients.slice(0, 2).map(b =>
+          `🚫 ${b.ingredient_name}${b.owner ? ' [' + b.owner + ']' : ''}`
+        ));
+      }
       filePreview.value = {
-        alias_count: data.aliases.length,
+        alias_count: aliasCount,
+        blocked_count: blockedCount,
         exported_at: data.exported_at,
-        sample_items: data.aliases.slice(0, 5).map(a =>
-          `${a.alias_name} → ${a.canonical_name}${a.owner ? ' [' + a.owner + ']' : ''}`
-        ),
+        sample_items: sampleItems,
       };
     } else {
       filePreview.value = null;
-      showError('Keine Aliase in der Datei gefunden.');
+      showError('Keine Daten in der Datei gefunden.');
     }
   } catch {
     filePreview.value = null;

@@ -79,6 +79,7 @@ export default async function adminRoutes(fastify) {
     const rewePrefsCount = db.prepare('SELECT COUNT(*) as count FROM rewe_product_preferences').get().count;
     const aliasCount = db.prepare('SELECT COUNT(*) as count FROM ingredient_aliases').get().count;
     const recipeBlockCount = db.prepare('SELECT COUNT(*) as count FROM recipe_blocks').get().count;
+    const blockedIngredientCount = db.prepare('SELECT COUNT(*) as count FROM blocked_ingredients').get().count;
 
     // Top 10 beliebteste Rezepte
     const popularRecipes = db.prepare(`
@@ -138,6 +139,7 @@ export default async function adminRoutes(fastify) {
       total_cook_count: cookingCount,
       rewe_preferences: rewePrefsCount,
       ingredient_aliases: aliasCount,
+      blocked_ingredients: blockedIngredientCount,
       recipe_blocks: recipeBlockCount,
       storage_size: storageSize,
       db_size: dbSize?.size || 0,
