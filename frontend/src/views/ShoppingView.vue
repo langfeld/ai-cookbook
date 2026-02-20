@@ -1381,7 +1381,11 @@ const reweMatchPercent = computed(() => {
 
 const estimatedTotal = computed(() => {
   if (!shoppingStore.activeList?.items) return 0;
-  return shoppingStore.activeList.items.reduce((sum, item) => sum + (item.rewe_product?.price || 0), 0);
+  return shoppingStore.activeList.items.reduce((sum, item) => {
+    const price = item.rewe_product?.price || 0;
+    const qty = item.rewe_product?.quantity || 1;
+    return sum + (price * qty);
+  }, 0);
 });
 
 /** Zutat → Supermarkt-Abteilung zuordnen */
