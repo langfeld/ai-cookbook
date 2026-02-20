@@ -90,33 +90,64 @@
             </div>
           </Transition>
         </div>
-        <!-- Zutaten-Einstellungen (Split-Button: Einstellungen + Merge) -->
+        <!-- Zusammenfassen (Split-Button: Merge-Modus + Alias-Verwaltung) -->
         <div v-if="shoppingStore.activeList" class="flex items-stretch">
           <button
-            @click="showAliasManager = true"
+            @click="toggleMergeMode"
             :class="[
               'flex items-center gap-1.5 px-3 py-2 text-sm font-medium transition-colors border',
               mergeMode
                 ? 'bg-violet-50 dark:bg-violet-900/30 border-violet-300 dark:border-violet-700 text-violet-700 dark:text-violet-300'
                 : 'bg-stone-100 dark:bg-stone-800 border-stone-300 dark:border-stone-600 text-stone-500 dark:text-stone-400 hover:text-stone-700 dark:hover:text-stone-200',
-              'rounded-l-xl border-r-0'
-            ]"
-            title="Zutaten-Einstellungen"
-          >
-            <Settings class="w-4 h-4" />
-            <span class="hidden sm:inline">Zutaten</span>
-          </button>
-          <button
-            @click="toggleMergeMode"
-            :class="[
-              'flex items-center px-2 rounded-r-xl text-sm transition-colors border',
-              mergeMode
-                ? 'bg-violet-50 dark:bg-violet-900/30 border-violet-300 dark:border-violet-700 border-l-violet-400 dark:border-l-violet-600 text-violet-600 dark:text-violet-300'
-                : 'bg-stone-100 dark:bg-stone-800 border-stone-300 dark:border-stone-600 border-l-stone-400 dark:border-l-stone-500 text-stone-400 dark:text-stone-500 hover:text-stone-600 dark:hover:text-stone-300'
+              aliasStore.aliases.length > 0 ? 'rounded-l-xl border-r-0' : 'rounded-xl'
             ]"
             :title="mergeMode ? 'Zusammenfassen beenden' : 'Zutaten zusammenfassen'"
           >
-            <Merge class="w-3.5 h-3.5" />
+            <Merge class="w-4 h-4" />
+            <span class="hidden sm:inline">Zusammenfassen</span>
+          </button>
+          <button
+            v-if="aliasStore.aliases.length > 0"
+            @click="showAliasManager = true"
+            :class="[
+              'flex items-center px-2 rounded-r-xl text-sm transition-colors border',
+              mergeMode
+                ? 'bg-violet-50 dark:bg-violet-900/30 border-violet-300 dark:border-violet-700 border-l-violet-400 dark:border-l-violet-600 text-violet-500 dark:text-violet-400 hover:text-violet-700'
+                : 'bg-stone-100 dark:bg-stone-800 border-stone-300 dark:border-stone-600 border-l-stone-400 dark:border-l-stone-500 text-stone-400 dark:text-stone-500 hover:text-stone-600 dark:hover:text-stone-300'
+            ]"
+            title="Gespeicherte Zusammenfassungen verwalten"
+          >
+            <Settings class="w-3.5 h-3.5" />
+          </button>
+        </div>
+        <!-- Blockieren (Split-Button: Block-Modus + Blockliste verwalten) -->
+        <div v-if="shoppingStore.activeList" class="flex items-stretch">
+          <button
+            @click="toggleBlockMode"
+            :class="[
+              'flex items-center gap-1.5 px-3 py-2 text-sm font-medium transition-colors border',
+              blockMode
+                ? 'bg-red-50 dark:bg-red-900/30 border-red-300 dark:border-red-700 text-red-700 dark:text-red-300'
+                : 'bg-stone-100 dark:bg-stone-800 border-stone-300 dark:border-stone-600 text-stone-500 dark:text-stone-400 hover:text-stone-700 dark:hover:text-stone-200',
+              aliasStore.blockedIngredients.length > 0 ? 'rounded-l-xl border-r-0' : 'rounded-xl'
+            ]"
+            :title="blockMode ? 'Blockieren beenden' : 'Zutaten zum Blockieren auswählen'"
+          >
+            <Ban class="w-4 h-4" />
+            <span class="hidden sm:inline">Blockieren</span>
+          </button>
+          <button
+            v-if="aliasStore.blockedIngredients.length > 0"
+            @click="showBlockManager = true"
+            :class="[
+              'flex items-center px-2 rounded-r-xl text-sm transition-colors border',
+              blockMode
+                ? 'bg-red-50 dark:bg-red-900/30 border-red-300 dark:border-red-700 border-l-red-400 dark:border-l-red-600 text-red-500 dark:text-red-400 hover:text-red-700'
+                : 'bg-stone-100 dark:bg-stone-800 border-stone-300 dark:border-stone-600 border-l-stone-400 dark:border-l-stone-500 text-stone-400 dark:text-stone-500 hover:text-stone-600 dark:hover:text-stone-300'
+            ]"
+            title="Blockierte Zutaten verwalten"
+          >
+            <Settings class="w-3.5 h-3.5" />
           </button>
         </div>
         <!-- Aus Wochenplan erstellen (Split-Button) -->
@@ -340,6 +371,34 @@
         </div>
       </Transition>
 
+      <!-- Block-Mode Hinweis -->
+      <Transition name="slide">
+        <div v-if="blockMode" class="flex items-center gap-3 bg-red-50 dark:bg-red-900/20 p-4 border border-red-200 dark:border-red-800 rounded-xl">
+          <Ban class="w-5 h-5 text-red-600 dark:text-red-400 shrink-0" />
+          <div class="flex-1">
+            <p class="font-medium text-red-800 dark:text-red-200 text-sm">
+              <template v-if="blockSelection.length === 0">Klicke auf die Zutaten, die zukünftig blockiert werden sollen.</template>
+              <template v-else>
+                <span v-for="(sel, i) in blockSelection" :key="sel.id">
+                  <span v-if="i > 0" class="text-red-400">, </span>
+                  <span class="bg-red-200 dark:bg-red-800 px-1.5 py-0.5 rounded font-semibold">{{ sel.ingredient_name }}</span>
+                </span>
+              </template>
+            </p>
+          </div>
+          <button
+            v-if="blockSelection.length >= 1"
+            @click="confirmBlockSelection"
+            class="bg-red-600 hover:bg-red-700 px-3 py-1.5 rounded-lg font-medium text-white text-sm transition-colors shrink-0"
+          >
+            Blockieren ({{ blockSelection.length }})
+          </button>
+          <button @click="toggleBlockMode" class="hover:bg-red-100 dark:hover:bg-red-800/50 p-1.5 rounded-lg text-red-500 transition-colors">
+            <X class="w-4 h-4" />
+          </button>
+        </div>
+      </Transition>
+
       <!-- Kategorien als Masonry-Layout auf breiten Screens -->
       <div class="gap-6 space-y-6 lg:columns-2">
         <div
@@ -359,23 +418,28 @@
             <div
               v-for="item in items"
               :key="item.id"
-              @click="mergeMode ? handleMergeClick(item) : null"
+              @click="mergeMode ? handleMergeClick(item) : blockMode ? handleBlockClick(item) : null"
               :class="[
                 'transition-all',
-                mergeMode
-                  ? 'cursor-pointer hover:bg-violet-50 dark:hover:bg-violet-900/20'
+                (mergeMode || blockMode)
+                  ? 'cursor-pointer'
                   : '',
+                mergeMode ? 'hover:bg-violet-50 dark:hover:bg-violet-900/20' : '',
+                blockMode ? 'hover:bg-red-50 dark:hover:bg-red-900/20' : '',
                 item.is_checked ? 'opacity-50' : '',
                 mergeMode && mergeSelection.some(s => s.id === item.id)
                   ? 'bg-violet-100 dark:bg-violet-900/30 ring-2 ring-violet-400 ring-inset'
+                  : '',
+                blockMode && blockSelection.some(s => s.id === item.id)
+                  ? 'bg-red-100 dark:bg-red-900/30 ring-2 ring-red-400 ring-inset'
                   : ''
               ]"
             >
               <!-- Obere Zeile: Checkbox + Name + Menge + Aktionen -->
               <div class="flex items-center gap-3 px-4 py-3">
-                <!-- Checkbox (im Merge-Modus: Merge-Indikator) -->
+                <!-- Checkbox (im Merge-Modus: Merge-Indikator, im Block-Modus: Block-Indikator) -->
                 <button
-                  v-if="!mergeMode"
+                  v-if="!mergeMode && !blockMode"
                   @click.stop="toggleItem(item)"
                   :class="[
                     'w-6 h-6 rounded-full border-2 flex items-center justify-center shrink-0 transition-all',
@@ -387,7 +451,7 @@
                   <Check v-if="item.is_checked" class="w-3.5 h-3.5 text-white" />
                 </button>
                 <div
-                  v-else
+                  v-else-if="mergeMode"
                   :class="[
                     'w-6 h-6 rounded-full border-2 flex items-center justify-center shrink-0 transition-all',
                     mergeSelection.some(s => s.id === item.id)
@@ -396,6 +460,17 @@
                   ]"
                 >
                   <Check v-if="mergeSelection.some(s => s.id === item.id)" class="w-3.5 h-3.5 text-white" />
+                </div>
+                <div
+                  v-else-if="blockMode"
+                  :class="[
+                    'w-6 h-6 rounded-full border-2 flex items-center justify-center shrink-0 transition-all',
+                    blockSelection.some(s => s.id === item.id)
+                      ? 'bg-red-500 border-red-500'
+                      : 'border-red-300 dark:border-red-600'
+                  ]"
+                >
+                  <Check v-if="blockSelection.some(s => s.id === item.id)" class="w-3.5 h-3.5 text-white" />
                 </div>
 
                 <!-- Artikelname + Rezept-Thumbnails -->
@@ -429,7 +504,7 @@
                 </div>
 
                 <!-- Aktionen (immer sichtbar, größere Touch-Targets) -->
-                <div v-if="!mergeMode" class="flex items-center gap-0.5 shrink-0">
+                <div v-if="!mergeMode && !blockMode" class="flex items-center gap-0.5 shrink-0">
                   <button
                     @click.stop="moveToPantry(item)"
                     class="hover:bg-amber-50 dark:hover:bg-amber-900/30 p-2 rounded-lg text-stone-400 hover:text-amber-600 dark:hover:text-amber-400 dark:text-stone-500 transition-colors"
@@ -448,7 +523,7 @@
               </div>
 
               <!-- REWE-Produkt-Karte (wenn zugewiesen) -->
-              <div v-if="item.rewe_product && !mergeMode" class="mx-3 mb-3">
+              <div v-if="item.rewe_product && !mergeMode && !blockMode" class="mx-3 mb-3">
                 <div class="bg-stone-50 dark:bg-stone-800/60 border border-stone-200 dark:border-stone-700 rounded-xl overflow-hidden">
                   <!-- Produktinfo mit Bild -->
                   <div class="flex items-center gap-3 p-3">
@@ -528,7 +603,7 @@
               </div>
 
               <!-- Kein REWE-Produkt → Suche anbieten -->
-              <div v-else-if="!mergeMode && (shoppingStore.reweLinkedItems.length > 0 || reweLoading) && !item.rewe_product" class="-mt-1 px-4 pb-3">
+              <div v-else-if="!mergeMode && !blockMode && (shoppingStore.reweLinkedItems.length > 0 || reweLoading) && !item.rewe_product" class="-mt-1 px-4 pb-3">
                 <button
                   @click.stop="openProductPicker(item)"
                   class="flex items-center gap-1.5 hover:bg-stone-50 dark:hover:bg-stone-800/50 px-3 py-1.5 rounded-lg text-stone-400 hover:text-rewe-600 dark:hover:text-rewe-400 text-xs transition-colors"
@@ -1353,50 +1428,6 @@
       @confirm="confirmCompletePurchase"
     />
 
-    <!-- Lösch-Dialog: Zutat entfernen + optional blockieren -->
-    <Teleport to="body">
-      <Transition name="fade">
-        <div v-if="deleteConfirmItem" class="z-50 fixed inset-0 flex justify-center items-end sm:items-center bg-black/50 p-4" @click.self="deleteConfirmItem = null">
-          <div class="bg-white dark:bg-stone-900 shadow-2xl rounded-2xl w-full max-w-sm overflow-hidden">
-            <!-- Header -->
-            <div class="flex justify-between items-center px-5 py-4 border-stone-200 dark:border-stone-700 border-b">
-              <h2 class="flex items-center gap-2 font-display font-bold text-stone-800 dark:text-stone-100 text-lg">
-                <Trash2 class="w-5 h-5 text-red-500" />
-                Artikel entfernen
-              </h2>
-              <button @click="deleteConfirmItem = null" class="hover:bg-stone-100 dark:hover:bg-stone-800 p-1.5 rounded-lg text-stone-400 transition-colors">
-                <X class="w-5 h-5" />
-              </button>
-            </div>
-            <div class="space-y-3 p-5">
-              <p class="text-stone-600 dark:text-stone-300 text-sm">
-                <strong>„{{ deleteConfirmItem.ingredient_name }}"</strong> von der Einkaufsliste entfernen?
-              </p>
-              <!-- Nur entfernen -->
-              <button
-                @click="confirmDeleteItem(false)"
-                class="flex justify-center items-center gap-2 bg-stone-100 hover:bg-stone-200 dark:bg-stone-800 dark:hover:bg-stone-700 py-3 rounded-xl w-full font-medium text-stone-700 dark:text-stone-300 text-sm transition-colors"
-              >
-                <Trash2 class="w-4 h-4" />
-                Nur entfernen
-              </button>
-              <!-- Entfernen + Blockieren -->
-              <button
-                @click="confirmDeleteItem(true)"
-                class="flex justify-center items-center gap-2 bg-red-50 hover:bg-red-100 dark:bg-red-900/20 dark:hover:bg-red-900/40 py-3 border border-red-200 dark:border-red-800 rounded-xl w-full font-medium text-red-700 dark:text-red-300 text-sm transition-colors"
-              >
-                <Ban class="w-4 h-4" />
-                Entfernen &amp; zukünftig blockieren
-              </button>
-              <p class="text-stone-400 dark:text-stone-500 text-xs text-center">
-                💡 Geblockte Zutaten erscheinen nicht mehr in automatisch erstellten Einkaufslisten.
-              </p>
-            </div>
-          </div>
-        </div>
-      </Transition>
-    </Teleport>
-
     <!-- Merge-Dialog -->
     <Teleport to="body">
       <Transition name="fade">
@@ -1452,7 +1483,7 @@
       </Transition>
     </Teleport>
 
-    <!-- Zutaten-Einstellungen Modal (Aliase + Geblockte Zutaten) -->
+    <!-- Zusammenfassungen verwalten (nur Aliase) -->
     <Teleport to="body">
       <Transition name="fade">
         <div v-if="showAliasManager" class="z-50 fixed inset-0 flex justify-center items-end sm:items-center bg-black/50 p-4" @click.self="showAliasManager = false">
@@ -1460,9 +1491,12 @@
             <!-- Header -->
             <div class="flex justify-between items-center px-5 py-4 border-stone-200 dark:border-stone-700 border-b shrink-0">
               <div>
-                <h2 class="font-display font-bold text-stone-800 dark:text-stone-100 text-lg">⚙️ Zutaten-Einstellungen</h2>
+                <h2 class="flex items-center gap-2 font-display font-bold text-stone-800 dark:text-stone-100 text-lg">
+                  <Merge class="w-5 h-5 text-violet-600" />
+                  Zusammenfassungen
+                </h2>
                 <p class="mt-0.5 text-stone-500 dark:text-stone-400 text-xs">
-                  {{ aliasStore.aliases.length }} Zusammenfassungen · {{ aliasStore.blockedIngredients.length }} blockiert
+                  {{ aliasStore.aliases.length }} gespeicherte Regeln
                 </p>
               </div>
               <button @click="showAliasManager = false" class="hover:bg-stone-100 dark:hover:bg-stone-800 p-1.5 rounded-lg text-stone-400 transition-colors">
@@ -1470,36 +1504,12 @@
               </button>
             </div>
 
-            <!-- Tabs -->
-            <div class="flex border-stone-200 dark:border-stone-700 border-b shrink-0">
-              <button
-                @click="aliasManagerTab = 'aliases'"
-                :class="[
-                  'flex-1 px-4 py-2.5 text-sm font-medium transition-colors',
-                  aliasManagerTab === 'aliases'
-                    ? 'text-violet-600 dark:text-violet-400 border-b-2 border-violet-600 dark:border-violet-400'
-                    : 'text-stone-500 hover:text-stone-700 dark:hover:text-stone-300'
-                ]"
-              >
-                🔗 Zusammenfassungen ({{ aliasStore.aliases.length }})
-              </button>
-              <button
-                @click="aliasManagerTab = 'blocked'"
-                :class="[
-                  'flex-1 px-4 py-2.5 text-sm font-medium transition-colors',
-                  aliasManagerTab === 'blocked'
-                    ? 'text-red-600 dark:text-red-400 border-b-2 border-red-600 dark:border-red-400'
-                    : 'text-stone-500 hover:text-stone-700 dark:hover:text-stone-300'
-                ]"
-              >
-                🚫 Blockiert ({{ aliasStore.blockedIngredients.length }})
-              </button>
-            </div>
-
-            <!-- Aliase Tab -->
-            <div v-if="aliasManagerTab === 'aliases'" class="flex-1 p-4 overflow-y-auto">
+            <!-- Aliase-Liste -->
+            <div class="flex-1 p-4 overflow-y-auto">
               <div v-if="aliasStore.aliases.length === 0" class="py-8 text-stone-400 dark:text-stone-500 text-sm text-center">
-                Keine Zusammenfassungen vorhanden.
+                <Merge class="mx-auto mb-2 w-8 h-8 text-stone-300 dark:text-stone-600" />
+                <p>Keine Zusammenfassungen vorhanden.</p>
+                <p class="mt-1 text-xs">Nutze den „Zusammenfassen"-Button, um ähnliche Zutaten zu vereinen.</p>
               </div>
               <div v-else class="space-y-2">
                 <div
@@ -1522,13 +1532,38 @@
                 </div>
               </div>
             </div>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
 
-            <!-- Geblockte Zutaten Tab -->
-            <div v-if="aliasManagerTab === 'blocked'" class="flex-1 p-4 overflow-y-auto">
+    <!-- Blockierte Zutaten verwalten -->
+    <Teleport to="body">
+      <Transition name="fade">
+        <div v-if="showBlockManager" class="z-50 fixed inset-0 flex justify-center items-end sm:items-center bg-black/50 p-4" @click.self="showBlockManager = false">
+          <div class="flex flex-col bg-white dark:bg-stone-900 shadow-2xl rounded-2xl w-full max-w-md max-h-[80vh] overflow-hidden">
+            <!-- Header -->
+            <div class="flex justify-between items-center px-5 py-4 border-stone-200 dark:border-stone-700 border-b shrink-0">
+              <div>
+                <h2 class="flex items-center gap-2 font-display font-bold text-stone-800 dark:text-stone-100 text-lg">
+                  <Ban class="w-5 h-5 text-red-500" />
+                  Blockierte Zutaten
+                </h2>
+                <p class="mt-0.5 text-stone-500 dark:text-stone-400 text-xs">
+                  {{ aliasStore.blockedIngredients.length }} blockiert – erscheinen nicht in neuen Listen
+                </p>
+              </div>
+              <button @click="showBlockManager = false" class="hover:bg-stone-100 dark:hover:bg-stone-800 p-1.5 rounded-lg text-stone-400 transition-colors">
+                <X class="w-5 h-5" />
+              </button>
+            </div>
+
+            <!-- Blockliste -->
+            <div class="flex-1 p-4 overflow-y-auto">
               <div v-if="aliasStore.blockedIngredients.length === 0" class="py-8 text-stone-400 dark:text-stone-500 text-sm text-center">
                 <Ban class="mx-auto mb-2 w-8 h-8 text-stone-300 dark:text-stone-600" />
                 <p>Keine blockierten Zutaten.</p>
-                <p class="mt-1 text-xs">Beim Entfernen von Artikeln aus der Einkaufsliste kannst du Zutaten blockieren.</p>
+                <p class="mt-1 text-xs">Nutze den „Blockieren"-Button, um Zutaten aus zukünftigen Listen auszuschließen.</p>
               </div>
               <div v-else class="space-y-2">
                 <div
@@ -1563,7 +1598,7 @@ import { useShoppingStore } from '@/stores/shopping.js';
 import { useMealPlanStore } from '@/stores/mealplan.js';
 import { useIngredientAliasStore } from '@/stores/ingredient-aliases.js';
 import { useNotification } from '@/composables/useNotification.js';
-import { ListPlus, Check, ShoppingBag, Plus, Minus, Package, BookOpen, BookX, ExternalLink, ShoppingCart, X, ArrowRightLeft, Search, Tag, Trash2, Star, Heart, Archive, Send, Link2, Unlink, ClipboardCopy, LogIn, LogOut, ChevronDown, ChevronLeft, ChevronRight, Loader2, Terminal, Download, Settings, RefreshCw, Merge, ArrowRight, History, RotateCcw, Ban, SlidersHorizontal } from 'lucide-vue-next';
+import { ListPlus, Check, ShoppingBag, Plus, Minus, Package, BookOpen, BookX, ExternalLink, ShoppingCart, X, ArrowRightLeft, Search, Tag, Trash2, Star, Heart, Archive, Send, Link2, Unlink, ClipboardCopy, LogIn, LogOut, ChevronDown, ChevronLeft, ChevronRight, Loader2, Terminal, Download, Settings, RefreshCw, Merge, ArrowRight, History, RotateCcw, Ban } from 'lucide-vue-next';
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue';
 
 const shoppingStore = useShoppingStore();
@@ -1692,10 +1727,11 @@ const mergeName = ref('');       // Gewählter Name für das zusammengefasste It
 
 // Alias-Verwaltung
 const showAliasManager = ref(false);
-const aliasManagerTab = ref('aliases');
 
-// Lösch-Dialog (mit Block-Option)
-const deleteConfirmItem = ref(null);
+// Blockier-Modus – Multi-Select
+const blockMode = ref(false);
+const blockSelection = ref([]);
+const showBlockManager = ref(false);
 
 const totalCount = computed(() => shoppingStore.activeList?.items?.length || 0);
 const checkedCount = computed(() => shoppingStore.activeList?.items?.filter(i => i.is_checked).length || 0);
@@ -1837,21 +1873,9 @@ async function addManualItem() {
 }
 
 async function deleteItem(item) {
-  deleteConfirmItem.value = item;
-}
-
-async function confirmDeleteItem(shouldBlock) {
-  const item = deleteConfirmItem.value;
-  if (!item) return;
-  deleteConfirmItem.value = null;
   try {
     await shoppingStore.deleteItem(item.id);
-    if (shouldBlock) {
-      await aliasStore.blockIngredient(item.ingredient_name);
-      showSuccess(`${item.ingredient_name} entfernt & blockiert 🚫`);
-    } else {
-      showSuccess(`${item.ingredient_name} entfernt 🗑️`);
-    }
+    showSuccess(`${item.ingredient_name} entfernt 🗑️`);
   } catch {
     showError('Artikel konnte nicht gelöscht werden.');
   }
@@ -2267,6 +2291,11 @@ function toggleMergeMode() {
   mergeMode.value = !mergeMode.value;
   mergeSelection.value = [];
   showMergeDialog.value = false;
+  // Block-Modus beenden wenn Merge startet
+  if (mergeMode.value) {
+    blockMode.value = false;
+    blockSelection.value = [];
+  }
 }
 
 function handleMergeClick(item) {
@@ -2337,6 +2366,49 @@ async function unblockIngredient(blocked) {
     showSuccess(`"${blocked.ingredient_name}" wieder freigegeben ✅`);
   } catch {
     showError('Freigabe fehlgeschlagen.');
+  }
+}
+
+// ============================================
+// Blockier-Modus Funktionen
+// ============================================
+
+function toggleBlockMode() {
+  blockMode.value = !blockMode.value;
+  blockSelection.value = [];
+  // Merge-Modus beenden wenn Block startet
+  if (blockMode.value) {
+    mergeMode.value = false;
+    mergeSelection.value = [];
+    showMergeDialog.value = false;
+  }
+}
+
+function handleBlockClick(item) {
+  if (!blockMode.value) return;
+  const idx = blockSelection.value.findIndex(s => s.id === item.id);
+  if (idx >= 0) {
+    blockSelection.value.splice(idx, 1);
+  } else {
+    blockSelection.value.push(item);
+  }
+}
+
+async function confirmBlockSelection() {
+  if (blockSelection.value.length === 0) return;
+  try {
+    // Alle ausgewählten Zutaten blockieren und von der Liste entfernen
+    const names = [];
+    for (const item of blockSelection.value) {
+      await aliasStore.blockIngredient(item.ingredient_name);
+      await shoppingStore.deleteItem(item.id);
+      names.push(item.ingredient_name);
+    }
+    showSuccess(`${names.length} Zutat${names.length > 1 ? 'en' : ''} blockiert: ${names.join(', ')} 🚫`);
+    blockSelection.value = [];
+    blockMode.value = false;
+  } catch {
+    showError('Blockieren fehlgeschlagen.');
   }
 }
 
