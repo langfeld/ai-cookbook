@@ -715,13 +715,17 @@
               </div>
 
               <!-- Tab-Content -->
-              <div class="flex-1 border-stone-200 dark:border-stone-700 border-t min-h-80 overflow-y-auto">
+              <div class="flex-1 border-stone-200 dark:border-stone-700 border-t min-h-[530px] overflow-y-auto">
 
                 <!-- ========== REWE Tab ========== -->
                 <div v-if="settingsTab === 'rewe'" class="space-y-4 p-5">
 
                   <!-- Mein REWE-Markt (eingeklappt wenn gesetzt) -->
-                  <div class="bg-stone-50 dark:bg-stone-800/50 border border-stone-200 dark:border-stone-700 rounded-xl overflow-hidden">
+                  <h3 class="flex items-center gap-2 font-medium text-stone-700 dark:text-stone-300 text-sm">
+                    <MapPin class="w-4 h-4 text-rewe-500" />
+                    Mein REWE-Markt
+                  </h3>
+                  <div class="bg-stone-50 dark:bg-stone-800/50 -mt-1 border border-stone-200 dark:border-stone-700 rounded-xl overflow-hidden">
                     <!-- Markt-Header (immer sichtbar) -->
                     <button
                       v-if="reweMarketId"
@@ -803,7 +807,10 @@
 
                   <!-- Bestell-Methode (kompakt) -->
                   <div>
-                    <label class="block mb-2 font-medium text-stone-700 dark:text-stone-300 text-sm">Bestell-Methode</label>
+                    <h3 class="flex items-center gap-2 mb-2 font-medium text-stone-700 dark:text-stone-300 text-sm">
+                      <ShoppingCart class="w-4 h-4 text-rewe-500" />
+                      Bestell-Methode
+                    </h3>
                     <div class="flex gap-2">
                       <label
                         v-for="opt in reweActionOptions"
@@ -861,6 +868,10 @@
                   <div class="border-stone-200 dark:border-stone-700 border-t"></div>
 
                   <!-- Bevorzugte Produkte -->
+                  <h3 class="flex items-center gap-2 font-medium text-stone-700 dark:text-stone-300 text-sm">
+                    <Star class="w-4 h-4 text-rewe-500" />
+                    Produkt-Zuordnungen
+                  </h3>
                   <button
                     @click="openRewePreferences()"
                     class="group flex items-center gap-3 bg-stone-50 hover:bg-stone-100 dark:bg-stone-800 dark:hover:bg-stone-700 px-4 py-3 border border-stone-200 dark:border-stone-700 rounded-xl w-full text-left transition-colors"
