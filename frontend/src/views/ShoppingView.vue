@@ -715,127 +715,108 @@
               </div>
 
               <!-- Tab-Content -->
-              <div class="flex-1 border-stone-200 dark:border-stone-700 border-t overflow-y-auto">
+              <div class="flex-1 border-stone-200 dark:border-stone-700 border-t min-h-80 overflow-y-auto">
 
                 <!-- ========== REWE Tab ========== -->
-                <div v-if="settingsTab === 'rewe'" class="space-y-5 p-5">
+                <div v-if="settingsTab === 'rewe'" class="space-y-4 p-5">
 
-                  <!-- Mein REWE-Markt -->
-                  <div>
-                    <h3 class="flex items-center gap-2 mb-3 font-medium text-stone-700 dark:text-stone-300 text-sm">
-                      <MapPin class="w-4 h-4 text-rewe-500" />
-                      Mein REWE-Markt
-                    </h3>
-
-                    <!-- Aktueller Markt -->
-                    <div v-if="reweMarketId" class="bg-rewe-50 dark:bg-rewe-900/20 mb-3 p-3 border border-rewe-200 dark:border-rewe-800 rounded-xl">
-                      <div class="flex justify-between items-start gap-2">
-                        <div class="min-w-0">
-                          <span class="font-medium text-stone-800 dark:text-stone-200 text-sm">
-                            {{ reweMarketName || 'REWE Markt' }}
-                          </span>
-                          <p class="mt-0.5 text-stone-500 dark:text-stone-400 text-xs">
-                            <span v-if="reweZipCode">PLZ {{ reweZipCode }} · </span>
-                            ID: {{ reweMarketId }}
-                          </p>
-                        </div>
-                        <button
-                          @click="resetReweMarket"
-                          class="hover:bg-stone-100 dark:hover:bg-stone-800 p-1 rounded-lg text-stone-400 hover:text-stone-600 transition-colors shrink-0"
-                          title="REWE-Markt entfernen"
-                        >
-                          <RotateCcw class="w-3.5 h-3.5" />
-                        </button>
+                  <!-- Mein REWE-Markt (eingeklappt wenn gesetzt) -->
+                  <div class="bg-stone-50 dark:bg-stone-800/50 border border-stone-200 dark:border-stone-700 rounded-xl overflow-hidden">
+                    <!-- Markt-Header (immer sichtbar) -->
+                    <button
+                      v-if="reweMarketId"
+                      @click="reweMarketExpanded = !reweMarketExpanded"
+                      class="flex items-center gap-3 hover:bg-stone-100 dark:hover:bg-stone-800 px-4 py-3 w-full text-left transition-colors"
+                    >
+                      <MapPin class="w-4 h-4 text-rewe-500 shrink-0" />
+                      <div class="flex-1 min-w-0">
+                        <span class="font-medium text-stone-800 dark:text-stone-200 text-sm">{{ reweMarketName || 'REWE Markt' }}</span>
+                        <span class="ml-2 text-stone-400 dark:text-stone-500 text-xs">
+                          <span v-if="reweZipCode">PLZ {{ reweZipCode }}</span>
+                        </span>
+                      </div>
+                      <ChevronDown :class="['w-4 h-4 text-stone-400 transition-transform shrink-0', reweMarketExpanded ? 'rotate-180' : '']" />
+                    </button>
+                    <!-- Kein Markt: Warnung + direkt aufgeklappt -->
+                    <div v-else class="px-4 py-3">
+                      <div class="flex items-center gap-2 mb-3">
+                        <MapPin class="w-4 h-4 text-amber-500 shrink-0" />
+                        <span class="font-medium text-amber-700 dark:text-amber-300 text-sm">Kein Markt konfiguriert</span>
                       </div>
                     </div>
-                    <div v-else-if="!reweMarketSettingsLoading" class="bg-amber-50 dark:bg-amber-900/20 mb-3 p-3 border border-amber-200 dark:border-amber-800 rounded-xl">
-                      <p class="text-amber-700 dark:text-amber-300 text-xs">
-                        ⚠️ Kein REWE-Markt konfiguriert. Bitte PLZ eingeben und Markt auswählen.
+
+                    <!-- Markt-Suche (eingeklappt/ausgeklappt) -->
+                    <div v-if="reweMarketExpanded || !reweMarketId" class="space-y-3 px-4 pb-3" :class="{ 'border-t border-stone-200 dark:border-stone-700 pt-3': reweMarketId }">
+                      <div class="flex gap-2">
+                        <input
+                          v-model="reweMarketSearch"
+                          type="text"
+                          placeholder="PLZ eingeben…"
+                          @keyup.enter="searchReweMarkets"
+                          class="flex-1 bg-white dark:bg-stone-800 px-3 py-2 border border-stone-300 focus:border-transparent dark:border-stone-600 rounded-lg focus:ring-2 focus:ring-rewe-500 text-stone-800 dark:text-stone-200 placeholder:text-stone-400 text-sm"
+                        />
+                        <button
+                          @click="searchReweMarkets"
+                          :disabled="!reweMarketSearch.trim() || reweMarketSearchLoading"
+                          class="flex items-center gap-1.5 bg-rewe-500 hover:bg-rewe-600 disabled:opacity-50 px-3 py-2 rounded-lg font-medium text-white text-sm transition-colors"
+                        >
+                          <Loader2 v-if="reweMarketSearchLoading" class="w-4 h-4 animate-spin" />
+                          <Search v-else class="w-4 h-4" />
+                        </button>
+                      </div>
+                      <!-- Suchergebnisse -->
+                      <div v-if="reweMarketResults.length" class="space-y-1.5 max-h-40 overflow-y-auto">
+                        <button
+                          v-for="market in reweMarketResults"
+                          :key="market.id"
+                          @click="selectReweMarket(market)"
+                          :class="[
+                            'w-full text-left px-3 py-2 rounded-lg border transition-all text-sm',
+                            reweMarketId === String(market.id)
+                              ? 'bg-rewe-50 dark:bg-rewe-900/20 border-rewe-300 dark:border-rewe-700'
+                              : 'bg-white dark:bg-stone-800 border-stone-200 dark:border-stone-700 hover:border-rewe-300 dark:hover:border-rewe-600'
+                          ]"
+                        >
+                          <span class="font-medium text-stone-800 dark:text-stone-200">{{ market.name }}</span>
+                          <p class="text-stone-500 dark:text-stone-400 text-xs">
+                            {{ market.street }}, {{ market.zipCode }} {{ market.city }}
+                            <span v-if="market.distance != null" class="ml-1 text-stone-400 dark:text-stone-500">
+                              · {{ market.distance >= 1000 ? (market.distance / 1000).toFixed(1) + ' km' : market.distance + ' m' }}
+                            </span>
+                          </p>
+                        </button>
+                      </div>
+                      <p v-if="reweMarketSearchError" class="text-amber-600 dark:text-amber-400 text-xs">
+                        {{ reweMarketSearchError }}
                       </p>
-                    </div>
-
-                    <!-- Markt-Suche -->
-                    <div class="flex gap-2">
-                      <input
-                        v-model="reweMarketSearch"
-                        type="text"
-                        placeholder="PLZ eingeben…"
-                        @keyup.enter="searchReweMarkets"
-                        class="flex-1 bg-stone-50 dark:bg-stone-800 px-3 py-2 border border-stone-300 focus:border-transparent dark:border-stone-600 rounded-lg focus:ring-2 focus:ring-rewe-500 text-stone-800 dark:text-stone-200 placeholder:text-stone-400 text-sm"
-                      />
+                      <!-- Markt entfernen -->
                       <button
-                        @click="searchReweMarkets"
-                        :disabled="!reweMarketSearch.trim() || reweMarketSearchLoading"
-                        class="flex items-center gap-1.5 bg-rewe-500 hover:bg-rewe-600 disabled:opacity-50 px-4 py-2 rounded-lg font-medium text-white text-sm transition-colors"
+                        v-if="reweMarketId"
+                        @click="resetReweMarket"
+                        class="flex items-center gap-1.5 text-stone-400 hover:text-red-500 text-xs transition-colors"
                       >
-                        <Loader2 v-if="reweMarketSearchLoading" class="w-4 h-4 animate-spin" />
-                        <Search v-else class="w-4 h-4" />
+                        <RotateCcw class="w-3 h-3" />
+                        Markt entfernen
                       </button>
                     </div>
-
-                    <!-- Suchergebnisse -->
-                    <div v-if="reweMarketResults.length" class="space-y-1.5 mt-3 max-h-48 overflow-y-auto">
-                      <button
-                        v-for="market in reweMarketResults"
-                        :key="market.id"
-                        @click="selectReweMarket(market)"
-                        :class="[
-                          'w-full text-left px-3 py-2.5 rounded-lg border transition-all text-sm',
-                          reweMarketId === String(market.id)
-                            ? 'bg-rewe-50 dark:bg-rewe-900/20 border-rewe-300 dark:border-rewe-700 ring-1 ring-rewe-300 dark:ring-rewe-700'
-                            : 'bg-stone-50 dark:bg-stone-800 border-stone-200 dark:border-stone-700 hover:border-rewe-300 dark:hover:border-rewe-600'
-                        ]"
-                      >
-                        <div class="flex justify-between items-start gap-2">
-                          <div class="min-w-0">
-                            <span class="font-medium text-stone-800 dark:text-stone-200">{{ market.name }}</span>
-                            <p class="mt-0.5 text-stone-500 dark:text-stone-400 text-xs">
-                              {{ market.street }}, {{ market.zipCode }} {{ market.city }}
-                            </p>
-                          </div>
-                          <div class="flex flex-col items-end gap-0.5 shrink-0">
-                            <span class="bg-stone-200 dark:bg-stone-700 px-2 py-0.5 rounded font-mono text-[10px] text-stone-500 dark:text-stone-400">
-                              ID: {{ market.id }}
-                            </span>
-                            <span v-if="market.distance != null" class="text-[10px] text-stone-400 dark:text-stone-500">
-                              {{ market.distance >= 1000 ? (market.distance / 1000).toFixed(1) + ' km' : market.distance + ' m' }}
-                            </span>
-                          </div>
-                        </div>
-                      </button>
-                    </div>
-                    <p v-if="reweMarketSearchError" class="mt-2 text-amber-600 dark:text-amber-400 text-xs">
-                      {{ reweMarketSearchError }}
-                    </p>
                   </div>
 
-                  <div class="border-stone-200 dark:border-stone-700 border-t"></div>
-
-                  <!-- Bestell-Methode -->
+                  <!-- Bestell-Methode (kompakt) -->
                   <div>
                     <label class="block mb-2 font-medium text-stone-700 dark:text-stone-300 text-sm">Bestell-Methode</label>
-                    <div class="space-y-2">
+                    <div class="flex gap-2">
                       <label
                         v-for="opt in reweActionOptions"
                         :key="opt.value"
                         :class="[
-                          'flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-all',
+                          'flex-1 flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl border cursor-pointer transition-all text-center text-sm font-medium',
                           reweAction === opt.value
-                            ? 'bg-rewe-50 dark:bg-rewe-900/20 border-rewe-300 dark:border-rewe-700'
-                            : 'bg-stone-50 dark:bg-stone-800 border-stone-200 dark:border-stone-700 hover:border-stone-300 dark:hover:border-stone-600'
+                            ? 'bg-rewe-50 dark:bg-rewe-900/20 border-rewe-300 dark:border-rewe-700 text-rewe-700 dark:text-rewe-300'
+                            : 'bg-stone-50 dark:bg-stone-800 border-stone-200 dark:border-stone-700 text-stone-600 dark:text-stone-400 hover:border-stone-300 dark:hover:border-stone-600'
                         ]"
                       >
-                        <input
-                          type="radio"
-                          :value="opt.value"
-                          v-model="reweAction"
-                          @change="saveReweSettings"
-                          class="mt-0.5 accent-rewe-600"
-                        />
-                        <div>
-                          <span class="font-medium text-stone-800 dark:text-stone-200 text-sm">{{ opt.icon }} {{ opt.label }}</span>
-                          <p class="mt-0.5 text-stone-500 dark:text-stone-400 text-xs">{{ opt.description }}</p>
-                        </div>
+                        <input type="radio" :value="opt.value" v-model="reweAction" @change="saveReweSettings" class="sr-only" />
+                        <span>{{ opt.icon }} {{ opt.label }}</span>
                       </label>
                     </div>
                   </div>
@@ -858,46 +839,40 @@
                   <!-- Bevorzugte Produkte -->
                   <button
                     @click="openRewePreferences()"
-                    class="group flex items-center gap-3 bg-stone-50 hover:bg-stone-100 dark:bg-stone-800 dark:hover:bg-stone-700 p-4 border border-stone-200 dark:border-stone-700 rounded-xl w-full text-left transition-colors"
+                    class="group flex items-center gap-3 bg-stone-50 hover:bg-stone-100 dark:bg-stone-800 dark:hover:bg-stone-700 px-4 py-3 border border-stone-200 dark:border-stone-700 rounded-xl w-full text-left transition-colors"
                   >
-                    <div class="flex justify-center items-center bg-rewe-100 dark:bg-rewe-900/30 rounded-lg w-10 h-10 shrink-0">
-                      <Star class="w-5 h-5 text-rewe-500" />
-                    </div>
-                    <div class="flex-1 min-w-0">
-                      <span class="font-medium text-stone-800 dark:text-stone-200 text-sm">Bevorzugte Produkte</span>
-                      <p class="text-stone-500 dark:text-stone-400 text-xs">Gespeicherte Zuordnungen von Zutaten zu REWE-Produkten verwalten</p>
-                    </div>
+                    <Star class="w-4 h-4 text-rewe-500 shrink-0" />
+                    <span class="flex-1 font-medium text-stone-700 dark:text-stone-200 text-sm">Bevorzugte Produkte</span>
                     <ChevronRight class="w-4 h-4 text-stone-400 dark:group-hover:text-stone-300 group-hover:text-stone-600 transition-colors shrink-0" />
                   </button>
 
-                  <div class="border-stone-200 dark:border-stone-700 border-t"></div>
-
-                  <!-- Userscript -->
-                  <div>
-                    <h3 class="mb-2 font-medium text-stone-700 dark:text-stone-300 text-sm">🧩 Tampermonkey Userscript</h3>
-                    <p class="mb-3 text-stone-500 dark:text-stone-400 text-xs leading-relaxed">
-                      Einmal installieren – dann legt der 🍳-Button auf rewe.de deine Einkaufsliste direkt in den Warenkorb.
-                    </p>
-                    <div class="flex gap-2">
+                  <!-- Userscript (dezent) -->
+                  <div class="bg-stone-50 dark:bg-stone-800/50 px-4 py-3 border border-stone-200 dark:border-stone-700 rounded-xl">
+                    <div class="flex items-start gap-3">
+                      <div class="flex-1 min-w-0">
+                        <p class="font-medium text-stone-600 dark:text-stone-400 text-sm">🧩 Tampermonkey Userscript</p>
+                        <p class="mt-0.5 text-stone-400 dark:text-stone-500 text-xs leading-relaxed">
+                          Installiere das Userscript, um mit dem 🍳-Button auf rewe.de direkt in den Warenkorb zu legen.
+                        </p>
+                      </div>
+                    </div>
+                    <div class="flex gap-2 mt-3">
                       <button
                         @click="installUserscript"
-                        class="flex flex-1 justify-center items-center gap-2 bg-purple-600 hover:bg-purple-700 py-2.5 rounded-xl font-medium text-white text-sm transition-colors"
+                        class="flex items-center gap-1.5 bg-stone-200 hover:bg-stone-300 dark:bg-stone-700 dark:hover:bg-stone-600 px-3 py-1.5 rounded-lg font-medium text-stone-600 dark:text-stone-300 text-xs transition-colors"
                       >
-                        <Download class="w-3.5 h-3.5" />
-                        Userscript installieren
+                        <Download class="w-3 h-3" />
+                        Installieren
                       </button>
                       <button
                         @click="regenerateToken"
-                        class="flex items-center gap-2 bg-stone-200 hover:bg-stone-300 dark:bg-stone-700 dark:hover:bg-stone-600 px-3 py-2.5 rounded-xl font-medium text-stone-700 dark:text-stone-300 text-sm transition-colors"
-                        title="Neues API-Token für das Userscript erzeugen und Userscript neu installieren"
+                        class="flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-stone-400 hover:text-stone-600 dark:hover:text-stone-300 text-xs transition-colors"
+                        title="Neues API-Token erzeugen und Userscript neu installieren"
                       >
-                        <RefreshCw class="w-3.5 h-3.5" />
+                        <RefreshCw class="w-3 h-3" />
                         Token erneuern
                       </button>
                     </div>
-                    <p class="mt-2 text-[10px] text-stone-400 dark:text-stone-500 text-center">
-                      ℹ️ Das Userscript enthält deinen Login-Token. Bei Ablauf hier „Token erneuern" klicken.
-                    </p>
                   </div>
                 </div>
 
@@ -1706,7 +1681,7 @@ const settingsTab = ref('rewe');
 
 // REWE-Einstellungen (persistent)
 const showRewePreview = ref(false);
-const reweAction = ref(localStorage.getItem('rewe_action') || 'script');
+const reweAction = ref(['script', 'direct'].includes(localStorage.getItem('rewe_action')) ? localStorage.getItem('rewe_action') : 'script');
 const reweShowPreview = ref(localStorage.getItem('rewe_preview') !== 'false');
 
 // REWE global aktiviert? (Default: false → versteckt bis API bestätigt)
@@ -1721,6 +1696,7 @@ const reweMarketResults = ref([]);
 const reweMarketSearchLoading = ref(false);
 const reweMarketSearchError = ref('');
 const reweMarketSettingsLoading = ref(false);
+const reweMarketExpanded = ref(false);
 
 // REWE Produkt-Präferenzen
 const showRewePreferences = ref(false);
@@ -1743,9 +1719,8 @@ const filteredPreferences = computed(() => {
 });
 
 const reweActionOptions = [
-  { value: 'script', icon: '💻', label: 'Konsolen-Script', description: 'Script kopieren und in der Browser-Konsole auf rewe.de einfügen.' },
-  { value: 'direct', icon: '🧩', label: 'REWE direkt öffnen', description: 'rewe.de öffnen – das Userscript erledigt den Rest.' },
-  { value: 'tabs', icon: '🔗', label: 'Alle Tabs öffnen', description: 'Jedes Produkt einzeln in einem neuen Tab öffnen.' },
+  { value: 'script', icon: '💻', label: 'Konsole' },
+  { value: 'direct', icon: '🧩', label: 'Userscript' },
 ];
 
 function saveReweSettings() {
@@ -1802,6 +1777,8 @@ async function selectReweMarket(market) {
     reweMarketId.value = String(market.id);
     reweMarketName.value = market.name || market.displayName || 'REWE Markt';
     reweZipCode.value = market.zipCode || '';
+    reweMarketExpanded.value = false;
+    reweMarketResults.value = [];
     showSuccess(`${market.name} ausgewählt (ID: ${market.id})`);
   } catch {
     // Fehler von useApi gehandelt
@@ -1828,7 +1805,6 @@ const currentReweActionIcon = computed(() => {
   switch (reweAction.value) {
     case 'script': return Terminal;
     case 'direct': return ExternalLink;
-    case 'tabs': return ExternalLink;
     default: return ShoppingCart;
   }
 });
@@ -2225,11 +2201,6 @@ async function executeReweAction() {
       showSuccess('REWE geöffnet – klicke dort auf den 🍳-Button!');
       showCompletePurchasePrompt.value = true;
       break;
-    case 'tabs':
-      openAllReweProducts();
-      showRewePreview.value = false;
-      showCompletePurchasePrompt.value = true;
-      break;
     default:
       showRewePreview.value = true;
   }
@@ -2240,19 +2211,6 @@ function regenerateToken() {
   // Aktueller Token ist noch gültig (User ist eingeloggt) → Userscript einfach neu installieren
   installUserscript();
   showSuccess('Userscript mit aktuellem Token wird neu installiert.');
-}
-
-/** Alle REWE-Produkte in neuen Tabs öffnen */
-function openAllReweProducts() {
-  const items = shoppingStore.reweLinkedItems;
-  if (!items.length) return;
-  // Tabs nacheinander öffnen (mit kleinem Delay, damit Popup-Blocker nicht zuschlagen)
-  items.forEach((item, index) => {
-    setTimeout(() => {
-      window.open(item.rewe_product.url, '_blank', 'noopener');
-    }, index * 300);
-  });
-  showSuccess(`${items.length} REWE-Produktseiten geöffnet! 🛒`);
 }
 
 /** Produkt-Picker öffnen: Alternativen für eine Zutat suchen */
