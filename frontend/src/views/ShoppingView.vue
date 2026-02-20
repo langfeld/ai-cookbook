@@ -523,7 +523,7 @@
               </div>
 
               <!-- REWE-Produkt-Karte (wenn zugewiesen) -->
-              <div v-if="item.rewe_product && !mergeMode && !blockMode" class="mx-3 mb-3">
+              <div v-if="item.rewe_product" class="mx-3 mb-3" :class="(mergeMode || blockMode) ? 'opacity-40 pointer-events-none select-none' : ''">
                 <div class="bg-stone-50 dark:bg-stone-800/60 border border-stone-200 dark:border-stone-700 rounded-xl overflow-hidden">
                   <!-- Produktinfo mit Bild -->
                   <div class="flex items-center gap-3 p-3">
@@ -603,7 +603,7 @@
               </div>
 
               <!-- Kein REWE-Produkt → Suche anbieten -->
-              <div v-else-if="!mergeMode && !blockMode && (shoppingStore.reweLinkedItems.length > 0 || reweLoading) && !item.rewe_product" class="-mt-1 px-4 pb-3">
+              <div v-else-if="(shoppingStore.reweLinkedItems.length > 0 || reweLoading) && !item.rewe_product" class="-mt-1 px-4 pb-3" :class="(mergeMode || blockMode) ? 'opacity-40 pointer-events-none select-none' : ''">
                 <button
                   @click.stop="openProductPicker(item)"
                   class="flex items-center gap-1.5 hover:bg-stone-50 dark:hover:bg-stone-800/50 px-3 py-1.5 rounded-lg text-stone-400 hover:text-rewe-600 dark:hover:text-rewe-400 text-xs transition-colors"
