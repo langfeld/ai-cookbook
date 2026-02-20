@@ -565,7 +565,7 @@
                         @change="setQuantity(item, $event)"
                         @click.stop
                         @keydown.stop
-                        class="w-10 h-8 font-semibold tabular-nums text-stone-800 dark:text-stone-200 text-sm text-center bg-transparent border border-stone-300 dark:border-stone-600 rounded-lg appearance-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [-moz-appearance:textfield] focus:outline-none focus:ring-1 focus:ring-rewe-400"
+                        class="bg-transparent border border-stone-300 dark:border-stone-600 rounded-lg focus:outline-none focus:ring-1 focus:ring-rewe-400 w-10 h-8 font-semibold tabular-nums text-stone-800 dark:text-stone-200 text-sm text-center appearance-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [-moz-appearance:textfield]"
                       />
                       <button
                         @click.stop="increaseQuantity(item)"
@@ -1293,7 +1293,7 @@
               <!-- Footer mit Aktions-Button -->
               <div class="bg-stone-50 dark:bg-stone-800/50 px-5 py-4 border-stone-200 dark:border-stone-700 border-t">
                 <button
-                  @click="executeReweAction"
+                  @click="hasReweWarnings ? (reweWarningFromPreview = true, showReweWarning = true) : executeReweAction()"
                   :disabled="cartScriptLoading"
                   class="flex justify-center items-center gap-2 bg-rewe-500 hover:bg-rewe-600 disabled:opacity-50 py-3 rounded-xl w-full font-medium text-white transition-colors"
                 >
@@ -1567,6 +1567,63 @@
       @confirm="confirmCompletePurchase"
     />
 
+    <!-- REWE Bestell-Warnung (fehlende Zuordnungen / hohe Mengen) -->
+    <Teleport to="body">
+      <Transition name="fade">
+        <div v-if="showReweWarning" class="z-50 fixed inset-0 flex justify-center items-end sm:items-center bg-black/50 p-4" @click.self="showReweWarning = false">
+          <div class="bg-white dark:bg-stone-900 shadow-2xl rounded-2xl w-full max-w-md overflow-hidden">
+            <div class="flex justify-between items-center px-5 py-4 border-stone-200 dark:border-stone-700 border-b">
+              <h2 class="flex items-center gap-2 font-display font-bold text-stone-800 dark:text-stone-100 text-lg">
+                <AlertTriangle class="w-5 h-5 text-amber-500" />
+                Hinweise vor Bestellung
+              </h2>
+              <button @click="showReweWarning = false" class="hover:bg-stone-100 dark:hover:bg-stone-800 p-1.5 rounded-lg text-stone-400 transition-colors">
+                <X class="w-5 h-5" />
+              </button>
+            </div>
+            <div class="space-y-4 p-5 max-h-80 overflow-y-auto">
+              <!-- Nicht zugeordnete Artikel -->
+              <div v-if="reweUnmatchedItems.length > 0">
+                <p class="flex items-center gap-1.5 mb-2 font-semibold text-stone-700 dark:text-stone-200 text-sm">
+                  <Search class="w-4 h-4 text-stone-400" />
+                  {{ reweUnmatchedItems.length }} Artikel ohne REWE-Zuordnung
+                </p>
+                <ul class="space-y-1 pl-6 text-stone-500 dark:text-stone-400 text-sm list-disc">
+                  <li v-for="item in reweUnmatchedItems" :key="item.id">{{ item.ingredient_name }}</li>
+                </ul>
+                <p class="mt-1.5 text-stone-400 dark:text-stone-500 text-xs">Diese Artikel werden nicht in den Warenkorb übernommen.</p>
+              </div>
+
+              <!-- Hohe Mengen -->
+              <div v-if="reweHighQtyItems.length > 0">
+                <p class="flex items-center gap-1.5 mb-2 font-semibold text-amber-600 dark:text-amber-400 text-sm">
+                  <AlertTriangle class="w-4 h-4" />
+                  Ungewöhnlich hohe Mengen
+                </p>
+                <ul class="space-y-1 pl-6 text-stone-600 dark:text-stone-300 text-sm list-disc">
+                  <li v-for="item in reweHighQtyItems" :key="item.id">
+                    <span class="font-semibold text-amber-600 dark:text-amber-400">{{ item.rewe_product.quantity }}×</span>
+                    {{ item.rewe_product.name }}
+                    <span class="text-stone-400">({{ formatPrice(item.rewe_product.price * item.rewe_product.quantity) }})</span>
+                  </li>
+                </ul>
+                <p class="mt-1.5 text-stone-400 dark:text-stone-500 text-xs">Bitte prüfe, ob die Mengen korrekt sind.</p>
+              </div>
+            </div>
+            <div class="flex justify-end gap-3 px-5 py-4 border-stone-200 dark:border-stone-700 border-t">
+              <button @click="showReweWarning = false" class="hover:bg-stone-100 dark:hover:bg-stone-800 px-4 py-2 rounded-xl font-medium text-stone-600 dark:text-stone-300 text-sm transition-colors">
+                Abbrechen
+              </button>
+              <button @click="confirmReweWarning" class="flex items-center gap-2 bg-rewe-500 hover:bg-rewe-600 px-5 py-2 rounded-xl font-medium text-white text-sm transition-colors">
+                <ShoppingCart class="w-4 h-4" />
+                Trotzdem fortfahren
+              </button>
+            </div>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
+
     <!-- Merge-Dialog -->
     <Teleport to="body">
       <Transition name="fade">
@@ -1684,7 +1741,7 @@ import { useMealPlanStore } from '@/stores/mealplan.js';
 import { useIngredientAliasStore } from '@/stores/ingredient-aliases.js';
 import { useNotification } from '@/composables/useNotification.js';
 import { useApi } from '@/composables/useApi.js';
-import { ListPlus, Check, ShoppingBag, Plus, Minus, Package, BookOpen, BookX, ExternalLink, ShoppingCart, X, ArrowRightLeft, Search, Tag, Trash2, Star, Heart, Archive, Send, Link2, Unlink, ClipboardCopy, LogIn, LogOut, ChevronDown, ChevronLeft, ChevronRight, Loader2, Terminal, Download, Settings, RefreshCw, Merge, ArrowRight, History, RotateCcw, Ban, MapPin, PenLine, Upload } from 'lucide-vue-next';
+import { ListPlus, Check, ShoppingBag, Plus, Minus, Package, BookOpen, BookX, ExternalLink, ShoppingCart, X, ArrowRightLeft, Search, Tag, Trash2, Star, Heart, Archive, Send, Link2, Unlink, ClipboardCopy, LogIn, LogOut, ChevronDown, ChevronLeft, ChevronRight, Loader2, Terminal, Download, Settings, RefreshCw, Merge, ArrowRight, History, RotateCcw, Ban, MapPin, PenLine, Upload, AlertTriangle } from 'lucide-vue-next';
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue';
 
 const shoppingStore = useShoppingStore();
@@ -1881,6 +1938,21 @@ const newItem = ref({ name: '', amount: null, unit: '' });
 
 // "Einkauf abschließen?"-Dialog nach Bring!/REWE
 const showCompletePurchasePrompt = ref(false);
+
+// REWE-Bestell-Warnung (nicht zugeordnete Artikel / hohe Mengen)
+const showReweWarning = ref(false);
+const reweWarningFromPreview = ref(false); // ob der Aufruf aus dem Preview-Panel kam
+const REWE_QTY_WARN_THRESHOLD = 10;
+
+const reweUnmatchedItems = computed(() =>
+  shoppingStore.activeList?.items?.filter(i => !i.is_checked && !i.rewe_product && (shoppingStore.reweLinkedItems.length > 0 || reweLoading.value)) || []
+);
+const reweHighQtyItems = computed(() =>
+  shoppingStore.reweLinkedItems.filter(i => (i.rewe_product?.quantity || 1) > REWE_QTY_WARN_THRESHOLD)
+);
+const hasReweWarnings = computed(() =>
+  reweUnmatchedItems.value.length > 0 || reweHighQtyItems.value.length > 0
+);
 
 // Rezept-Links ein-/ausblenden (persistent via localStorage)
 const showRecipeLinks = ref(localStorage.getItem('shopping_showRecipeLinks') !== 'false');
@@ -2240,10 +2312,27 @@ async function confirmCompletePurchase() {
 
 /** REWE Hauptaktion (Split-Button links) */
 async function handleReweMainAction() {
+  // Prüfen ob Warnungen angezeigt werden müssen
+  if (hasReweWarnings.value) {
+    reweWarningFromPreview.value = false;
+    showReweWarning.value = true;
+    return;
+  }
   if (reweShowPreview.value) {
     showRewePreview.value = true;
   } else {
     await executeReweAction();
+  }
+}
+
+function confirmReweWarning() {
+  showReweWarning.value = false;
+  if (reweWarningFromPreview.value) {
+    executeReweAction();
+  } else if (reweShowPreview.value) {
+    showRewePreview.value = true;
+  } else {
+    executeReweAction();
   }
 }
 
