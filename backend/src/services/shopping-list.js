@@ -11,7 +11,7 @@
  */
 
 import db from '../config/database.js';
-import { convertToBaseUnit, normalizeUnit, scaleIngredient, unitsCompatible } from '../utils/helpers.js';
+import { convertToBaseUnit, getUnitType, normalizeUnit, scaleIngredient, unitsCompatible } from '../utils/helpers.js';
 import { parsePackageSize } from './rewe-api.js';
 
 /**
@@ -123,30 +123,31 @@ export function generateShoppingList(userId, mealPlanId, options = {}) {
   }
 
   // --- 2b. Zweiter Konsolidierungsschritt: ---
-  // Gleiche Zutat mit unterschiedlichen, inkompatiblen Einheiten zusammenführen
-  // z.B. "Halloumi 200g" + "Halloumi 1 Stk" → zusammenlegen
+  // Gleiche Zutat mit unterschiedlichen, aber KOMPATIBLEN Einheiten zusammenführen
+  // z.B. "Halloumi 200g" + "Halloumi 500g" → 700g
+  // Inkompatible Einheiten (z.B. "200g" + "1 Stk") bleiben getrennt,
+  // um keine sinnlosen Additionen wie "201g" zu erzeugen.
   const consolidatedMap = new Map();
   for (const [key, item] of ingredientMap) {
     const nameKey = item.name.toLowerCase();
 
-    if (consolidatedMap.has(nameKey)) {
-      const existing = consolidatedMap.get(nameKey);
-
-      if (existing.unit === item.unit) {
-        // Gleiche Einheit → Mengen addieren
-        existing.amount = (existing.amount || 0) + (item.amount || 0);
-      } else {
-        // Unterschiedliche Einheiten → die mit der größeren Menge bevorzugen,
-        // oder die Stück-Einheit wenn es Zähl-Einheiten sind
-        // Mengenangaben einfach addieren, Einheit der größeren Menge behalten
-        const existingAmount = existing.amount || 0;
-        const newAmount = item.amount || 0;
-        existing.amount = existingAmount + newAmount;
-        // Die informativere/größere Einheit behalten
-        if (newAmount > existingAmount && item.unit) {
-          existing.unit = item.unit;
-        }
+    // Bestehenden Eintrag mit kompatiblen Einheiten suchen
+    let mergedKey = null;
+    for (const [cKey, existing] of consolidatedMap) {
+      if (existing.name.toLowerCase() !== nameKey) continue;
+      const compat = unitsCompatible(existing.unit, item.unit);
+      if (compat.compatible) {
+        mergedKey = cKey;
+        break;
       }
+    }
+
+    if (mergedKey) {
+      const existing = consolidatedMap.get(mergedKey);
+      const compat = unitsCompatible(existing.unit, item.unit);
+
+      // Mengen addieren (mit Umrechnungsfaktor, z.B. g↔ml)
+      existing.amount = (existing.amount || 0) + (item.amount || 0) * compat.factor;
 
       // Rezepte zusammenführen
       for (const title of item.recipes) {
@@ -158,7 +159,8 @@ export function generateShoppingList(userId, mealPlanId, options = {}) {
         }
       }
     } else {
-      consolidatedMap.set(nameKey, { ...item });
+      // Kein kompatibler Eintrag → separat aufnehmen
+      consolidatedMap.set(`${nameKey}_${item.unit || 'none'}`, { ...item });
     }
   }
 
@@ -172,6 +174,7 @@ export function generateShoppingList(userId, mealPlanId, options = {}) {
   for (const [key, item] of consolidatedMap) {
     let remainingAmount = item.amount;
     let pantryDeducted = 0;
+    let pantryNote = null;
 
     // Passende Vorräte suchen
     const matchingPantry = pantryItems.find(
@@ -193,6 +196,10 @@ export function generateShoppingList(userId, mealPlanId, options = {}) {
           const deduction = Math.min(adjustedPantryAmount, remainingAmount);
           remainingAmount -= deduction;
           pantryDeducted = deduction;
+        } else {
+          // Vorrat vorhanden aber Einheiten inkompatibel (z.B. 500g vs 2 Stk)
+          // → Hinweis setzen, damit der Nutzer informiert wird
+          pantryNote = `Im Vorrat: ${matchingPantry.amount} ${matchingPantry.unit || ''} (andere Einheit)`.trim();
         }
       }
     }
@@ -202,6 +209,7 @@ export function generateShoppingList(userId, mealPlanId, options = {}) {
       originalAmount: item.amount,
       amount: Math.max(0, remainingAmount || 0),
       pantryDeducted,
+      pantryNote,
       needsToBuy: remainingAmount > 0,
     });
   }
@@ -227,8 +235,8 @@ export function saveShoppingList(userId, mealPlanId, items, name = 'Einkaufslist
   );
   const insertItem = db.prepare(`
     INSERT INTO shopping_list_items
-    (shopping_list_id, ingredient_name, amount, unit, recipe_id, pantry_deducted, recipe_ids)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
+    (shopping_list_id, ingredient_name, amount, unit, recipe_id, pantry_deducted, recipe_ids, pantry_note)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   // Alte aktive Listen deaktivieren
@@ -243,7 +251,8 @@ export function saveShoppingList(userId, mealPlanId, items, name = 'Einkaufslist
       if (item.needsToBuy) {
         insertItem.run(
           listId, item.name, item.amount, item.unit, null,
-          item.pantryDeducted, JSON.stringify(item.recipeIds || [])
+          item.pantryDeducted, JSON.stringify(item.recipeIds || []),
+          item.pantryNote || null
         );
       }
     }
@@ -261,6 +270,11 @@ export function saveShoppingList(userId, mealPlanId, items, name = 'Einkaufslist
  * (Packungsgröße × Anzahl Packungen) verwendet, nicht die Rezeptmenge.
  * Beispiel: Rezept braucht 500g Kartoffeln → REWE 3kg-Sack gewählt → 3000g im Vorrat.
  *
+ * Bei inkompatiblen Einheiten (z.B. 2 Stk + 500g) wird NICHT blind addiert,
+ * da sonst unsinnige Werte entstehen (z.B. 502g). Stattdessen wird:
+ * - Gewicht/Volumen bevorzugt (präziser als Zähleinheiten)
+ * - Bei Zähl- vs. Gewichtskonflikt nur aktualisiert, wenn die neue Einheit präziser ist
+ *
  * @param {number} userId - Benutzer-ID
  * @param {number} listId - Einkaufslisten-ID
  * @param {object[]} purchasedItems - Gekaufte Items (mit optionalen REWE-Daten)
@@ -273,6 +287,19 @@ export function processPurchase(userId, listId, purchasedItems) {
       amount = pantry.amount + excluded.amount,
       updated_at = CURRENT_TIMESTAMP
   `);
+
+  const replacePantry = db.prepare(`
+    INSERT INTO pantry (user_id, ingredient_name, amount, unit, category)
+    VALUES (?, ?, ?, ?, ?)
+    ON CONFLICT(user_id, ingredient_name) DO UPDATE SET
+      amount = excluded.amount,
+      unit = excluded.unit,
+      updated_at = CURRENT_TIMESTAMP
+  `);
+
+  const getExistingPantry = db.prepare(
+    'SELECT amount, unit FROM pantry WHERE user_id = ? AND ingredient_name = ?'
+  );
 
   const transaction = db.transaction(() => {
     for (const item of purchasedItems) {
@@ -303,13 +330,35 @@ export function processPurchase(userId, listId, purchasedItems) {
       }
 
       if (amount > 0) {
-        upsertPantry.run(
-          userId,
-          item.ingredient_name || item.name,
-          amount,
-          unit,
-          item.category || 'Sonstiges'
-        );
+        const ingredientName = item.ingredient_name || item.name;
+        const category = item.category || 'Sonstiges';
+        const existing = getExistingPantry.get(userId, ingredientName);
+
+        if (!existing) {
+          // Kein bestehender Eintrag → einfach einfügen
+          upsertPantry.run(userId, ingredientName, amount, unit, category);
+        } else {
+          // Bestehender Eintrag → Einheiten auf Kompatibilität prüfen
+          const existingConverted = convertToBaseUnit(existing.amount, existing.unit);
+          const newConverted = convertToBaseUnit(amount, unit);
+          const compat = unitsCompatible(existingConverted.unit, newConverted.unit);
+
+          if (compat.compatible) {
+            // Kompatible Einheiten → Mengen addieren (z.B. 500g + 200g)
+            upsertPantry.run(userId, ingredientName, amount, unit, category);
+          } else {
+            // Inkompatible Einheiten (z.B. 500g + 2 Stk)
+            const existingType = getUnitType(existing.unit);
+            const newType = getUnitType(unit);
+
+            if ((newType === 'weight' || newType === 'volume') && existingType === 'counting') {
+              // Neue Daten sind präziser (Gewicht/Volumen) → bestehende Zähleinheit ersetzen
+              replacePantry.run(userId, ingredientName, amount, unit, category);
+            }
+            // Sonst: bestehende Gewichts-/Volumendaten behalten, Zähleinheit ignorieren
+            // (z.B. Vorrat hat 500g, Einkauf war "2 Stk" → 500g bleibt, da 2+500 Unsinn wäre)
+          }
+        }
       }
     }
   });

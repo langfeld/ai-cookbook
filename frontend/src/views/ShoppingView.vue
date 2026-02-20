@@ -480,6 +480,11 @@
                     <Package class="w-3 h-3" />
                     {{ item.pantry_deducted }} {{ item.unit }} im Vorrat
                   </div>
+                  <!-- Hinweis bei inkompatiblen Einheiten im Vorrat -->
+                  <div v-else-if="item.pantry_note" class="flex items-center gap-1 mt-0.5 text-amber-600 dark:text-amber-400 text-xs">
+                    <Package class="w-3 h-3" />
+                    {{ item.pantry_note }}
+                  </div>
                 </div>
 
                 <!-- Aktionen (immer sichtbar, größere Touch-Targets) -->

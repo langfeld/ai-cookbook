@@ -482,6 +482,13 @@ function migrateDatabase() {
     console.log('  ↳ Migration: shopping_list_items.source hinzugefügt');
   }
 
+  // Spalte 'pantry_note' in shopping_list_items hinzufügen
+  // (Hinweis bei inkompatiblen Einheiten zwischen Vorrat und Einkaufsliste)
+  if (!sliCols.includes('pantry_note')) {
+    db.exec("ALTER TABLE shopping_list_items ADD COLUMN pantry_note TEXT");
+    console.log('  ↳ Migration: shopping_list_items.pantry_note hinzugefügt');
+  }
+
   // Spalte 'rewe_image_url' in rewe_product_preferences hinzufügen
   const rppCols = db.prepare("PRAGMA table_info(rewe_product_preferences)").all().map(c => c.name);
   if (!rppCols.includes('rewe_image_url')) {

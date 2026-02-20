@@ -139,6 +139,19 @@ export function convertToBaseUnit(amount, unit) {
 }
 
 /**
+ * Bestimmt den Einheitentyp: 'weight', 'volume' oder 'counting'
+ * Wird verwendet um inkompatible Einheiten zu erkennen
+ * (z.B. Stk vs g → kann nicht sinnvoll addiert werden)
+ */
+export function getUnitType(unit) {
+  const normalized = normalizeUnit(unit);
+  if (['g', 'kg'].includes(normalized)) return 'weight';
+  if (['ml', 'l'].includes(normalized)) return 'volume';
+  if (['EL', 'TL'].includes(normalized)) return 'weight'; // EL/TL werden zu g konvertiert
+  return 'counting'; // Stk, Pkg, Dose, Becher, Scheibe, Bund, Zehe, Prise, ...
+}
+
+/**
  * Prüft ob zwei Einheiten kompatibel sind (direkt oder via g↔ml Näherung)
  * Gibt den Umrechnungsfaktor zurück (amount_a * factor ≈ amount_b)
  * @returns {{ compatible: boolean, factor: number }}
