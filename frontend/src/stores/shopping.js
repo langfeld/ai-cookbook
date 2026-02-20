@@ -235,6 +235,17 @@ export const useShoppingStore = defineStore('shopping', () => {
     return await api.del(`/rewe/preferences/${prefId}`);
   }
 
+  /** Einzelne Produkt-Präferenz aktualisieren (bevorzugtes Produkt ändern) */
+  async function updatePreference(prefId, product) {
+    return await api.put(`/rewe/preferences/${prefId}`, {
+      rewe_product_id: product.id,
+      rewe_product_name: product.name,
+      rewe_price: product.price,
+      rewe_package_size: product.packageSize || null,
+      rewe_image_url: product.imageUrl || null,
+    });
+  }
+
   /** Alle Produkt-Präferenzen löschen */
   async function clearAllPreferences() {
     return await api.del('/rewe/preferences');
@@ -318,7 +329,7 @@ export const useShoppingStore = defineStore('shopping', () => {
     currentList, items, activeList, reweMatches, loading, reweProgress, listHistory,
     openItemsCount, estimatedTotal, reweLinkedItems,
     generateList, fetchActiveList, fetchListHistory, loadList, reactivateList, toggleItem, matchWithRewe, completePurchase, addItem, deleteItem, moveToPantry,
-    searchReweProducts, setReweProduct, updateReweQuantity, fetchPreferences, deletePreference, clearAllPreferences,
+    searchReweProducts, setReweProduct, updateReweQuantity, fetchPreferences, deletePreference, updatePreference, clearAllPreferences,
     // Bring!
     bringStatus, bringLists, bringSending,
     fetchBringStatus, connectBring, fetchBringLists, setBringList, sendToBring, disconnectBring,

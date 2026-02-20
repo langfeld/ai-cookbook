@@ -181,14 +181,25 @@
             </div>
           </Transition>
         </div>
-        <button
-          v-if="shoppingStore.activeList"
-          @click="matchWithRewe"
-          :disabled="reweLoading"
-          class="flex justify-center items-center gap-2 bg-rewe-500 hover:bg-rewe-600 disabled:opacity-50 px-4 py-2 rounded-xl w-full sm:w-auto font-medium text-white text-sm transition-colors"
-        >
-          🏪 REWE-Zuordnung
-        </button>
+        <!-- REWE abgleichen (Split-Button: Match + Präferenzen) -->
+        <div v-if="shoppingStore.activeList" class="flex items-stretch w-full sm:w-auto">
+          <button
+            @click="matchWithRewe"
+            :disabled="reweLoading"
+            class="flex sm:flex-initial flex-1 justify-center items-center gap-2 bg-rewe-500 hover:bg-rewe-600 disabled:opacity-50 px-4 py-2 rounded-l-xl font-medium text-white text-sm transition-colors"
+          >
+            <Loader2 v-if="reweLoading" class="w-4 h-4 animate-spin" />
+            <span v-else>🏪</span>
+            REWE abgleichen
+          </button>
+          <button
+            @click="openRewePreferences"
+            class="flex items-center bg-rewe-500 hover:bg-rewe-600 px-3 border-rewe-400 border-l rounded-r-xl text-white transition-colors"
+            title="Bevorzugte REWE-Produkte verwalten"
+          >
+            <Settings class="w-4 h-4" />
+          </button>
+        </div>
       </div>
     </div>
 
@@ -689,6 +700,200 @@
                   <p class="mt-2 text-[10px] text-stone-400 dark:text-stone-500 text-center">
                     ℹ️ Das Userscript enthält deinen Login-Token. Bei Ablauf hier „Token erneuern" klicken.
                   </p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </Transition>
+      </Teleport>
+
+      <!-- REWE Produkt-Präferenzen Modal -->
+      <Teleport to="body">
+        <Transition name="fade">
+          <div v-if="showRewePreferences" class="z-50 fixed inset-0 flex justify-center items-end sm:items-center bg-black/50 p-4" @click.self="showRewePreferences = false">
+            <div class="flex flex-col bg-white dark:bg-stone-900 shadow-2xl rounded-2xl w-full max-w-xl max-h-[85vh] overflow-hidden">
+
+              <!-- Header -->
+              <div class="flex justify-between items-center px-5 py-4 border-stone-200 dark:border-stone-700 border-b shrink-0">
+                <div>
+                  <h2 class="font-display font-bold text-stone-800 dark:text-stone-100 text-lg">🏪 Bevorzugte Produkte</h2>
+                  <p class="mt-0.5 text-stone-500 dark:text-stone-400 text-xs">
+                    {{ rewePreferences.length }} gespeicherte Zuordnungen
+                  </p>
+                </div>
+                <button @click="showRewePreferences = false" class="hover:bg-stone-100 dark:hover:bg-stone-800 p-1.5 rounded-lg text-stone-400 transition-colors">
+                  <X class="w-5 h-5" />
+                </button>
+              </div>
+
+              <!-- Suche -->
+              <div class="px-4 pt-3 shrink-0" v-if="rewePreferences.length > 5">
+                <div class="relative">
+                  <Search class="top-1/2 left-3 absolute w-4 h-4 text-stone-400 -translate-y-1/2" />
+                  <input
+                    v-model="prefSearch"
+                    type="text"
+                    placeholder="Zutat suchen…"
+                    class="bg-stone-50 dark:bg-stone-800 py-2 pr-4 pl-9 border border-stone-200 dark:border-stone-700 rounded-lg outline-none w-full text-sm"
+                  />
+                </div>
+              </div>
+
+              <!-- Liste -->
+              <div class="flex-1 overflow-y-auto">
+                <div v-if="rewePreferencesLoading" class="flex justify-center py-12">
+                  <Loader2 class="w-6 h-6 text-stone-400 animate-spin" />
+                </div>
+
+                <div v-else-if="filteredPreferences.length === 0" class="px-5 py-12 text-center">
+                  <Package class="mx-auto mb-3 w-12 h-12 text-stone-300 dark:text-stone-600" />
+                  <p class="font-medium text-stone-500 dark:text-stone-400 text-sm">
+                    {{ rewePreferences.length === 0 ? 'Noch keine Zuordnungen gespeichert' : 'Keine Treffer' }}
+                  </p>
+                  <p v-if="rewePreferences.length === 0" class="mt-1 text-stone-400 dark:text-stone-500 text-xs">
+                    Beim REWE-Abgleich werden deine Produktauswahlen automatisch gespeichert.
+                  </p>
+                </div>
+
+                <div v-else class="divide-y divide-stone-100 dark:divide-stone-800">
+                  <div
+                    v-for="pref in filteredPreferences"
+                    :key="pref.id"
+                    class="flex items-start gap-3 px-4 py-3 transition-colors"
+                  >
+                    <!-- Produktbild -->
+                    <img
+                      v-if="pref.rewe_image_url"
+                      :src="pref.rewe_image_url"
+                      :alt="pref.rewe_product_name"
+                      class="rounded-lg w-12 h-12 object-contain shrink-0"
+                    />
+                    <div v-else class="flex justify-center items-center bg-stone-100 dark:bg-stone-800 rounded-lg w-12 h-12 text-xl shrink-0">🏪</div>
+
+                    <!-- Info -->
+                    <div class="flex-1 min-w-0">
+                      <p class="font-medium text-stone-800 dark:text-stone-200 text-sm capitalize">{{ pref.ingredient_name }}</p>
+                      <a
+                        v-if="pref.rewe_product_id"
+                        :href="reweProductUrl(pref.rewe_product_name, pref.rewe_product_id)"
+                        target="_blank"
+                        rel="noopener"
+                        class="block mt-0.5 text-stone-500 hover:text-rewe-600 dark:hover:text-rewe-400 dark:text-stone-400 text-xs truncate transition-colors"
+                      >
+                        → {{ pref.rewe_product_name }}
+                        <ExternalLink class="inline-block -mt-0.5 ml-0.5 w-3 h-3" />
+                      </a>
+                      <p v-else class="mt-0.5 text-stone-500 dark:text-stone-400 text-xs truncate">
+                        → {{ pref.rewe_product_name }}
+                      </p>
+                      <div class="flex items-center gap-3 mt-1">
+                        <span v-if="pref.rewe_price" class="font-medium text-stone-600 dark:text-stone-300 text-xs">{{ formatPrice(pref.rewe_price) }}</span>
+                        <span v-if="pref.rewe_package_size" class="text-[11px] text-stone-400 dark:text-stone-500">{{ pref.rewe_package_size }}</span>
+                        <span class="text-[11px] text-stone-400 dark:text-stone-500">{{ pref.times_selected }}× gewählt</span>
+                      </div>
+                    </div>
+
+                    <!-- Aktionen -->
+                    <div class="flex items-center gap-1 shrink-0">
+                      <button
+                        @click="startChangePref(pref)"
+                        class="hover:bg-stone-100 dark:hover:bg-stone-800 p-1.5 rounded-lg text-stone-400 hover:text-rewe-600 transition-colors"
+                        title="Anderes Produkt wählen"
+                      >
+                        <ArrowRightLeft class="w-4 h-4" />
+                      </button>
+                      <button
+                        @click="removePref(pref)"
+                        class="hover:bg-red-50 dark:hover:bg-red-900/20 p-1.5 rounded-lg text-stone-400 hover:text-red-500 transition-colors"
+                        title="Zuordnung vergessen"
+                      >
+                        <Trash2 class="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Footer -->
+              <div v-if="rewePreferences.length > 0" class="flex justify-between items-center px-5 py-3 border-stone-200 dark:border-stone-700 border-t shrink-0">
+                <button
+                  @click="clearAllPrefs"
+                  class="flex items-center gap-1.5 text-red-500 hover:text-red-600 text-sm transition-colors"
+                >
+                  <Trash2 class="w-3.5 h-3.5" />
+                  Alle zurücksetzen
+                </button>
+                <button
+                  @click="showRewePreferences = false"
+                  class="bg-stone-100 hover:bg-stone-200 dark:bg-stone-800 dark:hover:bg-stone-700 px-4 py-2 rounded-lg font-medium text-stone-700 dark:text-stone-300 text-sm transition-colors"
+                >
+                  Schließen
+                </button>
+              </div>
+            </div>
+          </div>
+        </Transition>
+      </Teleport>
+
+      <!-- Präferenz ändern: Produkt-Suche (Inline-Overlay) -->
+      <Teleport to="body">
+        <Transition name="fade">
+          <div v-if="changingPref" class="z-[60] fixed inset-0 flex justify-center items-end sm:items-center bg-black/50 p-4" @click.self="changingPref = null">
+            <div class="flex flex-col bg-white dark:bg-stone-900 shadow-2xl rounded-2xl w-full max-w-md max-h-[70vh] overflow-hidden">
+              <!-- Header -->
+              <div class="flex justify-between items-center px-5 py-4 border-stone-200 dark:border-stone-700 border-b shrink-0">
+                <div>
+                  <h2 class="font-display font-bold text-stone-800 dark:text-stone-100 text-base">Produkt ändern</h2>
+                  <p class="mt-0.5 text-stone-500 dark:text-stone-400 text-xs capitalize">{{ changingPref.ingredient_name }}</p>
+                </div>
+                <button @click="changingPref = null" class="hover:bg-stone-100 dark:hover:bg-stone-800 p-1.5 rounded-lg text-stone-400 transition-colors">
+                  <X class="w-5 h-5" />
+                </button>
+              </div>
+
+              <!-- Suche -->
+              <div class="px-4 pt-3 shrink-0">
+                <div class="relative">
+                  <Search class="top-1/2 left-3 absolute w-4 h-4 text-stone-400 -translate-y-1/2" />
+                  <input
+                    ref="prefProductSearchInput"
+                    v-model="prefProductQuery"
+                    @input="debouncedPrefSearch"
+                    type="text"
+                    placeholder="REWE-Produkt suchen…"
+                    class="bg-stone-50 dark:bg-stone-800 py-2 pr-4 pl-9 border border-stone-200 dark:border-stone-700 rounded-lg outline-none w-full text-sm"
+                  />
+                </div>
+              </div>
+
+              <!-- Ergebnisse -->
+              <div class="flex-1 overflow-y-auto">
+                <div v-if="prefProductSearching" class="flex justify-center py-8">
+                  <Loader2 class="w-5 h-5 text-stone-400 animate-spin" />
+                </div>
+                <div v-else-if="prefProductResults.length === 0 && prefProductQuery" class="px-5 py-8 text-center">
+                  <p class="text-stone-400 text-sm">Keine Produkte gefunden.</p>
+                </div>
+                <div v-else class="divide-y divide-stone-100 dark:divide-stone-800">
+                  <button
+                    v-for="product in prefProductResults"
+                    :key="product.id"
+                    @click="selectPrefProduct(product)"
+                    class="flex items-center gap-3 hover:bg-stone-50 dark:hover:bg-stone-800 px-4 py-3 w-full text-left transition-colors"
+                  >
+                    <img
+                      v-if="product.imageUrl"
+                      :src="product.imageUrl"
+                      :alt="product.name"
+                      class="rounded-lg w-10 h-10 object-contain shrink-0"
+                    />
+                    <div v-else class="flex justify-center items-center bg-stone-100 dark:bg-stone-800 rounded-lg w-10 h-10 text-lg shrink-0">🏪</div>
+                    <div class="flex-1 min-w-0">
+                      <p class="font-medium text-stone-800 dark:text-stone-200 text-sm truncate">{{ product.name }}</p>
+                      <p class="text-stone-400 dark:text-stone-500 text-xs">{{ product.packageSize }}</p>
+                    </div>
+                    <span class="font-semibold text-stone-700 dark:text-stone-200 text-sm shrink-0">{{ formatPrice(product.price) }}</span>
+                  </button>
                 </div>
               </div>
             </div>
@@ -1301,6 +1506,26 @@ const showRewePreview = ref(false);
 const reweAction = ref(localStorage.getItem('rewe_action') || 'script');
 const reweShowPreview = ref(localStorage.getItem('rewe_preview') !== 'false');
 
+// REWE Produkt-Präferenzen
+const showRewePreferences = ref(false);
+const rewePreferences = ref([]);
+const rewePreferencesLoading = ref(false);
+const prefSearch = ref('');
+const changingPref = ref(null);
+const prefProductQuery = ref('');
+const prefProductResults = ref([]);
+const prefProductSearching = ref(false);
+const prefProductSearchInput = ref(null);
+let prefSearchTimeout = null;
+
+const filteredPreferences = computed(() => {
+  if (!prefSearch.value) return rewePreferences.value;
+  const q = prefSearch.value.toLowerCase();
+  return rewePreferences.value.filter(p =>
+    p.ingredient_name.includes(q) || p.rewe_product_name?.toLowerCase().includes(q)
+  );
+});
+
 const reweActionOptions = [
   { value: 'script', icon: '💻', label: 'Konsolen-Script', description: 'Script kopieren und in der Browser-Konsole auf rewe.de einfügen.' },
   { value: 'direct', icon: '🧩', label: 'REWE direkt öffnen', description: 'rewe.de öffnen – das Userscript erledigt den Rest.' },
@@ -1485,6 +1710,12 @@ function formatPrice(cents) {
   return (cents / 100).toLocaleString('de-DE', { style: 'currency', currency: 'EUR' });
 }
 
+function reweProductUrl(productName, productId) {
+  if (!productId) return '#';
+  const slug = (productName || 'produkt').toLowerCase().replace(/[^a-z0-9äöüß]+/g, '-').replace(/(^-|-$)/g, '');
+  return `https://www.rewe.de/shop/p/${slug}/${productId}`;
+}
+
 async function addManualItem() {
   const name = newItem.value.name.trim();
   if (!name) return;
@@ -1573,6 +1804,104 @@ async function matchWithRewe() {
     // Fehler wird von useApi angezeigt
   } finally {
     reweLoading.value = false;
+  }
+}
+
+// ============================================
+// REWE Produkt-Präferenzen Verwaltung
+// ============================================
+
+async function openRewePreferences() {
+  showRewePreferences.value = true;
+  rewePreferencesLoading.value = true;
+  prefSearch.value = '';
+  try {
+    const data = await shoppingStore.fetchPreferences();
+    rewePreferences.value = data.preferences || [];
+  } catch {
+    showError('Präferenzen konnten nicht geladen werden.');
+  } finally {
+    rewePreferencesLoading.value = false;
+  }
+}
+
+async function removePref(pref) {
+  try {
+    await shoppingStore.deletePreference(pref.id);
+    rewePreferences.value = rewePreferences.value.filter(p => p.id !== pref.id);
+    showSuccess(`Zuordnung für „${pref.ingredient_name}" entfernt`);
+  } catch {
+    showError('Löschen fehlgeschlagen.');
+  }
+}
+
+async function clearAllPrefs() {
+  if (!confirm(`Alle ${rewePreferences.value.length} gespeicherten Zuordnungen wirklich zurücksetzen?`)) return;
+  try {
+    await shoppingStore.clearAllPreferences();
+    rewePreferences.value = [];
+    showSuccess('Alle Zuordnungen zurückgesetzt');
+  } catch {
+    showError('Zurücksetzen fehlgeschlagen.');
+  }
+}
+
+function startChangePref(pref) {
+  changingPref.value = pref;
+  prefProductQuery.value = pref.ingredient_name;
+  prefProductResults.value = [];
+  prefProductSearching.value = true;
+  // Direkt nach dem Zutatennamen suchen
+  nextTick(() => {
+    prefProductSearchInput.value?.focus();
+    searchPrefProducts();
+  });
+}
+
+function debouncedPrefSearch() {
+  clearTimeout(prefSearchTimeout);
+  prefSearchTimeout = setTimeout(searchPrefProducts, 350);
+}
+
+async function searchPrefProducts() {
+  if (!prefProductQuery.value || prefProductQuery.value.length < 2) {
+    prefProductResults.value = [];
+    prefProductSearching.value = false;
+    return;
+  }
+  prefProductSearching.value = true;
+  try {
+    const data = await shoppingStore.searchReweProducts(prefProductQuery.value);
+    prefProductResults.value = data.products || [];
+  } catch {
+    prefProductResults.value = [];
+  } finally {
+    prefProductSearching.value = false;
+  }
+}
+
+async function selectPrefProduct(product) {
+  if (!changingPref.value) return;
+  try {
+    await shoppingStore.updatePreference(changingPref.value.id, product);
+    // Lokale Liste aktualisieren
+    const idx = rewePreferences.value.findIndex(p => p.id === changingPref.value.id);
+    if (idx >= 0) {
+      rewePreferences.value[idx] = {
+        ...rewePreferences.value[idx],
+        rewe_product_id: product.id,
+        rewe_product_name: product.name,
+        rewe_price: product.price,
+        rewe_package_size: product.packageSize,
+        rewe_image_url: product.imageUrl || null,
+      };
+    }
+    showSuccess(`Bevorzugtes Produkt für „${changingPref.value.ingredient_name}" geändert`);
+    changingPref.value = null;
+    prefProductResults.value = [];
+    prefProductQuery.value = '';
+  } catch {
+    showError('Änderung fehlgeschlagen.');
   }
 }
 

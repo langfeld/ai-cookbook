@@ -274,13 +274,51 @@ export default async function reweRoutes(fastify) {
     },
   }, async (request) => {
     const prefs = db.prepare(`
-      SELECT id, ingredient_name, rewe_product_id, rewe_product_name, rewe_price, rewe_package_size, times_selected, updated_at
+      SELECT id, ingredient_name, rewe_product_id, rewe_product_name, rewe_price, rewe_package_size, rewe_image_url, times_selected, updated_at
       FROM rewe_product_preferences
       WHERE user_id = ?
       ORDER BY ingredient_name ASC
     `).all(request.user.id);
 
     return { preferences: prefs, total: prefs.length };
+  });
+
+  /**
+   * PUT /api/rewe/preferences/:id
+   * Einzelne Produkt-Präferenz aktualisieren (z.B. bevorzugtes Produkt ändern)
+   */
+  fastify.put('/preferences/:id', {
+    schema: {
+      description: 'Produkt-Präferenz aktualisieren',
+      tags: ['REWE'],
+      security: [{ bearerAuth: [] }],
+      body: {
+        type: 'object',
+        required: ['rewe_product_id', 'rewe_product_name', 'rewe_price'],
+        properties: {
+          rewe_product_id: { type: 'string' },
+          rewe_product_name: { type: 'string' },
+          rewe_price: { type: 'number' },
+          rewe_package_size: { type: ['string', 'null'] },
+          rewe_image_url: { type: ['string', 'null'] },
+        },
+      },
+    },
+  }, async (request, reply) => {
+    const { rewe_product_id, rewe_product_name, rewe_price, rewe_package_size, rewe_image_url } = request.body;
+
+    const result = db.prepare(`
+      UPDATE rewe_product_preferences
+      SET rewe_product_id = ?, rewe_product_name = ?, rewe_price = ?, rewe_package_size = ?, rewe_image_url = ?, updated_at = CURRENT_TIMESTAMP
+      WHERE id = ? AND user_id = ?
+    `).run(rewe_product_id, rewe_product_name, rewe_price, rewe_package_size || null, rewe_image_url || null, request.params.id, request.user.id);
+
+    if (!result.changes) {
+      return reply.status(404).send({ error: 'Präferenz nicht gefunden' });
+    }
+
+    const updated = db.prepare('SELECT * FROM rewe_product_preferences WHERE id = ?').get(request.params.id);
+    return { message: 'Präferenz aktualisiert', preference: updated };
   });
 
   /**
