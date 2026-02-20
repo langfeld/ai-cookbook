@@ -1320,22 +1320,43 @@ export default async function adminRoutes(fastify) {
       `).all();
     }
 
+    let blocked;
+    if (filterUserId) {
+      blocked = db.prepare(`
+        SELECT bi.*, u.username as owner
+        FROM blocked_ingredients bi JOIN users u ON bi.user_id = u.id
+        WHERE bi.user_id = ?
+        ORDER BY u.username, bi.ingredient_name
+      `).all(filterUserId);
+    } else {
+      blocked = db.prepare(`
+        SELECT bi.*, u.username as owner
+        FROM blocked_ingredients bi JOIN users u ON bi.user_id = u.id
+        ORDER BY u.username, bi.ingredient_name
+      `).all();
+    }
+
     const exportData = {
       version: '1.0',
       exported_at: new Date().toISOString(),
       source: 'Zauberjournal (Admin-Export)',
-      type: 'ingredient-aliases',
+      type: 'ingredient-settings',
       alias_count: aliases.length,
+      blocked_count: blocked.length,
       aliases: aliases.map(a => ({
         canonical_name: a.canonical_name,
         alias_name: a.alias_name,
         owner: a.owner,
       })),
+      blocked_ingredients: blocked.map(b => ({
+        ingredient_name: b.ingredient_name,
+        owner: b.owner,
+      })),
     };
 
     const suffix = filterUserId ? `-user-${filterUserId}` : '-alle';
     reply.header('Content-Type', 'application/json');
-    reply.header('Content-Disposition', `attachment; filename="admin-ingredient-aliases-export${suffix}-${new Date().toISOString().split('T')[0]}.json"`);
+    reply.header('Content-Disposition', `attachment; filename="admin-ingredient-settings-export${suffix}-${new Date().toISOString().split('T')[0]}.json"`);
     return exportData;
   });
 
@@ -1374,16 +1395,19 @@ export default async function adminRoutes(fastify) {
       targetUserId = request.body?.user_id;
     }
 
-    if (!importData?.aliases || !Array.isArray(importData.aliases)) {
-      return reply.status(400).send({ error: 'Ungültiges Export-Format. Erwartet: { aliases: [...] }' });
+    const hasAliases = Array.isArray(importData?.aliases) && importData.aliases.length > 0;
+    const hasBlocked = Array.isArray(importData?.blocked_ingredients) && importData.blocked_ingredients.length > 0;
+
+    if (!hasAliases && !hasBlocked) {
+      return reply.status(400).send({ error: 'Ungültiges Export-Format. Erwartet: { aliases: [...] } und/oder { blocked_ingredients: [...] }' });
     }
 
-    if (importData.aliases.length === 0) {
-      return reply.status(400).send({ error: 'Keine Aliase zum Importieren gefunden.' });
-    }
-
-    if (importData.aliases.length > 5000) {
+    if (importData.aliases && importData.aliases.length > 5000) {
       return reply.status(400).send({ error: 'Maximal 5000 Aliase pro Import erlaubt.' });
+    }
+
+    if (importData.blocked_ingredients && importData.blocked_ingredients.length > 5000) {
+      return reply.status(400).send({ error: 'Maximal 5000 geblockte Zutaten pro Import erlaubt.' });
     }
 
     const userId = targetUserId || request.user.id;
@@ -1395,6 +1419,8 @@ export default async function adminRoutes(fastify) {
     let imported = 0;
     let updated = 0;
     let skipped = 0;
+    let blockedImported = 0;
+    let blockedSkipped = 0;
     const errorsArr = [];
 
     const upsertAlias = db.prepare(`
@@ -1408,34 +1434,63 @@ export default async function adminRoutes(fastify) {
       'SELECT id FROM ingredient_aliases WHERE user_id = ? AND LOWER(alias_name) = LOWER(?)'
     );
 
+    const upsertBlocked = db.prepare(`
+      INSERT OR IGNORE INTO blocked_ingredients (user_id, ingredient_name)
+      VALUES (?, ?)
+    `);
+
     const transaction = db.transaction(() => {
-      for (const alias of importData.aliases) {
-        try {
-          const canonicalName = String(alias.canonical_name || '').trim();
-          const aliasName = String(alias.alias_name || '').trim();
+      // Aliase importieren
+      if (hasAliases) {
+        for (const alias of importData.aliases) {
+          try {
+            const canonicalName = String(alias.canonical_name || '').trim();
+            const aliasName = String(alias.alias_name || '').trim();
 
-          if (!canonicalName || !aliasName) { skipped++; continue; }
+            if (!canonicalName || !aliasName) { skipped++; continue; }
 
-          const existing = findExisting.get(userId, aliasName);
-          upsertAlias.run(userId, canonicalName, aliasName);
+            const existing = findExisting.get(userId, aliasName);
+            upsertAlias.run(userId, canonicalName, aliasName);
 
-          if (existing) { updated++; } else { imported++; }
-        } catch (err) {
-          skipped++;
-          errorsArr.push(`Fehler bei "${alias.alias_name || '?'}": ${err.message}`);
+            if (existing) { updated++; } else { imported++; }
+          } catch (err) {
+            skipped++;
+            errorsArr.push(`Fehler bei Alias "${alias.alias_name || '?'}": ${err.message}`);
+          }
+        }
+      }
+
+      // Geblockte Zutaten importieren
+      if (hasBlocked) {
+        for (const blocked of importData.blocked_ingredients) {
+          try {
+            const ingredientName = String(blocked.ingredient_name || '').trim();
+            if (!ingredientName) { blockedSkipped++; continue; }
+
+            const result = upsertBlocked.run(userId, ingredientName);
+            if (result.changes > 0) { blockedImported++; } else { blockedSkipped++; }
+          } catch (err) {
+            blockedSkipped++;
+            errorsArr.push(`Fehler bei geblockter Zutat "${blocked.ingredient_name || '?'}": ${err.message}`);
+          }
         }
       }
     });
 
     transaction();
 
-    logAdminAction(request.user.id, 'Zutaten-Aliase importiert', `${imported} neu, ${updated} aktualisiert für ${targetUser.username}`);
+    const logParts = [];
+    if (hasAliases) logParts.push(`Aliase: ${imported} neu, ${updated} aktualisiert`);
+    if (hasBlocked) logParts.push(`Geblockt: ${blockedImported} neu`);
+    logAdminAction(request.user.id, 'Zutaten-Einstellungen importiert', `${logParts.join(', ')} für ${targetUser.username}`);
 
     return {
-      message: `${imported} neu importiert, ${updated} aktualisiert, ${skipped} übersprungen für "${targetUser.username}".`,
+      message: `Aliase: ${imported} neu, ${updated} aktualisiert, ${skipped} übersprungen. Geblockt: ${blockedImported} importiert, ${blockedSkipped} übersprungen. Benutzer: "${targetUser.username}".`,
       imported,
       updated,
       skipped,
+      blocked_imported: blockedImported,
+      blocked_skipped: blockedSkipped,
       target_user: targetUser.username,
       errors: errorsArr.length ? errorsArr : undefined,
     };

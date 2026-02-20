@@ -1,12 +1,16 @@
 /**
  * ============================================
- * Zutat-Alias-Routen
+ * Zutat-Einstellungen-Routen
  * ============================================
- * Verwaltung von Zutat-Zusammenfassungen:
- * "Gurke Mini" → "Gurke-Mini" usw.
+ * Verwaltung von Zutat-Zusammenfassungen (Aliase)
+ * und geblockten Zutaten:
  *
+ * Aliase: "Gurke Mini" → "Gurke-Mini" usw.
  * Aliase werden beim Generieren der Einkaufsliste
  * automatisch angewandt, um doppelte Einträge zu vermeiden.
+ *
+ * Geblockte Zutaten: werden bei der Einkaufslisten-
+ * Generierung komplett herausgefiltert.
  */
 
 import db from '../config/database.js';
@@ -231,5 +235,222 @@ export default async function ingredientAliasRoutes(fastify) {
     }
 
     return { success: true };
+  });
+
+  // ─────────────────────────────────────────────
+  // GET /blocked – Alle geblockten Zutaten
+  // ─────────────────────────────────────────────
+  fastify.get('/blocked', {
+    schema: {
+      description: 'Alle geblockten Zutaten des Benutzers abrufen',
+      tags: ['Zutat-Einstellungen'],
+      security: [{ bearerAuth: [] }],
+    },
+  }, async (request) => {
+    const blocked = db.prepare(
+      'SELECT * FROM blocked_ingredients WHERE user_id = ? ORDER BY ingredient_name'
+    ).all(request.user.id);
+    return { blocked };
+  });
+
+  // ─────────────────────────────────────────────
+  // POST /blocked – Zutat blockieren
+  // ─────────────────────────────────────────────
+  fastify.post('/blocked', {
+    schema: {
+      description: 'Zutat für zukünftige Einkaufslisten blockieren',
+      tags: ['Zutat-Einstellungen'],
+      security: [{ bearerAuth: [] }],
+      body: {
+        type: 'object',
+        required: ['ingredient_name'],
+        properties: {
+          ingredient_name: { type: 'string', minLength: 1 },
+        },
+      },
+    },
+  }, async (request, reply) => {
+    const userId = request.user.id;
+    const ingredientName = request.body.ingredient_name.trim();
+
+    try {
+      db.prepare(
+        'INSERT OR IGNORE INTO blocked_ingredients (user_id, ingredient_name) VALUES (?, ?)'
+      ).run(userId, ingredientName);
+    } catch {
+      // UNIQUE constraint – bereits geblockt, kein Fehler
+    }
+
+    return reply.status(201).send({ success: true, ingredient_name: ingredientName });
+  });
+
+  // ─────────────────────────────────────────────
+  // DELETE /blocked/:id – Block aufheben
+  // ─────────────────────────────────────────────
+  fastify.delete('/blocked/:id', {
+    schema: {
+      description: 'Zutat-Block aufheben',
+      tags: ['Zutat-Einstellungen'],
+      security: [{ bearerAuth: [] }],
+      params: {
+        type: 'object',
+        properties: { id: { type: 'integer' } },
+      },
+    },
+  }, async (request, reply) => {
+    const result = db.prepare(
+      'DELETE FROM blocked_ingredients WHERE id = ? AND user_id = ?'
+    ).run(request.params.id, request.user.id);
+
+    if (result.changes === 0) {
+      return reply.status(404).send({ error: 'Geblockte Zutat nicht gefunden.' });
+    }
+
+    return { success: true };
+  });
+
+  // ─────────────────────────────────────────────
+  // GET /export – Kombinierter Export (Aliase + Blocks)
+  // ─────────────────────────────────────────────
+  fastify.get('/export', {
+    schema: {
+      description: 'Zutaten-Einstellungen exportieren (Aliase + geblockte Zutaten)',
+      tags: ['Zutat-Einstellungen'],
+      security: [{ bearerAuth: [] }],
+    },
+  }, async (request, reply) => {
+    const userId = request.user.id;
+
+    const aliases = db.prepare(
+      'SELECT canonical_name, alias_name FROM ingredient_aliases WHERE user_id = ? ORDER BY canonical_name, alias_name'
+    ).all(userId);
+
+    const blocked = db.prepare(
+      'SELECT ingredient_name FROM blocked_ingredients WHERE user_id = ? ORDER BY ingredient_name'
+    ).all(userId);
+
+    const exportData = {
+      version: '1.0',
+      exported_at: new Date().toISOString(),
+      source: 'Zauberjournal',
+      type: 'ingredient-settings',
+      alias_count: aliases.length,
+      blocked_count: blocked.length,
+      aliases: aliases.map(a => ({
+        canonical_name: a.canonical_name,
+        alias_name: a.alias_name,
+      })),
+      blocked_ingredients: blocked.map(b => ({
+        ingredient_name: b.ingredient_name,
+      })),
+    };
+
+    reply.header('Content-Type', 'application/json');
+    reply.header('Content-Disposition', `attachment; filename="zutaten-einstellungen-${new Date().toISOString().split('T')[0]}.json"`);
+    return exportData;
+  });
+
+  // ─────────────────────────────────────────────
+  // POST /import – Kombinierter Import (Aliase + Blocks)
+  // ─────────────────────────────────────────────
+  fastify.post('/import', {
+    schema: {
+      description: 'Zutaten-Einstellungen importieren (Aliase + geblockte Zutaten)',
+      tags: ['Zutat-Einstellungen'],
+      security: [{ bearerAuth: [] }],
+    },
+  }, async (request, reply) => {
+    const userId = request.user.id;
+    let importData;
+
+    const contentType = request.headers['content-type'] || '';
+
+    if (contentType.includes('multipart')) {
+      const parts = request.parts();
+      for await (const part of parts) {
+        if (part.type === 'file') {
+          const buffer = await part.toBuffer();
+          try {
+            importData = JSON.parse(buffer.toString('utf-8'));
+          } catch {
+            return reply.status(400).send({ error: 'Ungültiges JSON-Format in der Datei.' });
+          }
+        }
+      }
+    } else {
+      importData = request.body;
+    }
+
+    if (!importData) {
+      return reply.status(400).send({ error: 'Keine Daten zum Importieren.' });
+    }
+
+    // Kompatibilität: Altes Format (nur aliases) und neues Format (aliases + blocked_ingredients)
+    const hasAliases = Array.isArray(importData.aliases);
+    const hasBlocked = Array.isArray(importData.blocked_ingredients);
+
+    if (!hasAliases && !hasBlocked) {
+      return reply.status(400).send({ error: 'Ungültiges Export-Format. Erwartet: { aliases: [...] } und/oder { blocked_ingredients: [...] }' });
+    }
+
+    let aliasImported = 0, aliasUpdated = 0, aliasSkipped = 0;
+    let blockedImported = 0, blockedSkipped = 0;
+
+    const upsertAlias = db.prepare(`
+      INSERT INTO ingredient_aliases (user_id, canonical_name, alias_name)
+      VALUES (?, ?, ?)
+      ON CONFLICT(user_id, alias_name) DO UPDATE SET
+        canonical_name = excluded.canonical_name
+    `);
+
+    const findExistingAlias = db.prepare(
+      'SELECT id FROM ingredient_aliases WHERE user_id = ? AND LOWER(alias_name) = LOWER(?)'
+    );
+
+    const insertBlocked = db.prepare(
+      'INSERT OR IGNORE INTO blocked_ingredients (user_id, ingredient_name) VALUES (?, ?)'
+    );
+
+    const transaction = db.transaction(() => {
+      // Aliase importieren
+      if (hasAliases) {
+        for (const alias of importData.aliases) {
+          try {
+            const canonicalName = String(alias.canonical_name || '').trim();
+            const aliasName = String(alias.alias_name || '').trim();
+            if (!canonicalName || !aliasName) { aliasSkipped++; continue; }
+
+            const existing = findExistingAlias.get(userId, aliasName);
+            upsertAlias.run(userId, canonicalName, aliasName);
+            if (existing) { aliasUpdated++; } else { aliasImported++; }
+          } catch {
+            aliasSkipped++;
+          }
+        }
+      }
+
+      // Geblockte Zutaten importieren
+      if (hasBlocked) {
+        for (const item of importData.blocked_ingredients) {
+          try {
+            const name = String(item.ingredient_name || '').trim();
+            if (!name) { blockedSkipped++; continue; }
+
+            const result = insertBlocked.run(userId, name);
+            if (result.changes > 0) { blockedImported++; } else { blockedSkipped++; }
+          } catch {
+            blockedSkipped++;
+          }
+        }
+      }
+    });
+
+    transaction();
+
+    return {
+      message: `Aliase: ${aliasImported} neu, ${aliasUpdated} aktualisiert, ${aliasSkipped} übersprungen. Geblockte Zutaten: ${blockedImported} neu, ${blockedSkipped} übersprungen.`,
+      aliases: { imported: aliasImported, updated: aliasUpdated, skipped: aliasSkipped },
+      blocked: { imported: blockedImported, skipped: blockedSkipped },
+    };
   });
 }

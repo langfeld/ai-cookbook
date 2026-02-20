@@ -365,6 +365,19 @@ export function initializeDatabase() {
     CREATE INDEX IF NOT EXISTS idx_ingredient_aliases_lookup ON ingredient_aliases(user_id, alias_name);
 
     -- ============================================
+    -- Geblockte Zutaten (für Einkaufslisten-Generierung)
+    -- ============================================
+    CREATE TABLE IF NOT EXISTS blocked_ingredients (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      ingredient_name TEXT NOT NULL COLLATE NOCASE,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      UNIQUE(user_id, ingredient_name)
+    );
+    CREATE INDEX IF NOT EXISTS idx_blocked_ingredients_user ON blocked_ingredients(user_id);
+
+    -- ============================================
     -- Rezept-Sperren (für Wochenplanung)
     -- ============================================
     CREATE TABLE IF NOT EXISTS recipe_blocks (

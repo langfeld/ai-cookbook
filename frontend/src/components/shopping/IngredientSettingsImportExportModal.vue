@@ -1,10 +1,11 @@
 <!--
   ============================================
-  IngredientAliasesImportExportModal
+  IngredientSettingsImportExportModal
   ============================================
-  Admin-Modal zum Exportieren und Importieren
-  von Zutaten-Einstellungen (Aliase + geblockte
-  Zutaten) aller Benutzer.
+  Modal für normale Benutzer zum Exportieren und
+  Importieren von Zutaten-Einstellungen:
+  - Zutaten-Aliase (Zusammenfassungen)
+  - Geblockte Zutaten
 -->
 <template>
   <Teleport to="body">
@@ -17,7 +18,7 @@
         <!-- Header -->
         <div class="flex justify-between items-center p-5 border-stone-200 dark:border-stone-700 border-b">
           <h2 class="font-display font-bold text-stone-800 dark:text-stone-100 text-xl">
-            🔗 Zutaten-Aliase Export/Import
+            🔗 Zutaten-Einstellungen Export/Import
           </h2>
           <button
             @click="$emit('close')"
@@ -61,23 +62,9 @@
           <!-- EXPORT TAB -->
           <div v-if="activeTab === 'export'" class="space-y-4">
             <p class="text-stone-600 dark:text-stone-400 text-sm">
-              Exportiere alle Zutaten-Aliase als JSON-Datei (Backup).
-              Damit bleiben die Zusammenfassungen ähnlicher Zutaten erhalten.
+              Exportiere deine Zutaten-Einstellungen als JSON-Datei.
+              Enthalten sind Zusammenfassungen (Aliase) und blockierte Zutaten.
             </p>
-
-            <!-- User-Filter -->
-            <div v-if="users.length" class="space-y-2">
-              <label class="font-medium text-stone-700 dark:text-stone-300 text-sm">Benutzer filtern</label>
-              <select
-                v-model="exportUserId"
-                class="bg-stone-50 dark:bg-stone-800 px-3 py-2 border border-stone-200 dark:border-stone-700 rounded-lg w-full text-sm"
-              >
-                <option :value="null">Alle Benutzer</option>
-                <option v-for="u in users" :key="u.id" :value="u.id">
-                  {{ u.username }}
-                </option>
-              </select>
-            </div>
 
             <!-- Export Button -->
             <button
@@ -87,29 +74,16 @@
             >
               <Loader2 v-if="exporting" class="w-4 h-4 animate-spin" />
               <Download v-else class="w-4 h-4" />
-              {{ exporting ? 'Exportiere...' : 'Aliase exportieren' }}
+              {{ exporting ? 'Exportiere...' : 'Einstellungen exportieren' }}
             </button>
           </div>
 
           <!-- IMPORT TAB -->
           <div v-if="activeTab === 'import'" class="space-y-4">
             <p class="text-stone-600 dark:text-stone-400 text-sm">
-              Importiere Zutaten-Aliase aus einer zuvor exportierten JSON-Datei.
-              Bestehende Aliase für gleiche Zutatennamen werden aktualisiert.
+              Importiere Zutaten-Einstellungen aus einer zuvor exportierten JSON-Datei.
+              Bestehende Aliase werden aktualisiert, blockierte Zutaten ergänzt.
             </p>
-
-            <!-- Ziel-User -->
-            <div v-if="users.length" class="space-y-2">
-              <label class="font-medium text-stone-700 dark:text-stone-300 text-sm">Importieren für Benutzer</label>
-              <select
-                v-model="importUserId"
-                class="bg-stone-50 dark:bg-stone-800 px-3 py-2 border border-stone-200 dark:border-stone-700 rounded-lg w-full text-sm"
-              >
-                <option v-for="u in users" :key="u.id" :value="u.id">
-                  {{ u.username }}
-                </option>
-              </select>
-            </div>
 
             <!-- Datei-Upload -->
             <div
@@ -160,15 +134,16 @@
                 📋 Vorschau
               </p>
               <p class="text-stone-500 dark:text-stone-400 text-xs">
-                {{ filePreview.alias_count }} Aliase gefunden
+                {{ filePreview.alias_count }} Aliase
+                <span v-if="filePreview.blocked_count"> · {{ filePreview.blocked_count }} blockierte Zutaten</span>
                 <span v-if="filePreview.exported_at"> · Exportiert am {{ formatDate(filePreview.exported_at) }}</span>
               </p>
               <div v-if="filePreview.sample_items?.length" class="space-y-1 mt-2">
                 <p v-for="item in filePreview.sample_items" :key="item" class="text-stone-600 dark:text-stone-400 text-xs">
                   • {{ item }}
                 </p>
-                <p v-if="filePreview.alias_count > 5" class="text-stone-400 text-xs italic">
-                  ... und {{ filePreview.alias_count - 5 }} weitere
+                <p v-if="(filePreview.alias_count + (filePreview.blocked_count || 0)) > 5" class="text-stone-400 text-xs italic">
+                  ... und {{ (filePreview.alias_count + (filePreview.blocked_count || 0)) - filePreview.sample_items.length }} weitere
                 </p>
               </div>
             </div>
@@ -181,20 +156,15 @@
             >
               <Loader2 v-if="importing" class="w-4 h-4 animate-spin" />
               <Upload v-else class="w-4 h-4" />
-              {{ importing ? 'Importiere...' : 'Aliase importieren' }}
+              {{ importing ? 'Importiere...' : 'Einstellungen importieren' }}
             </button>
 
             <!-- Ergebnis -->
             <div v-if="importResult" :class="[
               'p-3 rounded-lg text-sm',
-              importResult.skipped > 0
-                ? 'bg-amber-50 dark:bg-amber-900/20 text-amber-800 dark:text-amber-300'
-                : 'bg-green-50 dark:bg-green-900/20 text-green-800 dark:text-green-300'
+              'bg-green-50 dark:bg-green-900/20 text-green-800 dark:text-green-300'
             ]">
               <p class="font-medium">{{ importResult.message }}</p>
-              <ul v-if="importResult.errors?.length" class="space-y-1 mt-2 text-xs">
-                <li v-for="(err, i) in importResult.errors" :key="i">⚠️ {{ err }}</li>
-              </ul>
             </div>
           </div>
         </div>
@@ -210,10 +180,6 @@ import { useAuthStore } from '@/stores/auth.js';
 import { useNotification } from '@/composables/useNotification.js';
 import { useApi } from '@/composables/useApi.js';
 
-const props = defineProps({
-  users: { type: Array, default: () => [] },
-});
-
 const emit = defineEmits(['close', 'imported']);
 
 const authStore = useAuthStore();
@@ -228,25 +194,19 @@ const filePreview = ref(null);
 const importResult = ref(null);
 const isDragging = ref(false);
 
-const exportUserId = ref(null);
-const importUserId = ref(props.users[0]?.id || null);
-
 // ============================================
 // EXPORT
 // ============================================
 async function handleExport() {
   exporting.value = true;
   try {
-    const params = new URLSearchParams();
-    if (exportUserId.value) params.set('user_id', exportUserId.value);
-
-    const response = await fetch(`/api/admin/export/ingredient-aliases?${params}`, {
+    const response = await fetch('/api/ingredient-aliases/export', {
       headers: { Authorization: `Bearer ${authStore.token}` },
     });
     if (!response.ok) throw new Error('Export fehlgeschlagen');
     const blob = await response.blob();
-    downloadBlob(blob, `admin-ingredient-aliases-export-${new Date().toISOString().split('T')[0]}.json`);
-    showSuccess('Zutaten-Aliase erfolgreich exportiert!');
+    downloadBlob(blob, `zutaten-einstellungen-${new Date().toISOString().split('T')[0]}.json`);
+    showSuccess('Zutaten-Einstellungen erfolgreich exportiert!');
   } catch (err) {
     showError(err.message || 'Export fehlgeschlagen');
   } finally {
@@ -289,18 +249,30 @@ async function processFile(file) {
   try {
     const text = await file.text();
     const data = JSON.parse(text);
-    if (data.aliases?.length) {
-      filePreview.value = {
-        alias_count: data.aliases.length,
-        exported_at: data.exported_at,
-        sample_items: data.aliases.slice(0, 5).map(a =>
-          `${a.alias_name} → ${a.canonical_name}${a.owner ? ' [' + a.owner + ']' : ''}`
-        ),
-      };
-    } else {
+
+    const aliasCount = data.aliases?.length || 0;
+    const blockedCount = data.blocked_ingredients?.length || 0;
+
+    if (aliasCount === 0 && blockedCount === 0) {
       filePreview.value = null;
-      showError('Keine Aliase in der Datei gefunden.');
+      showError('Keine Einstellungen in der Datei gefunden.');
+      return;
     }
+
+    const sampleItems = [];
+    if (data.aliases) {
+      sampleItems.push(...data.aliases.slice(0, 3).map(a => `🔗 ${a.alias_name} → ${a.canonical_name}`));
+    }
+    if (data.blocked_ingredients) {
+      sampleItems.push(...data.blocked_ingredients.slice(0, 2).map(b => `🚫 ${b.ingredient_name}`));
+    }
+
+    filePreview.value = {
+      alias_count: aliasCount,
+      blocked_count: blockedCount,
+      exported_at: data.exported_at,
+      sample_items: sampleItems,
+    };
   } catch {
     filePreview.value = null;
     showError('Ungültiges JSON-Format.');
@@ -315,10 +287,7 @@ async function handleImport() {
   try {
     const formData = new FormData();
     formData.append('file', selectedFile.value);
-    if (importUserId.value) {
-      formData.append('user_id', importUserId.value);
-    }
-    const data = await api.upload('/admin/import/ingredient-aliases', formData);
+    const data = await api.upload('/ingredient-aliases/import', formData);
     importResult.value = data;
     showSuccess(data.message);
     emit('imported', data);

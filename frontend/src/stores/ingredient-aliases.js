@@ -1,9 +1,10 @@
 /**
  * ============================================
- * Ingredient Aliases Store
+ * Ingredient Settings Store
  * ============================================
- * Verwaltet Zutaten-Zusammenfassungen (Aliases).
- * z.B. "Gurke Mini" und "Gurke-Mini" → "Gurke Mini"
+ * Verwaltet Zutaten-Einstellungen:
+ * - Zusammenfassungen (Aliases): z.B. "Gurke Mini" → "Gurke Mini"
+ * - Geblockte Zutaten: werden bei der Einkaufslisten-Generierung ausgeschlossen
  */
 
 import { defineStore } from 'pinia';
@@ -12,6 +13,7 @@ import { useApi } from '@/composables/useApi.js';
 
 export const useIngredientAliasStore = defineStore('ingredient-aliases', () => {
   const aliases = ref([]);
+  const blockedIngredients = ref([]);
   const loading = ref(false);
 
   const api = useApi();
@@ -55,12 +57,50 @@ export const useIngredientAliasStore = defineStore('ingredient-aliases', () => {
     return data;
   }
 
+  // ============================================
+  // Geblockte Zutaten
+  // ============================================
+
+  /** Alle geblockten Zutaten laden */
+  async function fetchBlockedIngredients() {
+    try {
+      const data = await api.get('/ingredient-aliases/blocked');
+      blockedIngredients.value = data.blocked;
+    } catch (err) {
+      console.error('Fehler beim Laden der geblockten Zutaten:', err);
+    }
+  }
+
+  /** Zutat blockieren */
+  async function blockIngredient(ingredientName) {
+    const data = await api.post('/ingredient-aliases/blocked', {
+      ingredient_name: ingredientName,
+    });
+    // Lokal hinzufügen
+    blockedIngredients.value.push({
+      id: Date.now(), // temporäre ID, wird beim nächsten Fetch ersetzt
+      ingredient_name: data.ingredient_name,
+      created_at: new Date().toISOString(),
+    });
+    return data;
+  }
+
+  /** Block aufheben */
+  async function unblockIngredient(blockedId) {
+    await api.del(`/ingredient-aliases/blocked/${blockedId}`);
+    blockedIngredients.value = blockedIngredients.value.filter(b => b.id !== blockedId);
+  }
+
   return {
     aliases,
+    blockedIngredients,
     loading,
     fetchAliases,
     createAlias,
     deleteAlias,
-    mergeItems
+    mergeItems,
+    fetchBlockedIngredients,
+    blockIngredient,
+    unblockIngredient,
   };
 });

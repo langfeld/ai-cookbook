@@ -110,6 +110,12 @@
       @close="activeModal = null"
       @imported="handleImported"
     />
+
+    <IngredientSettingsImportExportModal
+      v-if="activeModal === 'ingredient-settings'"
+      @close="activeModal = null"
+      @imported="handleImported"
+    />
   </div>
 </template>
 
@@ -123,6 +129,7 @@ import PantryImportExportModal from '@/components/pantry/PantryImportExportModal
 import MealPlanImportExportModal from '@/components/mealplan/MealPlanImportExportModal.vue';
 import ShoppingListImportExportModal from '@/components/shopping/ShoppingListImportExportModal.vue';
 import RecipeBlocksImportExportModal from '@/components/recipes/RecipeBlocksImportExportModal.vue';
+import IngredientSettingsImportExportModal from '@/components/shopping/IngredientSettingsImportExportModal.vue';
 
 import {
   BookOpen,
@@ -132,6 +139,7 @@ import {
   Ban,
   ArrowDownUp,
   Info,
+  Link2,
 } from 'lucide-vue-next';
 
 const api = useApi();
@@ -146,6 +154,7 @@ const counts = ref({
   mealPlans: 0,
   shoppingLists: 0,
   recipeBlocks: 0,
+  ingredientSettings: 0,
 });
 
 const dataCategories = computed(() => [
@@ -204,6 +213,17 @@ const dataCategories = computed(() => [
     count: counts.value.recipeBlocks,
     action: () => { activeModal.value = 'recipe-blocks'; },
   },
+  {
+    key: 'ingredient-settings',
+    emoji: '🔗',
+    label: 'Zutaten-Einstellungen',
+    description: 'Deine Zutaten-Zusammenfassungen (Aliase) und blockierte Zutaten exportieren/importieren.',
+    icon: Link2,
+    bgClass: 'bg-violet-50 dark:bg-violet-900/30',
+    iconClass: 'text-violet-600 dark:text-violet-400',
+    count: counts.value.ingredientSettings,
+    action: () => { activeModal.value = 'ingredient-settings'; },
+  },
 ]);
 
 function handleImported() {
@@ -213,11 +233,13 @@ function handleImported() {
 
 async function fetchCounts() {
   try {
-    const [pantryData, mealPlanData, shoppingData, blocksData] = await Promise.all([
+    const [pantryData, mealPlanData, shoppingData, blocksData, aliasData, blockedData] = await Promise.all([
       api.get('/pantry').catch(() => ({ items: [] })),
       api.get('/mealplan/history').catch(() => ({ plans: [] })),
       api.get('/shopping/lists').catch(() => ({ lists: [] })),
       api.get('/recipe-blocks?includeExpired=true').catch(() => ({ blocks: [] })),
+      api.get('/ingredient-aliases').catch(() => ({ aliases: [] })),
+      api.get('/ingredient-aliases/blocked').catch(() => ({ blocked: [] })),
     ]);
 
     counts.value = {
@@ -226,6 +248,7 @@ async function fetchCounts() {
       mealPlans: mealPlanData.plans?.length || 0,
       shoppingLists: shoppingData.lists?.length || 0,
       recipeBlocks: blocksData.blocks?.length || 0,
+      ingredientSettings: (aliasData.aliases?.length || 0) + (blockedData.blocked?.length || 0),
     };
   } catch {
     // Ignorieren

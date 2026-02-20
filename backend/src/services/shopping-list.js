@@ -70,6 +70,12 @@ export function generateShoppingList(userId, mealPlanId, options = {}) {
     aliasMap.set(row.alias_name.toLowerCase(), row.canonical_name);
   }
 
+  // Geblockte Zutaten laden
+  const blockedRows = db.prepare(
+    'SELECT ingredient_name FROM blocked_ingredients WHERE user_id = ?'
+  ).all(userId);
+  const blockedSet = new Set(blockedRows.map(r => r.ingredient_name.toLowerCase()));
+
   for (const entry of filteredEntries) {
     const ingredients = db.prepare(
       'SELECT * FROM ingredients WHERE recipe_id = ?'
@@ -78,6 +84,11 @@ export function generateShoppingList(userId, mealPlanId, options = {}) {
     for (const ing of ingredients) {
       // Alias auflösen: Falls der Zutatname ein Alias ist, kanonischen Namen verwenden
       const resolvedName = aliasMap.get(ing.name.toLowerCase()) || ing.name;
+
+      // Geblockte Zutaten überspringen
+      if (blockedSet.has(resolvedName.toLowerCase())) {
+        continue;
+      }
 
       // Menge auf geplante Portionen umrechnen
       const scaledAmount = ing.amount

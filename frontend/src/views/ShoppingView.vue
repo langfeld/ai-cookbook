@@ -99,7 +99,7 @@
               mergeMode
                 ? 'bg-violet-50 dark:bg-violet-900/30 border-violet-300 dark:border-violet-700 text-violet-700 dark:text-violet-300'
                 : 'bg-stone-100 dark:bg-stone-800 border-stone-300 dark:border-stone-600 text-stone-500 dark:text-stone-400',
-              aliasStore.aliases.length > 0 ? 'rounded-l-xl border-r-0' : 'rounded-xl'
+              aliasStore.aliases.length > 0 || aliasStore.blockedIngredients.length > 0 ? 'rounded-l-xl border-r-0' : 'rounded-xl'
             ]"
             :title="mergeMode ? 'Zusammenfassen beenden' : 'Zutaten zusammenfassen'"
           >
@@ -107,7 +107,7 @@
             <span class="hidden sm:inline">Zusammenfassen</span>
           </button>
           <button
-            v-if="aliasStore.aliases.length > 0"
+            v-if="aliasStore.aliases.length > 0 || aliasStore.blockedIngredients.length > 0"
             @click="showAliasManager = true"
             :class="[
               'flex items-center px-2 rounded-r-xl text-sm transition-colors border',
@@ -1354,6 +1354,50 @@
       @confirm="confirmCompletePurchase"
     />
 
+    <!-- Lösch-Dialog: Zutat entfernen + optional blockieren -->
+    <Teleport to="body">
+      <Transition name="fade">
+        <div v-if="deleteConfirmItem" class="z-50 fixed inset-0 flex justify-center items-end sm:items-center bg-black/50 p-4" @click.self="deleteConfirmItem = null">
+          <div class="bg-white dark:bg-stone-900 shadow-2xl rounded-2xl w-full max-w-sm overflow-hidden">
+            <!-- Header -->
+            <div class="flex justify-between items-center px-5 py-4 border-stone-200 dark:border-stone-700 border-b">
+              <h2 class="flex items-center gap-2 font-display font-bold text-stone-800 dark:text-stone-100 text-lg">
+                <Trash2 class="w-5 h-5 text-red-500" />
+                Artikel entfernen
+              </h2>
+              <button @click="deleteConfirmItem = null" class="hover:bg-stone-100 dark:hover:bg-stone-800 p-1.5 rounded-lg text-stone-400 transition-colors">
+                <X class="w-5 h-5" />
+              </button>
+            </div>
+            <div class="space-y-3 p-5">
+              <p class="text-stone-600 dark:text-stone-300 text-sm">
+                <strong>„{{ deleteConfirmItem.ingredient_name }}"</strong> von der Einkaufsliste entfernen?
+              </p>
+              <!-- Nur entfernen -->
+              <button
+                @click="confirmDeleteItem(false)"
+                class="flex justify-center items-center gap-2 bg-stone-100 hover:bg-stone-200 dark:bg-stone-800 dark:hover:bg-stone-700 py-3 rounded-xl w-full font-medium text-stone-700 dark:text-stone-300 text-sm transition-colors"
+              >
+                <Trash2 class="w-4 h-4" />
+                Nur entfernen
+              </button>
+              <!-- Entfernen + Blockieren -->
+              <button
+                @click="confirmDeleteItem(true)"
+                class="flex justify-center items-center gap-2 bg-red-50 hover:bg-red-100 dark:bg-red-900/20 dark:hover:bg-red-900/40 py-3 border border-red-200 dark:border-red-800 rounded-xl w-full font-medium text-red-700 dark:text-red-300 text-sm transition-colors"
+              >
+                <Ban class="w-4 h-4" />
+                Entfernen &amp; zukünftig blockieren
+              </button>
+              <p class="text-stone-400 dark:text-stone-500 text-xs text-center">
+                💡 Geblockte Zutaten erscheinen nicht mehr in automatisch erstellten Einkaufslisten.
+              </p>
+            </div>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
+
     <!-- Merge-Dialog -->
     <Teleport to="body">
       <Transition name="fade">
@@ -1409,23 +1453,52 @@
       </Transition>
     </Teleport>
 
-    <!-- Alias-Verwaltung Modal -->
+    <!-- Zutaten-Einstellungen Modal (Aliase + Geblockte Zutaten) -->
     <Teleport to="body">
       <Transition name="fade">
         <div v-if="showAliasManager" class="z-50 fixed inset-0 flex justify-center items-end sm:items-center bg-black/50 p-4" @click.self="showAliasManager = false">
           <div class="flex flex-col bg-white dark:bg-stone-900 shadow-2xl rounded-2xl w-full max-w-md max-h-[80vh] overflow-hidden">
             <!-- Header -->
-            <div class="flex justify-between items-center px-5 py-4 border-stone-200 dark:border-stone-700 border-b">
+            <div class="flex justify-between items-center px-5 py-4 border-stone-200 dark:border-stone-700 border-b shrink-0">
               <div>
-                <h2 class="font-display font-bold text-stone-800 dark:text-stone-100 text-lg">🔗 Zutaten-Zusammenfassungen</h2>
-                <p class="mt-0.5 text-stone-500 dark:text-stone-400 text-xs">{{ aliasStore.aliases.length }} gespeicherte Regeln</p>
+                <h2 class="font-display font-bold text-stone-800 dark:text-stone-100 text-lg">⚙️ Zutaten-Einstellungen</h2>
+                <p class="mt-0.5 text-stone-500 dark:text-stone-400 text-xs">
+                  {{ aliasStore.aliases.length }} Zusammenfassungen · {{ aliasStore.blockedIngredients.length }} blockiert
+                </p>
               </div>
               <button @click="showAliasManager = false" class="hover:bg-stone-100 dark:hover:bg-stone-800 p-1.5 rounded-lg text-stone-400 transition-colors">
                 <X class="w-5 h-5" />
               </button>
             </div>
-            <!-- Alias-Liste -->
-            <div class="flex-1 p-4 overflow-y-auto">
+
+            <!-- Tabs -->
+            <div class="flex border-stone-200 dark:border-stone-700 border-b shrink-0">
+              <button
+                @click="aliasManagerTab = 'aliases'"
+                :class="[
+                  'flex-1 px-4 py-2.5 text-sm font-medium transition-colors',
+                  aliasManagerTab === 'aliases'
+                    ? 'text-violet-600 dark:text-violet-400 border-b-2 border-violet-600 dark:border-violet-400'
+                    : 'text-stone-500 hover:text-stone-700 dark:hover:text-stone-300'
+                ]"
+              >
+                🔗 Zusammenfassungen ({{ aliasStore.aliases.length }})
+              </button>
+              <button
+                @click="aliasManagerTab = 'blocked'"
+                :class="[
+                  'flex-1 px-4 py-2.5 text-sm font-medium transition-colors',
+                  aliasManagerTab === 'blocked'
+                    ? 'text-red-600 dark:text-red-400 border-b-2 border-red-600 dark:border-red-400'
+                    : 'text-stone-500 hover:text-stone-700 dark:hover:text-stone-300'
+                ]"
+              >
+                🚫 Blockiert ({{ aliasStore.blockedIngredients.length }})
+              </button>
+            </div>
+
+            <!-- Aliase Tab -->
+            <div v-if="aliasManagerTab === 'aliases'" class="flex-1 p-4 overflow-y-auto">
               <div v-if="aliasStore.aliases.length === 0" class="py-8 text-stone-400 dark:text-stone-500 text-sm text-center">
                 Keine Zusammenfassungen vorhanden.
               </div>
@@ -1450,6 +1523,34 @@
                 </div>
               </div>
             </div>
+
+            <!-- Geblockte Zutaten Tab -->
+            <div v-if="aliasManagerTab === 'blocked'" class="flex-1 p-4 overflow-y-auto">
+              <div v-if="aliasStore.blockedIngredients.length === 0" class="py-8 text-stone-400 dark:text-stone-500 text-sm text-center">
+                <Ban class="mx-auto mb-2 w-8 h-8 text-stone-300 dark:text-stone-600" />
+                <p>Keine blockierten Zutaten.</p>
+                <p class="mt-1 text-xs">Beim Entfernen von Artikeln aus der Einkaufsliste kannst du Zutaten blockieren.</p>
+              </div>
+              <div v-else class="space-y-2">
+                <div
+                  v-for="blocked in aliasStore.blockedIngredients"
+                  :key="blocked.id"
+                  class="flex justify-between items-center bg-red-50 dark:bg-red-900/10 px-4 py-3 border border-red-100 dark:border-red-900/30 rounded-xl"
+                >
+                  <div class="flex items-center gap-2 min-w-0">
+                    <Ban class="w-3.5 h-3.5 text-red-400 dark:text-red-500 shrink-0" />
+                    <span class="font-medium text-stone-800 dark:text-stone-200 text-sm truncate">{{ blocked.ingredient_name }}</span>
+                  </div>
+                  <button
+                    @click="unblockIngredient(blocked)"
+                    class="hover:bg-green-50 dark:hover:bg-green-900/30 ml-2 px-2.5 py-1 rounded-lg font-medium text-green-600 hover:text-green-700 dark:hover:text-green-300 dark:text-green-400 text-xs transition-all shrink-0"
+                    title="Block aufheben"
+                  >
+                    Freigeben
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </Transition>
@@ -1463,7 +1564,7 @@ import { useShoppingStore } from '@/stores/shopping.js';
 import { useMealPlanStore } from '@/stores/mealplan.js';
 import { useIngredientAliasStore } from '@/stores/ingredient-aliases.js';
 import { useNotification } from '@/composables/useNotification.js';
-import { ListPlus, Check, ShoppingBag, Plus, Minus, Package, BookOpen, BookX, ExternalLink, ShoppingCart, X, ArrowRightLeft, Search, Tag, Trash2, Star, Heart, Archive, Send, Link2, Unlink, ClipboardCopy, LogIn, LogOut, ChevronDown, ChevronLeft, ChevronRight, Loader2, Terminal, Download, Settings, RefreshCw, Merge, ArrowRight, History, RotateCcw } from 'lucide-vue-next';
+import { ListPlus, Check, ShoppingBag, Plus, Minus, Package, BookOpen, BookX, ExternalLink, ShoppingCart, X, ArrowRightLeft, Search, Tag, Trash2, Star, Heart, Archive, Send, Link2, Unlink, ClipboardCopy, LogIn, LogOut, ChevronDown, ChevronLeft, ChevronRight, Loader2, Terminal, Download, Settings, RefreshCw, Merge, ArrowRight, History, RotateCcw, Ban } from 'lucide-vue-next';
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue';
 
 const shoppingStore = useShoppingStore();
@@ -1592,6 +1693,10 @@ const mergeName = ref('');       // Gewählter Name für das zusammengefasste It
 
 // Alias-Verwaltung
 const showAliasManager = ref(false);
+const aliasManagerTab = ref('aliases');
+
+// Lösch-Dialog (mit Block-Option)
+const deleteConfirmItem = ref(null);
 
 const totalCount = computed(() => shoppingStore.activeList?.items?.length || 0);
 const checkedCount = computed(() => shoppingStore.activeList?.items?.filter(i => i.is_checked).length || 0);
@@ -1733,9 +1838,21 @@ async function addManualItem() {
 }
 
 async function deleteItem(item) {
+  deleteConfirmItem.value = item;
+}
+
+async function confirmDeleteItem(shouldBlock) {
+  const item = deleteConfirmItem.value;
+  if (!item) return;
+  deleteConfirmItem.value = null;
   try {
     await shoppingStore.deleteItem(item.id);
-    showSuccess(`${item.ingredient_name} entfernt 🗑️`);
+    if (shouldBlock) {
+      await aliasStore.blockIngredient(item.ingredient_name);
+      showSuccess(`${item.ingredient_name} entfernt & blockiert 🚫`);
+    } else {
+      showSuccess(`${item.ingredient_name} entfernt 🗑️`);
+    }
   } catch {
     showError('Artikel konnte nicht gelöscht werden.');
   }
@@ -2027,6 +2144,7 @@ onMounted(async () => {
   await shoppingStore.fetchActiveList();
   shoppingStore.fetchBringStatus();
   aliasStore.fetchAliases();
+  aliasStore.fetchBlockedIngredients();
   // Verlauf immer laden (für History-Button)
   shoppingStore.fetchListHistory();
 });
@@ -2211,6 +2329,15 @@ async function deleteAlias(alias) {
     showSuccess(`Zusammenfassung "${alias.alias_name}" gelöscht.`);
   } catch {
     showError('Löschen fehlgeschlagen.');
+  }
+}
+
+async function unblockIngredient(blocked) {
+  try {
+    await aliasStore.unblockIngredient(blocked.id);
+    showSuccess(`"${blocked.ingredient_name}" wieder freigegeben ✅`);
+  } catch {
+    showError('Freigabe fehlgeschlagen.');
   }
 }
 
