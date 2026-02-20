@@ -211,7 +211,7 @@
             </div>
           </Transition>
         </div>
-        <!-- REWE abgleichen (Split-Button: Match + Präferenzen) -->
+        <!-- REWE abgleichen (Split-Button: Match + Einstellungen) -->
         <div v-if="shoppingStore.activeList && reweEnabled" class="flex items-stretch w-full sm:w-auto">
           <button
             @click="matchWithRewe"
@@ -223,9 +223,9 @@
             REWE abgleichen
           </button>
           <button
-            @click="openRewePreferences"
+            @click="showReweSettings = true; loadReweMarketSettings()"
             class="flex items-center bg-rewe-500 hover:bg-rewe-600 px-3 border-rewe-400 border-l rounded-r-xl text-white transition-colors"
-            title="Bevorzugte REWE-Produkte verwalten"
+            title="REWE-Einstellungen"
           >
             <Settings class="w-4 h-4" />
           </button>
@@ -667,9 +667,9 @@
               Bei REWE bestellen ({{ shoppingStore.reweLinkedItems.length }})
             </button>
             <button
-              @click="showReweSettings = true; loadReweMarketSettings()"
+              @click="showReweOrderSettings = true"
               class="flex items-center bg-rewe-500 hover:bg-rewe-600 px-3 border-rewe-400 border-l rounded-r-xl font-medium text-white transition-colors"
-              title="REWE-Einstellungen"
+              title="Bestell-Einstellungen"
             >
               <Settings class="w-4 h-4" />
             </button>
@@ -685,7 +685,7 @@
         </div>
       </div>
 
-      <!-- REWE Einstellungen Modal -->
+      <!-- REWE Einstellungen Modal (Markt + Präferenzen) -->
       <Teleport to="body">
         <Transition name="fade">
           <div v-if="showReweSettings" class="z-50 fixed inset-0 flex justify-center items-end sm:items-center bg-black/50 p-4" @click.self="showReweSettings = false">
@@ -695,7 +695,7 @@
               <div class="flex justify-between items-center px-5 py-4 border-stone-200 dark:border-stone-700 border-b shrink-0">
                 <div>
                   <h2 class="font-display font-bold text-stone-800 dark:text-stone-100 text-lg">🏪 REWE-Einstellungen</h2>
-                  <p class="mt-0.5 text-stone-500 dark:text-stone-400 text-xs">Markt, Bestell-Methode und Userscript verwalten</p>
+                  <p class="mt-0.5 text-stone-500 dark:text-stone-400 text-xs">Markt auswählen und Produkt-Präferenzen verwalten</p>
                 </div>
                 <button @click="showReweSettings = false" class="hover:bg-stone-100 dark:hover:bg-stone-800 p-1.5 rounded-lg text-stone-400 transition-colors">
                   <X class="w-5 h-5" />
@@ -707,7 +707,7 @@
                 <!-- Mein REWE-Markt -->
                 <div>
                   <h3 class="flex items-center gap-2 mb-3 font-medium text-stone-700 dark:text-stone-300 text-sm">
-                    <MapPin class="w-4 h-4 text-stone-400" />
+                    <MapPin class="w-4 h-4 text-rewe-500" />
                     Mein REWE-Markt
                   </h3>
 
@@ -795,6 +795,45 @@
 
                 <!-- Trennlinie -->
                 <div class="border-stone-200 dark:border-stone-700 border-t"></div>
+
+                <!-- Bevorzugte Produkte -->
+                <button
+                  @click="showReweSettings = false; openRewePreferences()"
+                  class="group flex items-center gap-3 bg-stone-50 hover:bg-stone-100 dark:bg-stone-800 dark:hover:bg-stone-700 p-4 border border-stone-200 dark:border-stone-700 rounded-xl w-full text-left transition-colors"
+                >
+                  <div class="flex justify-center items-center bg-rewe-100 dark:bg-rewe-900/30 rounded-lg w-10 h-10 shrink-0">
+                    <Star class="w-5 h-5 text-rewe-500" />
+                  </div>
+                  <div class="flex-1 min-w-0">
+                    <span class="font-medium text-stone-800 dark:text-stone-200 text-sm">Bevorzugte Produkte</span>
+                    <p class="text-stone-500 dark:text-stone-400 text-xs">Gespeicherte Zuordnungen von Zutaten zu REWE-Produkten verwalten</p>
+                  </div>
+                  <ChevronRight class="w-4 h-4 text-stone-400 dark:group-hover:text-stone-300 group-hover:text-stone-600 transition-colors shrink-0" />
+                </button>
+              </div>
+            </div>
+          </div>
+        </Transition>
+      </Teleport>
+
+      <!-- REWE Bestell-Einstellungen Modal -->
+      <Teleport to="body">
+        <Transition name="fade">
+          <div v-if="showReweOrderSettings" class="z-50 fixed inset-0 flex justify-center items-end sm:items-center bg-black/50 p-4" @click.self="showReweOrderSettings = false">
+            <div class="flex flex-col bg-white dark:bg-stone-900 shadow-2xl rounded-2xl w-full max-w-md max-h-[85vh] overflow-hidden">
+
+              <!-- Header -->
+              <div class="flex justify-between items-center px-5 py-4 border-stone-200 dark:border-stone-700 border-b shrink-0">
+                <div>
+                  <h2 class="font-display font-bold text-stone-800 dark:text-stone-100 text-lg">🛒 Bestell-Einstellungen</h2>
+                  <p class="mt-0.5 text-stone-500 dark:text-stone-400 text-xs">Bestell-Methode und Userscript verwalten</p>
+                </div>
+                <button @click="showReweOrderSettings = false" class="hover:bg-stone-100 dark:hover:bg-stone-800 p-1.5 rounded-lg text-stone-400 transition-colors">
+                  <X class="w-5 h-5" />
+                </button>
+              </div>
+
+              <div class="space-y-5 p-5 overflow-y-auto">
 
                 <!-- Bestell-Methode wählen -->
                 <div>
@@ -1732,6 +1771,7 @@ const genWeekLabel = computed(() => {
 
 // REWE-Einstellungen (persistent)
 const showReweSettings = ref(false);
+const showReweOrderSettings = ref(false);
 const showRewePreview = ref(false);
 const reweAction = ref(localStorage.getItem('rewe_action') || 'script');
 const reweShowPreview = ref(localStorage.getItem('rewe_preview') !== 'false');
