@@ -19,12 +19,12 @@
           {{ checkedCount }} / {{ totalCount }} erledigt
         </p>
       </div>
-      <div class="flex flex-wrap items-stretch gap-2">
+      <div class="flex flex-wrap items-stretch gap-1.5">
         <button
           @click="toggleRecipeLinks"
           :title="showRecipeLinks ? 'Rezept-Links ausblenden' : 'Rezept-Links einblenden'"
           :class="[
-            'flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium transition-colors border',
+            'flex items-center gap-1.5 px-2.5 py-2 rounded-xl text-sm font-medium transition-colors border',
             showRecipeLinks
               ? 'bg-primary-50 dark:bg-primary-900/30 border-primary-300 dark:border-primary-700 text-primary-700 dark:text-primary-300'
               : 'bg-stone-100 dark:bg-stone-800 border-stone-300 dark:border-stone-600 text-stone-500 dark:text-stone-400'
@@ -32,14 +32,13 @@
         >
           <BookOpen v-if="showRecipeLinks" class="w-4 h-4" />
           <BookX v-else class="w-4 h-4" />
-          <span class="hidden sm:inline">{{ showRecipeLinks ? 'Rezepte' : 'Rezepte' }}</span>
         </button>
         <!-- Verlauf (History-Button mit Dropdown) -->
         <div class="relative" ref="historyBtnRef">
           <button
             @click="openHistoryDropdown"
             :class="[
-              'flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium transition-colors border',
+              'flex items-center gap-1.5 px-2.5 py-2 rounded-xl text-sm font-medium transition-colors border',
               showHistoryDropdown
                 ? 'bg-primary-50 dark:bg-primary-900/30 border-primary-300 dark:border-primary-700 text-primary-700 dark:text-primary-300'
                 : 'bg-stone-100 dark:bg-stone-800 border-stone-300 dark:border-stone-600 text-stone-500 dark:text-stone-400'
@@ -47,7 +46,6 @@
             title="Vorherige Einkaufslisten laden"
           >
             <History class="w-4 h-4" />
-            <span class="hidden sm:inline">Verlauf</span>
           </button>
           <!-- Backdrop -->
           <Transition name="fade">
@@ -95,7 +93,7 @@
           v-if="shoppingStore.activeList"
           @click="toggleMergeMode"
           :class="[
-            'flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium transition-colors border',
+            'flex items-center gap-1.5 px-2.5 py-2 rounded-xl text-sm font-medium transition-colors border',
             mergeMode
               ? 'bg-violet-50 dark:bg-violet-900/30 border-violet-300 dark:border-violet-700 text-violet-700 dark:text-violet-300'
               : 'bg-stone-100 dark:bg-stone-800 border-stone-300 dark:border-stone-600 text-stone-500 dark:text-stone-400 hover:text-stone-700 dark:hover:text-stone-200'
@@ -103,14 +101,13 @@
           :title="mergeMode ? 'Zusammenfassen beenden' : 'Zutaten zusammenfassen'"
         >
           <Merge class="w-4 h-4" />
-          <span class="hidden sm:inline">Zusammenfassen</span>
         </button>
         <!-- Blockieren -->
         <button
           v-if="shoppingStore.activeList"
           @click="toggleBlockMode"
           :class="[
-            'flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium transition-colors border',
+            'flex items-center gap-1.5 px-2.5 py-2 rounded-xl text-sm font-medium transition-colors border',
             blockMode
               ? 'bg-red-50 dark:bg-red-900/30 border-red-300 dark:border-red-700 text-red-700 dark:text-red-300'
               : 'bg-stone-100 dark:bg-stone-800 border-stone-300 dark:border-stone-600 text-stone-500 dark:text-stone-400 hover:text-stone-700 dark:hover:text-stone-200'
@@ -118,17 +115,26 @@
           :title="blockMode ? 'Blockieren beenden' : 'Zutaten zum Blockieren auswählen'"
         >
           <Ban class="w-4 h-4" />
-          <span class="hidden sm:inline">Blockieren</span>
+        </button>
+        <!-- Bring! Import -->
+        <button
+          v-if="shoppingStore.activeList && shoppingStore.bringStatus?.connected"
+          @click="importFromBring"
+          :disabled="shoppingStore.bringImporting"
+          class="flex items-center gap-1.5 bg-stone-100 hover:bg-teal-50 dark:bg-stone-800 dark:hover:bg-teal-900/20 disabled:opacity-50 px-2.5 py-2 border border-stone-300 dark:border-stone-600 rounded-xl font-medium text-teal-600 dark:text-teal-400 text-sm transition-colors"
+          title="Artikel aus Bring! importieren"
+        >
+          <Loader2 v-if="shoppingStore.bringImporting" class="w-4 h-4 animate-spin" />
+          <Download v-else class="w-4 h-4" />
         </button>
         <!-- Einstellungen (zentral) -->
         <button
           v-if="shoppingStore.activeList"
           @click="openSettings()"
-          class="flex items-center gap-1.5 bg-stone-100 dark:bg-stone-800 px-3 py-2 border border-stone-300 dark:border-stone-600 rounded-xl font-medium text-stone-500 hover:text-stone-700 dark:hover:text-stone-200 dark:text-stone-400 text-sm transition-colors"
+          class="flex items-center gap-1.5 bg-stone-100 dark:bg-stone-800 px-2.5 py-2 border border-stone-300 dark:border-stone-600 rounded-xl font-medium text-stone-500 hover:text-stone-700 dark:hover:text-stone-200 dark:text-stone-400 text-sm transition-colors"
           title="Einstellungen"
         >
           <Settings class="w-4 h-4" />
-          <span class="hidden sm:inline">Einstellungen</span>
         </button>
         <!-- Aus Wochenplan erstellen (Split-Button) -->
         <div class="relative flex items-stretch w-full sm:w-auto">
@@ -270,45 +276,38 @@
     <form
       v-if="shoppingStore.activeList || !shoppingStore.loading"
       @submit.prevent="addManualItem"
-      class="flex flex-wrap items-end gap-2 bg-white dark:bg-stone-900 p-4 border border-stone-200 dark:border-stone-800 rounded-xl"
+      class="flex items-center gap-2"
     >
-      <div class="flex-1 min-w-40">
-        <label class="block mb-1 font-medium text-stone-500 dark:text-stone-400 text-xs">Artikel</label>
+      <div class="flex flex-1 items-center bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-800 rounded-xl overflow-hidden">
         <input
           v-model="newItem.name"
           type="text"
-          placeholder="z.B. Toilettenpapier"
+          placeholder="Artikel hinzufügen…"
           required
-          class="bg-stone-50 dark:bg-stone-800 px-3 py-2 border border-stone-300 focus:border-transparent dark:border-stone-600 rounded-lg focus:ring-2 focus:ring-primary-500 w-full text-stone-800 dark:text-stone-200 placeholder:text-stone-400 text-sm"
+          class="flex-1 bg-transparent px-3 py-2 border-0 focus:ring-0 min-w-0 text-stone-800 dark:text-stone-200 placeholder:text-stone-400 text-sm"
         />
-      </div>
-      <div class="w-20">
-        <label class="block mb-1 font-medium text-stone-500 dark:text-stone-400 text-xs">Menge</label>
         <input
           v-model.number="newItem.amount"
           type="number"
           step="any"
           min="0"
           placeholder="1"
-          class="bg-stone-50 dark:bg-stone-800 px-3 py-2 border border-stone-300 focus:border-transparent dark:border-stone-600 rounded-lg focus:ring-2 focus:ring-primary-500 w-full text-stone-800 dark:text-stone-200 placeholder:text-stone-400 text-sm"
+          class="bg-transparent px-2 py-2 border-stone-200 dark:border-stone-700 border-l focus:ring-0 w-14 text-stone-800 dark:text-stone-200 placeholder:text-stone-400 text-sm text-center"
         />
-      </div>
-      <div class="w-20">
-        <label class="block mb-1 font-medium text-stone-500 dark:text-stone-400 text-xs">Einheit</label>
         <input
           v-model="newItem.unit"
           type="text"
           placeholder="Stk"
-          class="bg-stone-50 dark:bg-stone-800 px-3 py-2 border border-stone-300 focus:border-transparent dark:border-stone-600 rounded-lg focus:ring-2 focus:ring-primary-500 w-full text-stone-800 dark:text-stone-200 placeholder:text-stone-400 text-sm"
+          class="bg-transparent px-2 py-2 border-stone-200 dark:border-stone-700 border-l focus:ring-0 w-14 text-stone-800 dark:text-stone-200 placeholder:text-stone-400 text-sm text-center"
         />
       </div>
       <button
         type="submit"
         :disabled="!newItem.name.trim()"
-        class="flex items-center gap-1.5 bg-primary-600 hover:bg-primary-700 disabled:opacity-50 px-4 py-2 rounded-lg font-medium text-white text-sm transition-colors"
+        class="flex items-center bg-primary-600 hover:bg-primary-700 disabled:opacity-50 p-2.5 rounded-xl text-white transition-colors shrink-0"
+        title="Hinzufügen"
       >
         <Plus class="w-4 h-4" />
-        Hinzufügen
       </button>
     </form>
 
@@ -604,36 +603,16 @@
           </span>
         </div>
         <div class="flex sm:flex-row flex-col sm:flex-wrap gap-2 w-full sm:w-auto">
-          <!-- An Bring! senden + Importieren -->
-          <div v-if="shoppingStore.bringStatus?.connected" class="flex gap-2 w-full sm:w-auto">
-            <button
-              v-if="shoppingStore.openItemsCount > 0"
-              @click="sendToBring"
-              :disabled="shoppingStore.bringSending"
-              class="flex sm:flex-initial flex-1 justify-center items-center gap-2 bg-teal-600 hover:bg-teal-700 disabled:opacity-50 px-5 py-3 rounded-xl font-medium text-white transition-colors"
-            >
-              <Loader2 v-if="shoppingStore.bringSending" class="w-4 h-4 animate-spin" />
-              <Send v-else class="w-4 h-4" />
-              An Bring! senden
-            </button>
-            <button
-              @click="importFromBring"
-              :disabled="shoppingStore.bringImporting"
-              class="flex justify-center items-center gap-2 bg-teal-50 hover:bg-teal-100 dark:bg-teal-900/20 dark:hover:bg-teal-900/40 disabled:opacity-50 px-4 py-3 border border-teal-300 dark:border-teal-700 rounded-xl font-medium text-teal-700 dark:text-teal-300 transition-colors"
-              title="Artikel aus Bring! importieren"
-            >
-              <Loader2 v-if="shoppingStore.bringImporting" class="w-4 h-4 animate-spin" />
-              <Download v-else class="w-4 h-4" />
-              <span class="hidden sm:inline">Importieren</span>
-            </button>
-          </div>
+          <!-- An Bring! senden -->
           <button
-            v-else
-            @click="openSettings('bring')"
-            class="flex justify-center items-center gap-2 bg-teal-600 hover:bg-teal-700 px-5 py-3 rounded-xl w-full sm:w-auto font-medium text-white transition-colors"
+            v-if="shoppingStore.bringStatus?.connected && shoppingStore.openItemsCount > 0"
+            @click="sendToBring"
+            :disabled="shoppingStore.bringSending"
+            class="flex justify-center items-center gap-2 bg-teal-600 hover:bg-teal-700 disabled:opacity-50 px-5 py-3 rounded-xl w-full sm:w-auto font-medium text-white transition-colors"
           >
-            <Link2 class="w-4 h-4" />
-            Bring! verbinden
+            <Loader2 v-if="shoppingStore.bringSending" class="w-4 h-4 animate-spin" />
+            <Send v-else class="w-4 h-4" />
+            An Bring! senden
           </button>
 
           <!-- Bei REWE bestellen -->
