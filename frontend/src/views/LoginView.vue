@@ -5,7 +5,7 @@
   Freundliches Design mit Wechsel zwischen Login und Registrierung.
 -->
 <template>
-  <div class="flex justify-center items-center bg-gradient-to-br from-primary-50 dark:from-stone-950 via-white dark:via-stone-900 dark:to-stone-950 p-4 min-h-screen to-accent-50">
+  <div class="flex justify-center items-center bg-linear-to-br from-primary-50 dark:from-stone-950 via-white dark:via-stone-900 dark:to-stone-950 p-4 min-h-screen to-accent-50">
     <div class="w-full max-w-md">
       <!-- Logo und Willkommen -->
       <div class="mb-8 text-center">

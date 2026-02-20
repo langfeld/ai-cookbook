@@ -65,47 +65,51 @@
           </div>
 
           <!-- Aktionen -->
-          <div class="flex flex-wrap gap-2 mt-6">
-            <button
-              @click="markCooked"
-              class="flex sm:flex-initial flex-1 justify-center items-center gap-2 px-4 py-2 rounded-lg font-medium text-white text-sm transition-colors bg-accent-600 hover:bg-accent-700"
-            >
-              <ChefHat class="w-4 h-4" />
-              <span class="hidden sm:inline">Als gekocht markieren</span>
-              <span class="sm:hidden">Gekocht</span>
-            </button>
-            <AddToCollection v-if="recipe?.id" :recipe-id="recipe.id" />
-            <router-link
-              :to="'/recipes/new?edit=' + recipe.id"
-              class="flex sm:flex-initial flex-1 justify-center items-center gap-2 hover:bg-stone-50 dark:hover:bg-stone-800 px-4 py-2 border border-stone-300 dark:border-stone-600 rounded-lg text-stone-700 dark:text-stone-300 text-sm transition-colors"
-            >
-              <Pencil class="w-4 h-4" />
-              Bearbeiten
-            </router-link>
-            <button
-              @click="showDeleteDialog = true"
-              class="flex sm:flex-initial flex-1 justify-center items-center gap-2 hover:bg-red-50 dark:hover:bg-red-900/20 px-4 py-2 border border-red-300 dark:border-red-800 rounded-lg text-red-600 dark:text-red-400 text-sm transition-colors"
-            >
-              <Trash2 class="w-4 h-4" />
-              Löschen
-            </button>
-            <button
-              @click="plannerServings = adjustedServings; showPlannerModal = true"
-              class="flex sm:flex-initial flex-1 justify-center items-center gap-2 bg-primary-600 hover:bg-primary-700 px-4 py-2 rounded-lg font-medium text-white text-sm transition-colors"
-            >
-              <CalendarPlus class="w-4 h-4" />
-              <span class="hidden sm:inline">Zum Planer</span>
-              <span class="sm:hidden">Planer</span>
-            </button>
-            <button
-              v-if="recipe.steps?.length"
-              @click="showCookingMode = true"
-              class="flex sm:flex-initial flex-1 justify-center items-center gap-2 bg-stone-800 hover:bg-stone-700 dark:bg-stone-700 dark:hover:bg-stone-600 px-4 py-2 rounded-lg font-medium text-white text-sm transition-colors"
-            >
-              <Maximize class="w-4 h-4" />
-              <span class="hidden sm:inline">Kochmodus</span>
-              <span class="sm:hidden">Kochen</span>
-            </button>
+          <div class="space-y-2 mt-6">
+            <!-- Haupt-Aktionen: Kochen & Planen -->
+            <div class="sm:flex sm:flex-wrap gap-2 grid grid-cols-2">
+              <button
+                v-if="recipe.steps?.length"
+                @click="showCookingMode = true"
+                class="flex justify-center items-center gap-2 bg-stone-800 hover:bg-stone-700 dark:bg-stone-700 dark:hover:bg-stone-600 px-4 py-2.5 rounded-lg font-medium text-white text-sm transition-colors"
+              >
+                <Maximize class="w-4 h-4" />
+                Kochmodus
+              </button>
+              <button
+                @click="markCooked"
+                class="flex justify-center items-center gap-2 px-4 py-2.5 rounded-lg font-medium text-white text-sm transition-colors bg-accent-600 hover:bg-accent-700"
+              >
+                <ChefHat class="w-4 h-4" />
+                <span class="hidden sm:inline">Als gekocht markieren</span>
+                <span class="sm:hidden">Gekocht ✓</span>
+              </button>
+              <button
+                @click="plannerServings = adjustedServings; showPlannerModal = true"
+                class="flex justify-center items-center gap-2 bg-primary-600 hover:bg-primary-700 px-4 py-2.5 rounded-lg font-medium text-white text-sm transition-colors"
+              >
+                <CalendarPlus class="w-4 h-4" />
+                Zum Planer
+              </button>
+            </div>
+            <!-- Sekundäre Aktionen: Verwalten -->
+            <div class="flex flex-wrap gap-1.5">
+              <AddToCollection v-if="recipe?.id" :recipe-id="recipe.id" />
+              <router-link
+                :to="'/recipes/new?edit=' + recipe.id"
+                class="flex items-center gap-1.5 hover:bg-stone-100 dark:hover:bg-stone-800 px-3 py-1.5 rounded-lg text-stone-500 dark:text-stone-400 text-sm transition-colors"
+              >
+                <Pencil class="w-3.5 h-3.5" />
+                Bearbeiten
+              </router-link>
+              <button
+                @click="showDeleteDialog = true"
+                class="flex items-center gap-1.5 hover:bg-red-50 dark:hover:bg-red-900/20 px-3 py-1.5 rounded-lg text-stone-400 hover:text-red-600 dark:hover:text-red-400 dark:text-stone-500 text-sm transition-colors"
+              >
+                <Trash2 class="w-3.5 h-3.5" />
+                Löschen
+              </button>
+            </div>
           </div>
         </div>
       </div>

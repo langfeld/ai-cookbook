@@ -259,7 +259,7 @@
       @submit.prevent="addManualItem"
       class="flex flex-wrap items-end gap-2 bg-white dark:bg-stone-900 p-4 border border-stone-200 dark:border-stone-800 rounded-xl"
     >
-      <div class="flex-1 min-w-[160px]">
+      <div class="flex-1 min-w-40">
         <label class="block mb-1 font-medium text-stone-500 dark:text-stone-400 text-xs">Artikel</label>
         <input
           v-model="newItem.name"

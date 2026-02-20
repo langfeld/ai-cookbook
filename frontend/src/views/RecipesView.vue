@@ -38,21 +38,13 @@
           <Square v-else class="w-4 h-4" />
           <span class="hidden sm:inline">{{ selectMode ? 'Abbrechen' : 'Auswählen' }}</span>
         </button>
-        <!-- Link zu Meine Daten -->
-        <router-link
-          to="/my-data"
-          class="flex items-center gap-2 bg-stone-100 hover:bg-stone-200 dark:bg-stone-800 dark:hover:bg-stone-700 px-4 py-2 border border-stone-200 dark:border-stone-700 rounded-lg font-medium text-stone-700 dark:text-stone-300 text-sm transition-colors"
-        >
-          <ArrowDownUp class="w-4 h-4" />
-          <span class="hidden sm:inline">Export/Import</span>
-        </router-link>
         <!-- KI-Import Button -->
         <button
           @click="showPhotoImport = true"
-          class="flex items-center gap-2 px-4 py-2 rounded-lg font-medium text-white text-sm transition-colors bg-accent-600 hover:bg-accent-700"
+          class="flex sm:flex-initial flex-1 justify-center items-center gap-2 px-4 py-2 rounded-lg font-medium text-white text-sm transition-colors bg-accent-600 hover:bg-accent-700"
         >
           <Sparkles class="w-4 h-4" />
-          <span class="hidden sm:inline">KI-Import</span>
+          <span>KI-Import</span>
         </button>
         <!-- Neues Rezept -->
         <router-link
