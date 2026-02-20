@@ -1,0 +1,131 @@
+---
+import ThemeToggle from './ThemeToggle.astro'
+
+const navLinks = [
+  { href: '#features', label: 'Features' },
+  { href: '#showcase', label: 'Screenshots' },
+  { href: '#tech', label: 'Tech Stack' },
+  { href: '#quickstart', label: 'Setup' },
+]
+---
+
+<header
+  id="site-header"
+  class="top-0 right-0 left-0 z-50 fixed transition-all duration-300"
+>
+  <div class="mx-auto px-4 sm:px-6 lg:px-8 max-w-7xl">
+    <div class="flex justify-between items-center bg-white/70 dark:bg-stone-900/70 shadow-sm backdrop-blur-xl px-6 border border-stone-200/50 dark:border-stone-800/50 border-t-0 rounded-b-2xl h-16">
+      <!-- Logo -->
+      <a href="#" class="group flex items-center gap-2">
+        <span class="text-2xl group-hover:rotate-12 transition-transform duration-300">🍳</span>
+        <span class="font-display font-bold text-stone-900 dark:text-stone-50 text-xl">
+          Zauberjournal
+        </span>
+      </a>
+
+      <!-- Desktop Nav -->
+      <nav class="hidden md:flex items-center gap-1">
+        {navLinks.map(link => (
+          <a
+            href={link.href}
+            class="hover:bg-stone-100 dark:hover:bg-stone-800/50 px-3 py-2 rounded-lg font-medium text-stone-600 hover:text-primary-600 dark:hover:text-primary-400 dark:text-stone-400 text-sm transition-all duration-200"
+          >
+            {link.label}
+          </a>
+        ))}
+        <div class="ml-2 pl-2 border-stone-200 dark:border-stone-700 border-l">
+          <ThemeToggle />
+        </div>
+      </nav>
+
+      <!-- Mobile: Theme Toggle + Hamburger -->
+      <div class="md:hidden flex items-center gap-2">
+        <ThemeToggle />
+        <button
+          id="mobile-menu-btn"
+          type="button"
+          aria-label="Menü öffnen"
+          class="hover:bg-stone-100 dark:hover:bg-stone-800/50 p-2 rounded-xl text-stone-600 dark:text-stone-400 transition-colors cursor-pointer"
+        >
+          <svg class="w-5 h-5" id="hamburger-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="4" x2="20" y1="12" y2="12"></line>
+            <line x1="4" x2="20" y1="6" y2="6"></line>
+            <line x1="4" x2="20" y1="18" y2="18"></line>
+          </svg>
+          <svg class="hidden w-5 h-5" id="close-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M18 6 6 18"></path>
+            <path d="m6 6 12 12"></path>
+          </svg>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Mobile Menu -->
+  <div
+    id="mobile-menu"
+    class="md:hidden opacity-0 max-h-0 overflow-hidden transition-all duration-300"
+  >
+    <div class="mx-auto px-4 sm:px-6 lg:px-8 max-w-7xl">
+      <nav class="flex flex-col gap-1 bg-white/90 dark:bg-stone-900/90 shadow-lg backdrop-blur-xl px-4 py-3 border border-stone-200/50 dark:border-stone-800/50 border-t-0 rounded-b-2xl">
+        {navLinks.map(link => (
+          <a
+            href={link.href}
+            class="hover:bg-stone-100 dark:hover:bg-stone-800/50 px-4 py-3 rounded-xl font-medium text-stone-600 hover:text-primary-600 dark:hover:text-primary-400 dark:text-stone-400 text-sm transition-all duration-200 mobile-nav-link"
+          >
+            {link.label}
+          </a>
+        ))}
+      </nav>
+    </div>
+  </div>
+</header>
+
+<script is:inline>
+  (function() {
+    var btn = document.getElementById('mobile-menu-btn')
+    var menu = document.getElementById('mobile-menu')
+    var hamburger = document.getElementById('hamburger-icon')
+    var close = document.getElementById('close-icon')
+    var open = false
+
+    btn.addEventListener('click', function() {
+      open = !open
+      if (open) {
+        menu.style.maxHeight = menu.scrollHeight + 'px'
+        menu.style.opacity = '1'
+        hamburger.classList.add('hidden')
+        close.classList.remove('hidden')
+      } else {
+        menu.style.maxHeight = '0'
+        menu.style.opacity = '0'
+        hamburger.classList.remove('hidden')
+        close.classList.add('hidden')
+      }
+    })
+
+    // Close on link click
+    document.querySelectorAll('.mobile-nav-link').forEach(function(link) {
+      link.addEventListener('click', function() {
+        open = false
+        menu.style.maxHeight = '0'
+        menu.style.opacity = '0'
+        hamburger.classList.remove('hidden')
+        close.classList.add('hidden')
+      })
+    })
+
+    // Header hide/show on scroll
+    var header = document.getElementById('site-header')
+    var lastY = 0
+    window.addEventListener('scroll', function() {
+      var y = window.scrollY
+      if (y > 100 && y > lastY) {
+        header.style.transform = 'translateY(-100%)'
+      } else {
+        header.style.transform = 'translateY(0)'
+      }
+      lastY = y
+    })
+  })()
+</script>

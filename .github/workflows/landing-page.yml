@@ -1,0 +1,65 @@
+# ============================================
+# GitHub Actions — Landing Page → GitHub Pages
+# ============================================
+# Baut die Astro Landing Page und deployt sie
+# auf GitHub Pages.
+#
+# Voraussetzung:
+#   Repository Settings → Pages →
+#   Source: "GitHub Actions" auswählen
+
+name: Deploy Landing Page
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - 'landingpage/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: landingpage/package-lock.json
+
+      - name: Install dependencies
+        working-directory: landingpage
+        run: npm ci
+
+      - name: Build Astro
+        working-directory: landingpage
+        run: npm run build
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: landingpage/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
