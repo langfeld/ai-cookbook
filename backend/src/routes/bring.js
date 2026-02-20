@@ -316,4 +316,130 @@ export default async function bringRoutes(app) {
     db.prepare('DELETE FROM bring_settings WHERE user_id = ?').run(userId);
     return reply.send({ success: true, message: 'Bring!-Verbindung getrennt.' });
   });
+
+  // ------------------------------------------
+  // POST /import - Artikel aus Bring! importieren
+  // ------------------------------------------
+  app.post('/import', {
+    preHandler: [app.authenticate],
+    schema: {
+      body: {
+        type: 'object',
+        properties: {
+          listUuid: { type: 'string' },
+        },
+      },
+    },
+  }, async (request, reply) => {
+    const userId = request.user.id;
+    const { listUuid } = request.body || {};
+
+    try {
+      const client = await createBringClient(userId);
+      if (!client) {
+        return reply.status(400).send({ error: 'Bring! nicht verbunden.' });
+      }
+
+      const targetListUuid = listUuid || client.settings.default_list_uuid;
+      if (!targetListUuid) {
+        return reply.status(400).send({ error: 'Keine Bring!-Liste ausgewählt.' });
+      }
+
+      // Items aus Bring! laden
+      const bringData = await client.bring.getItems(targetListUuid);
+      const purchaseItems = bringData.purchase || [];
+
+      if (purchaseItems.length === 0) {
+        return reply.send({
+          success: true,
+          message: 'Keine Artikel in der Bring!-Liste.',
+          importedCount: 0,
+          skippedCount: 0,
+        });
+      }
+
+      // Aktive Einkaufsliste finden oder erstellen
+      let list = db.prepare(
+        'SELECT id FROM shopping_lists WHERE user_id = ? AND is_active = 1 ORDER BY created_at DESC LIMIT 1'
+      ).get(userId);
+
+      if (!list) {
+        const { lastInsertRowid } = db.prepare(
+          'INSERT INTO shopping_lists (user_id, name) VALUES (?, ?)'
+        ).run(userId, 'Einkaufsliste');
+        list = { id: lastInsertRowid };
+      }
+
+      // Bestehende Artikelnamen laden (Duplikate vermeiden, case-insensitive)
+      const existingNames = new Set(
+        db.prepare('SELECT LOWER(ingredient_name) as name FROM shopping_list_items WHERE shopping_list_id = ?')
+          .all(list.id)
+          .map(r => r.name)
+      );
+
+      const insertStmt = db.prepare(`
+        INSERT INTO shopping_list_items (shopping_list_id, ingredient_name, amount, unit, recipe_ids, source)
+        VALUES (?, ?, ?, ?, '[]', 'bring')
+      `);
+
+      let importedCount = 0;
+      let skippedCount = 0;
+      const importedItems = [];
+
+      const importAll = db.transaction(() => {
+        for (const bringItem of purchaseItems) {
+          const name = (bringItem.name || '').trim();
+          if (!name) continue;
+
+          // Duplikat-Check (case-insensitive)
+          if (existingNames.has(name.toLowerCase())) {
+            skippedCount++;
+            continue;
+          }
+
+          // Specification parsen (z.B. "500 g", "2 Stück", "1 Bund")
+          let amount = null;
+          let unit = null;
+          const spec = (bringItem.specification || '').trim();
+          if (spec) {
+            const match = spec.match(/^([\d.,]+)\s*(.*)$/);
+            if (match) {
+              amount = parseFloat(match[1].replace(',', '.'));
+              unit = match[2].trim() || null;
+            } else {
+              // Spec ist reiner Text → als unit speichern
+              unit = spec;
+            }
+          }
+
+          const { lastInsertRowid } = insertStmt.run(list.id, name, amount, unit);
+          existingNames.add(name.toLowerCase());
+          importedCount++;
+          importedItems.push({
+            id: lastInsertRowid,
+            ingredient_name: name,
+            amount,
+            unit,
+            is_checked: 0,
+            recipes: [],
+            source: 'bring',
+            pantry_deducted: 0,
+          });
+        }
+      });
+
+      importAll();
+
+      return reply.send({
+        success: true,
+        message: `${importedCount} Artikel aus Bring! importiert.`,
+        importedCount,
+        skippedCount,
+        items: importedItems,
+      });
+    } catch (err) {
+      console.error('Bring! Import fehlgeschlagen:', err.message);
+      return reply.status(500).send({ error: 'Artikel konnten nicht aus Bring! importiert werden.' });
+    }
+  });
 }

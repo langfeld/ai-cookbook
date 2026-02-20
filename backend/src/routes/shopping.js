@@ -58,7 +58,7 @@ export default async function shoppingRoutes(fastify) {
     let manualItems = [];
     if (oldList) {
       manualItems = db.prepare(
-        "SELECT ingredient_name, amount, unit, is_checked FROM shopping_list_items WHERE shopping_list_id = ? AND (recipe_ids IS NULL OR recipe_ids = '[]')"
+        "SELECT ingredient_name, amount, unit, is_checked, source FROM shopping_list_items WHERE shopping_list_id = ? AND (recipe_ids IS NULL OR recipe_ids = '[]')"
       ).all(oldList.id);
     }
 
@@ -68,10 +68,10 @@ export default async function shoppingRoutes(fastify) {
     // Manuelle Items in die neue Liste übernehmen
     if (manualItems.length > 0) {
       const insertManual = db.prepare(
-        "INSERT INTO shopping_list_items (shopping_list_id, ingredient_name, amount, unit, is_checked, recipe_ids) VALUES (?, ?, ?, ?, ?, '[]')"
+        "INSERT INTO shopping_list_items (shopping_list_id, ingredient_name, amount, unit, is_checked, recipe_ids, source) VALUES (?, ?, ?, ?, ?, '[]', ?)"
       );
       for (const item of manualItems) {
-        insertManual.run(listId, item.ingredient_name, item.amount, item.unit, item.is_checked);
+        insertManual.run(listId, item.ingredient_name, item.amount, item.unit, item.is_checked, item.source || 'manual');
       }
     }
 
@@ -308,8 +308,8 @@ export default async function shoppingRoutes(fastify) {
     }
 
     const { lastInsertRowid: itemId } = db.prepare(`
-      INSERT INTO shopping_list_items (shopping_list_id, ingredient_name, amount, unit, recipe_ids)
-      VALUES (?, ?, ?, ?, '[]')
+      INSERT INTO shopping_list_items (shopping_list_id, ingredient_name, amount, unit, recipe_ids, source)
+      VALUES (?, ?, ?, ?, '[]', 'manual')
     `).run(list.id, ingredient_name.trim(), amount || null, unit || null);
 
     return {
@@ -319,6 +319,7 @@ export default async function shoppingRoutes(fastify) {
       unit: unit || null,
       is_checked: 0,
       recipes: [],
+      source: 'manual',
       pantry_deducted: 0,
       message: 'Artikel hinzugefügt',
     };

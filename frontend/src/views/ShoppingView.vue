@@ -479,6 +479,13 @@
                     <span :class="['font-medium text-sm', item.is_checked ? 'line-through text-stone-400' : 'text-stone-800 dark:text-stone-200']">
                       {{ item.ingredient_name }}
                     </span>
+                    <!-- Source-Icons -->
+                    <span v-if="item.source === 'manual'" title="Manuell hinzugefügt" class="text-stone-400 dark:text-stone-500">
+                      <PenLine class="w-3 h-3" />
+                    </span>
+                    <span v-else-if="item.source === 'bring'" title="Aus Bring! importiert" class="text-teal-400 dark:text-teal-500">
+                      <Download class="w-3 h-3" />
+                    </span>
                     <span v-if="item.amount" class="text-stone-400 dark:text-stone-500 text-xs">
                       {{ item.amount }} {{ item.unit }}
                     </span>
@@ -1374,16 +1381,27 @@
                   </div>
                 </div>
 
-                <!-- Senden-Button -->
-                <button
-                  @click="sendToBring"
-                  :disabled="shoppingStore.bringSending || shoppingStore.openItemsCount === 0"
-                  class="flex justify-center items-center gap-2 bg-teal-600 hover:bg-teal-700 disabled:opacity-50 py-3 rounded-xl w-full font-medium text-white transition-colors"
-                >
-                  <Loader2 v-if="shoppingStore.bringSending" class="w-4 h-4 animate-spin" />
-                  <Send v-else class="w-4 h-4" />
-                  {{ shoppingStore.openItemsCount }} Artikel senden
-                </button>
+                <!-- Senden + Importieren Buttons -->
+                <div class="flex gap-2">
+                  <button
+                    @click="sendToBring"
+                    :disabled="shoppingStore.bringSending || shoppingStore.openItemsCount === 0"
+                    class="flex flex-1 justify-center items-center gap-2 bg-teal-600 hover:bg-teal-700 disabled:opacity-50 py-3 rounded-xl font-medium text-white transition-colors"
+                  >
+                    <Loader2 v-if="shoppingStore.bringSending" class="w-4 h-4 animate-spin" />
+                    <Send v-else class="w-4 h-4" />
+                    {{ shoppingStore.openItemsCount }} senden
+                  </button>
+                  <button
+                    @click="importFromBring"
+                    :disabled="shoppingStore.bringImporting"
+                    class="flex flex-1 justify-center items-center gap-2 bg-stone-100 hover:bg-stone-200 dark:bg-stone-800 dark:hover:bg-stone-700 disabled:opacity-50 py-3 border border-stone-300 dark:border-stone-600 rounded-xl font-medium text-stone-700 dark:text-stone-300 transition-colors"
+                  >
+                    <Loader2 v-if="shoppingStore.bringImporting" class="w-4 h-4 animate-spin" />
+                    <Download v-else class="w-4 h-4" />
+                    Importieren
+                  </button>
+                </div>
 
                 <!-- Trennen -->
                 <button
@@ -1731,7 +1749,7 @@ import { useMealPlanStore } from '@/stores/mealplan.js';
 import { useIngredientAliasStore } from '@/stores/ingredient-aliases.js';
 import { useNotification } from '@/composables/useNotification.js';
 import { useApi } from '@/composables/useApi.js';
-import { ListPlus, Check, ShoppingBag, Plus, Minus, Package, BookOpen, BookX, ExternalLink, ShoppingCart, X, ArrowRightLeft, Search, Tag, Trash2, Star, Heart, Archive, Send, Link2, Unlink, ClipboardCopy, LogIn, LogOut, ChevronDown, ChevronLeft, ChevronRight, Loader2, Terminal, Download, Settings, RefreshCw, Merge, ArrowRight, History, RotateCcw, Ban, MapPin } from 'lucide-vue-next';
+import { ListPlus, Check, ShoppingBag, Plus, Minus, Package, BookOpen, BookX, ExternalLink, ShoppingCart, X, ArrowRightLeft, Search, Tag, Trash2, Star, Heart, Archive, Send, Link2, Unlink, ClipboardCopy, LogIn, LogOut, ChevronDown, ChevronLeft, ChevronRight, Loader2, Terminal, Download, Settings, RefreshCw, Merge, ArrowRight, History, RotateCcw, Ban, MapPin, PenLine, Upload } from 'lucide-vue-next';
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue';
 
 const shoppingStore = useShoppingStore();
@@ -2454,6 +2472,25 @@ async function disconnectBring() {
     showSuccess('Bring!-Verbindung getrennt.');
   } catch {
     showError('Fehler beim Trennen.');
+  }
+}
+
+async function importFromBring() {
+  try {
+    const listUuid = selectedBringList.value || shoppingStore.bringStatus?.list?.uuid;
+    const result = await shoppingStore.importFromBring(listUuid);
+    if (result.importedCount > 0) {
+      showSuccess(`${result.importedCount} Artikel aus Bring! importiert! 📥`);
+    } else if (result.skippedCount > 0) {
+      showSuccess('Alle Bring!-Artikel sind bereits in der Liste.');
+    } else {
+      showSuccess(result.message || 'Keine Artikel zum Importieren.');
+    }
+    if (result.skippedCount > 0 && result.importedCount > 0) {
+      showSuccess(`${result.skippedCount} Duplikate übersprungen.`);
+    }
+  } catch {
+    showError('Import aus Bring! fehlgeschlagen.');
   }
 }
 

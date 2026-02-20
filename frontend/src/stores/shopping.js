@@ -258,6 +258,7 @@ export const useShoppingStore = defineStore('shopping', () => {
   const bringStatus = ref(null);       // { connected, email, list } oder null
   const bringLists = ref([]);          // Verfügbare Bring!-Listen
   const bringSending = ref(false);     // Wird gerade gesendet?
+  const bringImporting = ref(false);   // Wird gerade importiert?
 
   /** Bring!-Status laden */
   async function fetchBringStatus() {
@@ -309,6 +310,21 @@ export const useShoppingStore = defineStore('shopping', () => {
     bringLists.value = [];
   }
 
+  /** Artikel aus Bring! importieren */
+  async function importFromBring(listUuid) {
+    bringImporting.value = true;
+    try {
+      const data = await api.post('/bring/import', { listUuid });
+      // Importierte Items in die lokale Liste einfügen
+      if (data.items && data.items.length > 0) {
+        items.value.push(...data.items);
+      }
+      return data;
+    } finally {
+      bringImporting.value = false;
+    }
+  }
+
   // ============================================
   // REWE Warenkorb-Script (Bookmarklet)
   // ============================================
@@ -331,8 +347,8 @@ export const useShoppingStore = defineStore('shopping', () => {
     generateList, fetchActiveList, fetchListHistory, loadList, reactivateList, toggleItem, matchWithRewe, completePurchase, addItem, deleteItem, moveToPantry,
     searchReweProducts, setReweProduct, updateReweQuantity, fetchPreferences, deletePreference, updatePreference, clearAllPreferences,
     // Bring!
-    bringStatus, bringLists, bringSending,
-    fetchBringStatus, connectBring, fetchBringLists, setBringList, sendToBring, disconnectBring,
+    bringStatus, bringLists, bringSending, bringImporting,
+    fetchBringStatus, connectBring, fetchBringLists, setBringList, sendToBring, disconnectBring, importFromBring,
     // REWE Script
     getReweCartScript,
     getReweUserscriptUrl,
