@@ -134,6 +134,7 @@ export default async function shoppingRoutes(fastify) {
         price: item.rewe_price,           // Cent (Einzelpackung)
         quantity: item.rewe_quantity || 1, // Anzahl benötigter Packungen
         packageSize: item.rewe_package_size,
+        imageUrl: item.rewe_image_url || null,
         url: buildReweProductUrl(item.rewe_product_name, item.rewe_product_id),
       } : null;
 
@@ -216,6 +217,7 @@ export default async function shoppingRoutes(fastify) {
         price: item.rewe_price,
         quantity: item.rewe_quantity || 1,
         packageSize: item.rewe_package_size,
+        imageUrl: item.rewe_image_url || null,
         url: buildReweProductUrl(item.rewe_product_name, item.rewe_product_id),
       } : null;
 
@@ -362,11 +364,12 @@ export default async function shoppingRoutes(fastify) {
           productName: { type: 'string' },
           price: { type: ['number', 'null'] },
           packageSize: { type: 'string' },
+          imageUrl: { type: ['string', 'null'] },
         },
       },
     },
   }, async (request, reply) => {
-    const { productId, productName, price, packageSize } = request.body;
+    const { productId, productName, price, packageSize, imageUrl } = request.body;
 
     // 1. Item in der Einkaufsliste aktualisieren (inkl. Menge/Einheit für Mengenberechnung)
     const item = db.prepare(`
@@ -404,22 +407,23 @@ export default async function shoppingRoutes(fastify) {
 
     db.prepare(`
       UPDATE shopping_list_items
-      SET rewe_product_id = ?, rewe_product_name = ?, rewe_price = ?, rewe_package_size = ?, rewe_quantity = ?
+      SET rewe_product_id = ?, rewe_product_name = ?, rewe_price = ?, rewe_package_size = ?, rewe_quantity = ?, rewe_image_url = ?
       WHERE id = ?
-    `).run(productId, productName, price, packageSize || null, quantity, item.id);
+    `).run(productId, productName, price, packageSize || null, quantity, imageUrl || null, item.id);
 
     // 2. Produkt-Präferenz speichern/aktualisieren (merkt sich die Auswahl für nächstes Mal)
     db.prepare(`
-      INSERT INTO rewe_product_preferences (user_id, ingredient_name, rewe_product_id, rewe_product_name, rewe_price, rewe_package_size, times_selected, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, 1, CURRENT_TIMESTAMP)
+      INSERT INTO rewe_product_preferences (user_id, ingredient_name, rewe_product_id, rewe_product_name, rewe_price, rewe_package_size, rewe_image_url, times_selected, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, 1, CURRENT_TIMESTAMP)
       ON CONFLICT(user_id, ingredient_name) DO UPDATE SET
         rewe_product_id = excluded.rewe_product_id,
         rewe_product_name = excluded.rewe_product_name,
         rewe_price = excluded.rewe_price,
         rewe_package_size = excluded.rewe_package_size,
+        rewe_image_url = excluded.rewe_image_url,
         times_selected = times_selected + 1,
         updated_at = CURRENT_TIMESTAMP
-    `).run(request.user.id, item.ingredient_name.toLowerCase().trim(), productId, productName, price, packageSize || null);
+    `).run(request.user.id, item.ingredient_name.toLowerCase().trim(), productId, productName, price, packageSize || null, imageUrl || null);
 
     return {
       message: 'REWE-Produkt aktualisiert',
@@ -429,10 +433,43 @@ export default async function shoppingRoutes(fastify) {
         price,
         quantity,
         packageSize: packageSize || null,
+        imageUrl: imageUrl || null,
         url: buildReweProductUrl(productName, productId),
       },
       preferenceSaved: true,
     };
+  });
+
+  /**
+   * PUT /api/shopping/item/:id/rewe-quantity
+   * REWE-Packungsanzahl manuell anpassen
+   */
+  fastify.put('/item/:id/rewe-quantity', {
+    schema: {
+      description: 'REWE-Packungsanzahl ändern',
+      tags: ['Einkaufsliste'],
+      security: [{ bearerAuth: [] }],
+      body: {
+        type: 'object',
+        required: ['quantity'],
+        properties: {
+          quantity: { type: 'integer', minimum: 1 },
+        },
+      },
+    },
+  }, async (request, reply) => {
+    const { quantity } = request.body;
+    const result = db.prepare(`
+      UPDATE shopping_list_items SET rewe_quantity = ?
+      WHERE id = ? AND rewe_product_id IS NOT NULL
+        AND shopping_list_id IN (SELECT id FROM shopping_lists WHERE user_id = ?)
+    `).run(quantity, request.params.id, request.user.id);
+
+    if (result.changes === 0) {
+      return reply.status(404).send({ error: 'Artikel nicht gefunden oder kein REWE-Produkt zugewiesen' });
+    }
+
+    return { message: 'Menge aktualisiert', quantity };
   });
 
   /**

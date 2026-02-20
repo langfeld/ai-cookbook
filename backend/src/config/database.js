@@ -442,6 +442,19 @@ function migrateDatabase() {
     console.log('  ↳ Migration: shopping_list_items.rewe_quantity hinzugefügt');
   }
 
+  // Spalte 'rewe_image_url' in shopping_list_items hinzufügen (REWE Produktbild-URL)
+  if (!sliCols.includes('rewe_image_url')) {
+    db.exec("ALTER TABLE shopping_list_items ADD COLUMN rewe_image_url TEXT");
+    console.log('  ↳ Migration: shopping_list_items.rewe_image_url hinzugefügt');
+  }
+
+  // Spalte 'rewe_image_url' in rewe_product_preferences hinzufügen
+  const rppCols = db.prepare("PRAGMA table_info(rewe_product_preferences)").all().map(c => c.name);
+  if (!rppCols.includes('rewe_image_url')) {
+    db.exec("ALTER TABLE rewe_product_preferences ADD COLUMN rewe_image_url TEXT");
+    console.log('  ↳ Migration: rewe_product_preferences.rewe_image_url hinzugefügt');
+  }
+
   // Spalte 'reasoning' in meal_plans hinzufügen (KI-/Algorithmus-Begründung)
   const mpCols = db.prepare("PRAGMA table_info(meal_plans)").all().map(c => c.name);
   if (!mpCols.includes('reasoning')) {

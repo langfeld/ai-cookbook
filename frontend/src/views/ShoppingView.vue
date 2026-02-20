@@ -351,123 +351,180 @@
               :key="item.id"
               @click="mergeMode ? handleMergeClick(item) : null"
               :class="[
-                'group flex items-center gap-3 px-4 py-2.5 transition-all',
+                'transition-all',
                 mergeMode
                   ? 'cursor-pointer hover:bg-violet-50 dark:hover:bg-violet-900/20'
-                  : 'hover:bg-stone-50 dark:hover:bg-stone-800/30',
+                  : '',
                 item.is_checked ? 'opacity-50' : '',
                 mergeMode && mergeSelection.some(s => s.id === item.id)
                   ? 'bg-violet-100 dark:bg-violet-900/30 ring-2 ring-violet-400 ring-inset'
                   : ''
               ]"
             >
-              <!-- Checkbox (im Merge-Modus ausgeblendet) -->
-              <button
-                v-if="!mergeMode"
-                @click="toggleItem(item)"
-                :class="[
-                  'w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-all',
-                  item.is_checked
-                    ? 'bg-accent-500 border-accent-500'
-                    : 'border-stone-300 dark:border-stone-600 hover:border-accent-400'
-                ]"
-              >
-                <Check v-if="item.is_checked" class="w-3 h-3 text-white" />
-              </button>
-              <!-- Merge-Auswahl-Indikator -->
-              <div
-                v-else
-                :class="[
-                  'w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-all',
-                  mergeSelection.some(s => s.id === item.id)
-                    ? 'bg-violet-500 border-violet-500'
-                    : 'border-violet-300 dark:border-violet-600'
-                ]"
-              >
-                <Check v-if="mergeSelection.some(s => s.id === item.id)" class="w-3 h-3 text-white" />
-              </div>
+              <!-- Obere Zeile: Checkbox + Name + Menge + Aktionen -->
+              <div class="flex items-center gap-3 px-4 py-3">
+                <!-- Checkbox (im Merge-Modus: Merge-Indikator) -->
+                <button
+                  v-if="!mergeMode"
+                  @click.stop="toggleItem(item)"
+                  :class="[
+                    'w-6 h-6 rounded-full border-2 flex items-center justify-center shrink-0 transition-all',
+                    item.is_checked
+                      ? 'bg-accent-500 border-accent-500'
+                      : 'border-stone-300 dark:border-stone-600 hover:border-accent-400'
+                  ]"
+                >
+                  <Check v-if="item.is_checked" class="w-3.5 h-3.5 text-white" />
+                </button>
+                <div
+                  v-else
+                  :class="[
+                    'w-6 h-6 rounded-full border-2 flex items-center justify-center shrink-0 transition-all',
+                    mergeSelection.some(s => s.id === item.id)
+                      ? 'bg-violet-500 border-violet-500'
+                      : 'border-violet-300 dark:border-violet-600'
+                  ]"
+                >
+                  <Check v-if="mergeSelection.some(s => s.id === item.id)" class="w-3.5 h-3.5 text-white" />
+                </div>
 
-              <!-- Artikelname + Rezept-Thumbnails + Vorrats-Hinweis -->
-              <div class="flex-1 min-w-0">
-                <div class="flex flex-wrap items-center gap-2">
-                  <span :class="['text-sm', item.is_checked ? 'line-through text-stone-400' : 'text-stone-800 dark:text-stone-200']">
-                    {{ item.ingredient_name }}
-                  </span>
-                  <!-- Mini Rezept-Thumbnails -->
-                  <div v-if="showRecipeLinks && item.recipes?.length" class="flex -space-x-1.5">
-                    <router-link
-                      v-for="recipe in item.recipes"
-                      :key="recipe.id"
-                      :to="`/recipes/${recipe.id}`"
-                      :title="recipe.title"
-                      class="hover:z-10 relative bg-stone-200 dark:bg-stone-700 border-2 border-white dark:border-stone-900 rounded-full w-5 h-5 overflow-hidden hover:scale-125 transition-transform shrink-0"
-                    >
-                      <img
-                        v-if="recipe.image_url"
-                        :src="recipe.image_url"
-                        :alt="recipe.title"
-                        class="w-full h-full object-cover"
-                      />
-                      <span v-else class="flex justify-center items-center w-full h-full text-[8px]">🍽️</span>
-                    </router-link>
+                <!-- Artikelname + Rezept-Thumbnails -->
+                <div class="flex-1 min-w-0">
+                  <div class="flex flex-wrap items-center gap-2">
+                    <span :class="['font-medium text-sm', item.is_checked ? 'line-through text-stone-400' : 'text-stone-800 dark:text-stone-200']">
+                      {{ item.ingredient_name }}
+                    </span>
+                    <span v-if="item.amount" class="text-stone-400 dark:text-stone-500 text-xs">
+                      {{ item.amount }} {{ item.unit }}
+                    </span>
+                    <!-- Mini Rezept-Thumbnails -->
+                    <div v-if="showRecipeLinks && item.recipes?.length" class="flex -space-x-1.5">
+                      <router-link
+                        v-for="recipe in item.recipes"
+                        :key="recipe.id"
+                        :to="`/recipes/${recipe.id}`"
+                        :title="recipe.title"
+                        class="hover:z-10 relative bg-stone-200 dark:bg-stone-700 border-2 border-white dark:border-stone-900 rounded-full w-5 h-5 overflow-hidden hover:scale-125 transition-transform shrink-0"
+                      >
+                        <img v-if="recipe.image_url" :src="recipe.image_url" :alt="recipe.title" class="w-full h-full object-cover" />
+                        <span v-else class="flex justify-center items-center w-full h-full text-[8px]">🍽️</span>
+                      </router-link>
+                    </div>
+                  </div>
+                  <!-- Vorrats-Hinweis -->
+                  <div v-if="item.pantry_deducted > 0" class="flex items-center gap-1 mt-0.5 text-emerald-600 dark:text-emerald-400 text-xs">
+                    <Package class="w-3 h-3" />
+                    {{ item.pantry_deducted }} {{ item.unit }} im Vorrat
                   </div>
                 </div>
-                <!-- Vorrats-Hinweis -->
-                <div v-if="item.pantry_deducted > 0" class="flex items-center gap-1 mt-0.5 text-emerald-600 dark:text-emerald-400 text-xs">
-                  <Package class="w-3 h-3" />
-                  {{ item.pantry_deducted }} {{ item.unit }} im Vorrat
-                </div>
-                <!-- REWE-Produkt (klickbar → Alternativen anzeigen) -->
-                <div v-if="item.rewe_product" class="flex items-center gap-1 mt-0.5 text-xs">
+
+                <!-- Aktionen (immer sichtbar, größere Touch-Targets) -->
+                <div v-if="!mergeMode" class="flex items-center gap-0.5 shrink-0">
                   <button
-                    @click.stop="openProductPicker(item)"
-                    class="inline-flex items-center gap-1 text-rewe-500 hover:text-rewe-700 dark:hover:text-rewe-400 hover:underline transition-colors cursor-pointer"
-                    :title="`Klick: Alternatives Produkt wählen`"
+                    @click.stop="moveToPantry(item)"
+                    class="hover:bg-amber-50 dark:hover:bg-amber-900/30 p-2 rounded-lg text-stone-400 hover:text-amber-600 dark:hover:text-amber-400 dark:text-stone-500 transition-colors"
+                    title="In den Vorratsschrank"
                   >
-                    🏪 <span v-if="item.rewe_product.quantity > 1" class="font-semibold">{{ item.rewe_product.quantity }}×</span> {{ item.rewe_product.name }} – {{ formatPrice(item.rewe_product.price * (item.rewe_product.quantity || 1)) }}
-                    <ArrowRightLeft class="w-3 h-3 shrink-0" />
+                    <Archive class="w-4 h-4" />
                   </button>
-                  <a
-                    v-if="item.rewe_product.url"
-                    :href="item.rewe_product.url"
-                    target="_blank"
-                    rel="noopener"
-                    @click.stop
-                    class="text-stone-400 hover:text-rewe-500 transition-colors"
-                    title="Bei REWE öffnen"
+                  <button
+                    @click.stop="deleteItem(item)"
+                    class="hover:bg-red-50 dark:hover:bg-red-900/30 p-2 rounded-lg text-stone-400 hover:text-red-500 dark:hover:text-red-400 dark:text-stone-500 transition-colors"
+                    title="Artikel entfernen"
                   >
-                    <ExternalLink class="w-3 h-3" />
-                  </a>
+                    <Trash2 class="w-4 h-4" />
+                  </button>
                 </div>
-                <!-- Kein REWE-Produkt → Suche anbieten -->
-                <button
-                  v-else-if="shoppingStore.reweLinkedItems.length > 0 || reweLoading"
-                  @click.stop="openProductPicker(item)"
-                  class="inline-flex items-center gap-1 mt-0.5 text-stone-400 hover:text-rewe-500 text-xs transition-colors cursor-pointer"
-                  title="REWE-Produkt suchen"
-                >
-                  🔍 Produkt suchen…
-                </button>
               </div>
 
-              <!-- Menge + Aktionen -->
-              <div class="flex items-center gap-1.5 shrink-0">
-                <span class="font-medium tabular-nums text-stone-400 dark:text-stone-500 text-xs">
-                  {{ item.amount }} {{ item.unit }}
-                </span>
+              <!-- REWE-Produkt-Karte (wenn zugewiesen) -->
+              <div v-if="item.rewe_product && !mergeMode" class="mx-3 mb-3">
+                <div class="bg-stone-50 dark:bg-stone-800/60 border border-stone-200 dark:border-stone-700 rounded-xl overflow-hidden">
+                  <!-- Produktinfo mit Bild -->
+                  <div class="flex items-center gap-3 p-3">
+                    <!-- Produktbild -->
+                    <div class="flex justify-center items-center bg-white dark:bg-stone-700 rounded-lg w-14 h-14 overflow-hidden shrink-0">
+                      <img
+                        v-if="item.rewe_product.imageUrl"
+                        :src="item.rewe_product.imageUrl"
+                        :alt="item.rewe_product.name"
+                        class="w-full h-full object-contain"
+                        loading="lazy"
+                      />
+                      <span v-else class="text-2xl">🏪</span>
+                    </div>
+                    <!-- Name + Packungsgröße -->
+                    <div class="flex-1 min-w-0">
+                      <a
+                        v-if="item.rewe_product.url"
+                        :href="item.rewe_product.url"
+                        target="_blank"
+                        rel="noopener"
+                        @click.stop
+                        class="font-medium text-stone-800 hover:text-rewe-600 dark:hover:text-rewe-400 dark:text-stone-200 text-sm line-clamp-2 transition-colors"
+                      >
+                        {{ item.rewe_product.name }}
+                      </a>
+                      <p v-else class="font-medium text-stone-800 dark:text-stone-200 text-sm line-clamp-2">
+                        {{ item.rewe_product.name }}
+                      </p>
+                      <p v-if="item.rewe_product.packageSize" class="mt-0.5 text-stone-500 dark:text-stone-400 text-xs">
+                        {{ item.rewe_product.packageSize }}
+                      </p>
+                    </div>
+                    <!-- Preis -->
+                    <div class="text-right shrink-0">
+                      <p class="font-bold tabular-nums text-stone-800 dark:text-stone-200 text-sm">
+                        {{ formatPrice(item.rewe_product.price * (item.rewe_product.quantity || 1)) }}
+                      </p>
+                      <p v-if="(item.rewe_product.quantity || 1) > 1" class="tabular-nums text-stone-400 dark:text-stone-500 text-xs">
+                        Einzelpreis {{ formatPrice(item.rewe_product.price) }}
+                      </p>
+                    </div>
+                  </div>
+
+                  <!-- Menge + Alternative -->
+                  <div class="flex justify-between items-center gap-2 px-3 py-2 border-stone-200 dark:border-stone-700 border-t">
+                    <!-- Mengen-Steuerung -->
+                    <div class="flex items-center gap-1">
+                      <button
+                        @click.stop="decreaseQuantity(item)"
+                        :disabled="(item.rewe_product.quantity || 1) <= 1"
+                        class="flex justify-center items-center bg-white hover:bg-stone-100 dark:bg-stone-700 dark:hover:bg-stone-600 disabled:opacity-30 border border-stone-300 dark:border-stone-600 rounded-lg w-8 h-8 text-stone-600 dark:text-stone-300 transition-colors disabled:cursor-not-allowed"
+                      >
+                        <Minus class="w-3.5 h-3.5" />
+                      </button>
+                      <span class="w-8 font-semibold tabular-nums text-stone-800 dark:text-stone-200 text-sm text-center">
+                        {{ item.rewe_product.quantity || 1 }}
+                      </span>
+                      <button
+                        @click.stop="increaseQuantity(item)"
+                        class="flex justify-center items-center bg-white hover:bg-stone-100 dark:bg-stone-700 dark:hover:bg-stone-600 border border-stone-300 dark:border-stone-600 rounded-lg w-8 h-8 text-stone-600 dark:text-stone-300 transition-colors"
+                      >
+                        <Plus class="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+
+                    <!-- Alternative wählen -->
+                    <button
+                      @click.stop="openProductPicker(item)"
+                      class="flex items-center gap-1.5 hover:bg-rewe-50 dark:hover:bg-rewe-900/20 px-3 py-1.5 rounded-lg font-medium text-rewe-600 dark:text-rewe-400 text-xs transition-colors"
+                    >
+                      <ArrowRightLeft class="w-3.5 h-3.5" />
+                      Alternative wählen
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Kein REWE-Produkt → Suche anbieten -->
+              <div v-else-if="!mergeMode && (shoppingStore.reweLinkedItems.length > 0 || reweLoading) && !item.rewe_product" class="-mt-1 px-4 pb-3">
                 <button
-                  @click.stop="moveToPantry(item)"
-                  class="hover:bg-amber-50 dark:hover:bg-amber-900/30 opacity-0 focus:opacity-100 group-hover:opacity-100 p-1 rounded-md text-stone-300 hover:text-amber-600 dark:hover:text-amber-400 dark:text-stone-600 transition-all"
-                  title="In den Vorratsschrank verschieben"
+                  @click.stop="openProductPicker(item)"
+                  class="flex items-center gap-1.5 hover:bg-stone-50 dark:hover:bg-stone-800/50 px-3 py-1.5 rounded-lg text-stone-400 hover:text-rewe-600 dark:hover:text-rewe-400 text-xs transition-colors"
                 >
-                  <Archive class="w-3.5 h-3.5" />
-                </button>
-                <button
-                  @click.stop="deleteItem(item)"
-                  class="hover:bg-red-50 dark:hover:bg-red-900/30 opacity-0 focus:opacity-100 group-hover:opacity-100 p-1 rounded-md text-stone-300 hover:text-red-500 dark:hover:text-red-400 dark:text-stone-600 transition-all"
-                  title="Artikel entfernen"
-                >
-                  <Trash2 class="w-3.5 h-3.5" />
+                  <Search class="w-3.5 h-3.5" />
+                  REWE-Produkt suchen…
                 </button>
               </div>
             </div>
@@ -662,8 +719,19 @@
                 <div
                   v-for="item in shoppingStore.reweLinkedItems"
                   :key="item.id"
-                  class="flex justify-between items-center gap-3 hover:bg-stone-50 dark:hover:bg-stone-800/30 px-5 py-3 transition-colors"
+                  class="flex items-center gap-3 hover:bg-stone-50 dark:hover:bg-stone-800/30 px-5 py-3 transition-colors"
                 >
+                  <!-- Produktbild -->
+                  <div class="flex justify-center items-center bg-white dark:bg-stone-700 rounded-lg w-10 h-10 overflow-hidden shrink-0">
+                    <img
+                      v-if="item.rewe_product.imageUrl"
+                      :src="item.rewe_product.imageUrl"
+                      :alt="item.rewe_product.name"
+                      class="w-full h-full object-contain"
+                      loading="lazy"
+                    />
+                    <span v-else class="text-lg">🏪</span>
+                  </div>
                   <div class="flex-1 min-w-0">
                     <p class="font-medium text-stone-800 dark:text-stone-200 text-sm truncate">{{ item.ingredient_name }}</p>
                     <p class="text-stone-500 dark:text-stone-400 text-xs truncate">
@@ -782,14 +850,23 @@
                       'bg-green-50/50 dark:bg-green-900/10': pickerItem.rewe_product?.id === product.id,
                     }"
                   >
-                    <!-- Rang / Günstigster Badge -->
-                    <div class="flex justify-center items-center rounded-full w-7 h-7 font-bold text-xs shrink-0"
-                      :class="idx === 0
-                        ? 'bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400'
-                        : 'bg-stone-100 dark:bg-stone-800 text-stone-500 dark:text-stone-400'"
-                    >
-                      <Tag v-if="idx === 0" class="w-3.5 h-3.5" />
-                      <span v-else>{{ idx + 1 }}</span>
+                    <!-- Produktbild -->
+                    <div class="flex justify-center items-center bg-white dark:bg-stone-700 border border-stone-100 dark:border-stone-600 rounded-lg w-12 h-12 overflow-hidden shrink-0">
+                      <img
+                        v-if="product.imageUrl"
+                        :src="product.imageUrl"
+                        :alt="product.name"
+                        class="w-full h-full object-contain"
+                        loading="lazy"
+                      />
+                      <div v-else class="flex justify-center items-center rounded-full w-7 h-7 font-bold text-xs shrink-0"
+                        :class="idx === 0
+                          ? 'bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-400'
+                          : 'bg-stone-100 dark:bg-stone-800 text-stone-500 dark:text-stone-400'"
+                      >
+                        <Tag v-if="idx === 0" class="w-3.5 h-3.5" />
+                        <span v-else>{{ idx + 1 }}</span>
+                      </div>
                     </div>
 
                     <!-- Produktinfo -->
@@ -1181,7 +1258,7 @@ import { useShoppingStore } from '@/stores/shopping.js';
 import { useMealPlanStore } from '@/stores/mealplan.js';
 import { useIngredientAliasStore } from '@/stores/ingredient-aliases.js';
 import { useNotification } from '@/composables/useNotification.js';
-import { ListPlus, Check, ShoppingBag, Plus, Package, BookOpen, BookX, ExternalLink, ShoppingCart, X, ArrowRightLeft, Search, Tag, Trash2, Star, Heart, Archive, Send, Link2, Unlink, ClipboardCopy, LogIn, LogOut, ChevronDown, ChevronLeft, ChevronRight, Loader2, Terminal, Download, Settings, RefreshCw, Merge, ArrowRight, History, RotateCcw } from 'lucide-vue-next';
+import { ListPlus, Check, ShoppingBag, Plus, Minus, Package, BookOpen, BookX, ExternalLink, ShoppingCart, X, ArrowRightLeft, Search, Tag, Trash2, Star, Heart, Archive, Send, Link2, Unlink, ClipboardCopy, LogIn, LogOut, ChevronDown, ChevronLeft, ChevronRight, Loader2, Terminal, Download, Settings, RefreshCw, Merge, ArrowRight, History, RotateCcw } from 'lucide-vue-next';
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue';
 
 const shoppingStore = useShoppingStore();
@@ -1435,6 +1512,25 @@ async function moveToPantry(item) {
     showSuccess(`${item.ingredient_name} in den Vorratsschrank verschoben! 🗄️`);
   } catch {
     showError('Artikel konnte nicht verschoben werden.');
+  }
+}
+
+async function increaseQuantity(item) {
+  const newQty = (item.rewe_product?.quantity || 1) + 1;
+  try {
+    await shoppingStore.updateReweQuantity(item.id, newQty);
+  } catch {
+    showError('Menge konnte nicht geändert werden.');
+  }
+}
+
+async function decreaseQuantity(item) {
+  const current = item.rewe_product?.quantity || 1;
+  if (current <= 1) return;
+  try {
+    await shoppingStore.updateReweQuantity(item.id, current - 1);
+  } catch {
+    showError('Menge konnte nicht geändert werden.');
   }
 }
 

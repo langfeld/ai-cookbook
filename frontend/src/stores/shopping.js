@@ -199,6 +199,7 @@ export const useShoppingStore = defineStore('shopping', () => {
       productName: product.name,
       price: product.price,
       packageSize: product.packageSize,
+      imageUrl: product.imageUrl || null,
     });
     // Lokales Item sofort aktualisieren
     const item = items.value.find(i => i.id === itemId);
@@ -207,7 +208,19 @@ export const useShoppingStore = defineStore('shopping', () => {
       item.rewe_product_name = product.name;
       item.rewe_price = product.price;
       item.rewe_package_size = product.packageSize;
-      item.rewe_product = data.rewe_product; // enthält jetzt auch quantity
+      item.rewe_image_url = product.imageUrl || null;
+      item.rewe_product = data.rewe_product; // enthält jetzt auch quantity + imageUrl
+    }
+    return data;
+  }
+
+  /** REWE-Packungsanzahl manuell ändern */
+  async function updateReweQuantity(itemId, quantity) {
+    const data = await api.put(`/shopping/item/${itemId}/rewe-quantity`, { quantity });
+    const item = items.value.find(i => i.id === itemId);
+    if (item && item.rewe_product) {
+      item.rewe_product.quantity = data.quantity;
+      item.rewe_quantity = data.quantity;
     }
     return data;
   }
@@ -305,7 +318,7 @@ export const useShoppingStore = defineStore('shopping', () => {
     currentList, items, activeList, reweMatches, loading, reweProgress, listHistory,
     openItemsCount, estimatedTotal, reweLinkedItems,
     generateList, fetchActiveList, fetchListHistory, loadList, reactivateList, toggleItem, matchWithRewe, completePurchase, addItem, deleteItem, moveToPantry,
-    searchReweProducts, setReweProduct, fetchPreferences, deletePreference, clearAllPreferences,
+    searchReweProducts, setReweProduct, updateReweQuantity, fetchPreferences, deletePreference, clearAllPreferences,
     // Bring!
     bringStatus, bringLists, bringSending,
     fetchBringStatus, connectBring, fetchBringLists, setBringList, sendToBring, disconnectBring,

@@ -92,7 +92,7 @@ export default async function reweRoutes(fastify) {
 
     // Gespeicherte Produkt-Präferenzen des Users laden
     const prefRows = db.prepare(
-      'SELECT ingredient_name, rewe_product_id, rewe_product_name, rewe_price, rewe_package_size FROM rewe_product_preferences WHERE user_id = ?'
+      'SELECT ingredient_name, rewe_product_id, rewe_product_name, rewe_price, rewe_package_size, rewe_image_url FROM rewe_product_preferences WHERE user_id = ?'
     ).all(request.user.id);
 
     const preferences = new Map(
@@ -144,7 +144,7 @@ export default async function reweRoutes(fastify) {
     // Ergebnisse in die Datenbank schreiben
     const updateStmt = db.prepare(`
       UPDATE shopping_list_items
-      SET rewe_product_id = ?, rewe_product_name = ?, rewe_price = ?, rewe_package_size = ?, rewe_quantity = ?
+      SET rewe_product_id = ?, rewe_product_name = ?, rewe_price = ?, rewe_package_size = ?, rewe_quantity = ?, rewe_image_url = ?
       WHERE shopping_list_id = ? AND ingredient_name = ?
     `);
 
@@ -158,6 +158,7 @@ export default async function reweRoutes(fastify) {
             match.product.price || null,
             match.product.packageSize || null,
             match.packagesNeeded || 1,
+            match.product.imageUrl || null,
             listId,
             items[i].ingredient_name,
           );
