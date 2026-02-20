@@ -558,9 +558,15 @@
                       >
                         <Minus class="w-3.5 h-3.5" />
                       </button>
-                      <span class="w-8 font-semibold tabular-nums text-stone-800 dark:text-stone-200 text-sm text-center">
-                        {{ item.rewe_product.quantity || 1 }}
-                      </span>
+                      <input
+                        type="number"
+                        :value="item.rewe_product.quantity || 1"
+                        min="1"
+                        @change="setQuantity(item, $event)"
+                        @click.stop
+                        @keydown.stop
+                        class="w-10 h-8 font-semibold tabular-nums text-stone-800 dark:text-stone-200 text-sm text-center bg-transparent border border-stone-300 dark:border-stone-600 rounded-lg appearance-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none [-moz-appearance:textfield] focus:outline-none focus:ring-1 focus:ring-rewe-400"
+                      />
                       <button
                         @click.stop="increaseQuantity(item)"
                         class="flex justify-center items-center bg-white hover:bg-stone-100 dark:bg-stone-700 dark:hover:bg-stone-600 border border-stone-300 dark:border-stone-600 rounded-lg w-8 h-8 text-stone-600 dark:text-stone-300 transition-colors"
@@ -2064,6 +2070,18 @@ async function decreaseQuantity(item) {
   if (current <= 1) return;
   try {
     await shoppingStore.updateReweQuantity(item.id, current - 1);
+  } catch {
+    showError('Menge konnte nicht geändert werden.');
+  }
+}
+
+async function setQuantity(item, event) {
+  const val = parseInt(event.target.value, 10);
+  const newQty = Math.max(1, isNaN(val) ? 1 : val);
+  event.target.value = newQty; // Korrektur im Feld anzeigen
+  if (newQty === (item.rewe_product?.quantity || 1)) return;
+  try {
+    await shoppingStore.updateReweQuantity(item.id, newQty);
   } catch {
     showError('Menge konnte nicht geändert werden.');
   }
