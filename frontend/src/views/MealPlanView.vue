@@ -244,18 +244,10 @@
                   <Check class="w-3 h-3 text-white" />
                 </div>
                 <!-- Portionen-Badge -->
-                <div class="top-1 left-1 absolute flex items-center gap-0.5 bg-black/50 rounded text-[0.6rem] text-white servings-badge"
-                  @click.stop>
-                  <button v-if="!isLocked" class="servings-btn" @click="changeServings(getMeal(dayIdx, mt.key), -1)"
-                    :disabled="getMeal(dayIdx, mt.key).servings <= 1">
-                    <Minus class="w-2.5 h-2.5" />
-                  </button>
-                  <span class="flex items-center gap-0.5 px-1 py-0.5">
-                    <Users class="w-2.5 h-2.5" /> {{ getMeal(dayIdx, mt.key).servings }}
-                  </span>
-                  <button v-if="!isLocked" class="servings-btn" @click="changeServings(getMeal(dayIdx, mt.key), 1)">
-                    <Plus class="w-2.5 h-2.5" />
-                  </button>
+                <div class="top-1 left-1 absolute flex items-center gap-0.5 bg-black/50 px-1.5 py-0.5 rounded text-[0.6rem] text-white"
+                  :class="{ 'cursor-pointer hover:bg-black/70': !isLocked }"
+                  @click.stop="!isLocked && openServingsPopup(getMeal(dayIdx, mt.key), $event)">
+                  <Users class="w-2.5 h-2.5" /> {{ getMeal(dayIdx, mt.key).servings }}
                 </div>
                 <!-- Schwierigkeit -->
                 <span v-if="getMeal(dayIdx, mt.key).difficulty"
@@ -331,15 +323,10 @@
                   {{ getMeal(selectedDayIdx, mt.key).recipe_title }}
                 </h4>
                 <div class="flex flex-wrap items-center gap-3 mt-1 text-stone-500 dark:text-stone-400 text-xs">
-                  <span class="servings-inline flex items-center gap-1" @click.stop>
-                    <button v-if="!isLocked" class="servings-btn-day" @click="changeServings(getMeal(selectedDayIdx, mt.key), -1)"
-                      :disabled="getMeal(selectedDayIdx, mt.key).servings <= 1">
-                      <Minus class="w-3 h-3" />
-                    </button>
+                  <span class="flex items-center gap-1"
+                    :class="{ 'cursor-pointer hover:text-stone-700 dark:hover:text-stone-200': !isLocked }"
+                    @click.stop="!isLocked && openServingsPopup(getMeal(selectedDayIdx, mt.key), $event)">
                     <Users class="w-3.5 h-3.5" /> {{ getMeal(selectedDayIdx, mt.key).servings }} Pers.
-                    <button v-if="!isLocked" class="servings-btn-day" @click="changeServings(getMeal(selectedDayIdx, mt.key), 1)">
-                      <Plus class="w-3 h-3" />
-                    </button>
                   </span>
                   <span v-if="getMeal(selectedDayIdx, mt.key).total_time" class="flex items-center gap-1">
                     <Clock class="w-3.5 h-3.5" /> {{ getMeal(selectedDayIdx, mt.key).total_time }} min
@@ -677,15 +664,10 @@
             <div class="space-y-3 p-5">
               <h3 class="font-bold text-stone-800 dark:text-stone-100 text-lg">{{ selectedMeal.recipe_title }}</h3>
               <div class="flex flex-wrap items-center gap-3 text-stone-500 text-sm">
-                <span class="servings-inline flex items-center gap-1" @click.stop>
-                  <button v-if="!isLocked" class="servings-btn-day" @click="changeServings(selectedMeal, -1)"
-                    :disabled="selectedMeal.servings <= 1">
-                    <Minus class="w-3.5 h-3.5" />
-                  </button>
+                <span class="flex items-center gap-1"
+                  :class="{ 'cursor-pointer hover:text-stone-700 dark:hover:text-stone-200': !isLocked }"
+                  @click.stop="!isLocked && openServingsPopup(selectedMeal, $event)">
                   <Users class="w-4 h-4" /> {{ selectedMeal.servings }} Personen
-                  <button v-if="!isLocked" class="servings-btn-day" @click="changeServings(selectedMeal, 1)">
-                    <Plus class="w-3.5 h-3.5" />
-                  </button>
                 </span>
                 <span v-if="selectedMeal.total_time" class="flex items-center gap-1">
                   <Clock class="w-4 h-4" /> {{ selectedMeal.total_time }} min
@@ -771,6 +753,28 @@
         </div>
       </Transition>
     </Teleport>
+
+    <!-- Portionen-Popup -->
+    <Teleport to="body">
+      <Transition name="fade">
+        <div v-if="servingsPopup" class="z-110 fixed inset-0" @click="closeServingsPopup">
+          <div class="servings-popup" :style="{ left: servingsPopup.x + 'px', top: servingsPopup.y + 'px' }"
+            @click.stop>
+            <button class="servings-popup-btn" :disabled="servingsPopup.meal.servings <= 1"
+              @click="changeServings(-1)">
+              <Minus class="w-4 h-4" />
+            </button>
+            <div class="servings-popup-value">
+              <Users class="w-4 h-4" />
+              <span class="font-semibold tabular-nums text-base">{{ servingsPopup.meal.servings }}</span>
+            </div>
+            <button class="servings-popup-btn" @click="changeServings(1)">
+              <Plus class="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
   </div>
 </template>
 
@@ -799,6 +803,7 @@ const selectedDayIdx = ref(new Date().getDay() === 0 ? 6 : new Date().getDay() -
 const selectedMeal = ref(null);
 const showGenerateModal = ref(false);
 const showGenSettings = ref(false);
+const servingsPopup = ref(null); // { meal, x, y }
 
 // Gespeicherte Präferenzen aus localStorage laden
 const STORAGE_KEY = 'mealplan-gen-prefs';
@@ -1017,11 +1022,33 @@ async function doSwap(newRecipeId) {
 }
 
 // ─── Portionen ändern ───
-async function changeServings(meal, delta) {
+function openServingsPopup(meal, event) {
+  if (isLocked.value) return;
+  event.stopPropagation();
+  const rect = event.currentTarget.getBoundingClientRect();
+  const popupWidth = 148; // 2rem+3rem+2rem + gaps + padding
+  const margin = 8;
+  let x = rect.left + rect.width / 2;
+  // Viewport-Clamping: Popup nie links/rechts abschneiden
+  x = Math.max(popupWidth / 2 + margin, Math.min(x, window.innerWidth - popupWidth / 2 - margin));
+  servingsPopup.value = {
+    meal,
+    x,
+    y: rect.bottom + 6,
+  };
+}
+function closeServingsPopup() {
+  servingsPopup.value = null;
+}
+async function changeServings(delta) {
+  if (!servingsPopup.value) return;
+  const meal = servingsPopup.value.meal;
   const newServings = Math.max(1, (meal.servings || 4) + delta);
   if (newServings === meal.servings) return;
   try {
     await store.updateServings(meal.meal_plan_id, meal.id, newServings);
+    // Lokalen Popup-State aktualisieren
+    servingsPopup.value.meal = { ...meal, servings: newServings };
     // Falls das Detail-Popup offen ist, dort auch aktualisieren
     if (selectedMeal.value?.id === meal.id) {
       selectedMeal.value = { ...selectedMeal.value, servings: newServings };
@@ -1146,35 +1173,50 @@ onMounted(async () => {
   opacity: 0.4;
 }
 
-/* ─── Servings Controls ─── */
-.servings-badge {
-  overflow: hidden;
+/* ─── Servings Popup ─── */
+.servings-popup {
+  position: fixed;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  background: white;
+  border: 1px solid var(--color-stone-200);
+  border-radius: var(--radius-xl);
+  padding: 0.25rem;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+  z-index: 111;
 }
-.servings-btn {
+:is(.dark .servings-popup) {
+  background: var(--color-stone-800);
+  border-color: var(--color-stone-700);
+}
+.servings-popup-btn {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 0.2rem 0.25rem;
-  opacity: 0;
-  transition: opacity 0.15s ease, background-color 0.15s ease;
-  cursor: pointer;
-}
-.servings-btn:hover { background-color: rgba(255,255,255,0.25); }
-.servings-btn:disabled { opacity: 0 !important; cursor: default; }
-.meal-card:hover .servings-btn,
-.servings-badge:hover .servings-btn { opacity: 1; }
-.servings-btn-day {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0.15rem;
-  border-radius: var(--radius-sm);
+  width: 2rem;
+  height: 2rem;
+  border-radius: var(--radius-lg);
   cursor: pointer;
   transition: background-color 0.15s ease;
+  color: var(--color-stone-600);
 }
-.servings-btn-day:hover { background-color: var(--color-stone-200); }
-:is(.dark .servings-btn-day:hover) { background-color: var(--color-stone-700); }
-.servings-btn-day:disabled { opacity: 0.3; cursor: default; }
+:is(.dark .servings-popup-btn) { color: var(--color-stone-300); }
+.servings-popup-btn:hover { background-color: var(--color-stone-100); }
+:is(.dark .servings-popup-btn:hover) { background-color: var(--color-stone-700); }
+.servings-popup-btn:disabled { opacity: 0.3; cursor: default; }
+.servings-popup-btn:disabled:hover { background-color: transparent; }
+.servings-popup-value {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0 0.5rem;
+  color: var(--color-stone-800);
+  min-width: 3rem;
+  justify-content: center;
+}
+:is(.dark .servings-popup-value) { color: var(--color-stone-100); }
 
 /* ─── Meal Card (Wochenansicht) ─── */
 .meal-card {

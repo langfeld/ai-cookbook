@@ -1,6 +1,6 @@
 # Zauberjournal 🍳🤖
 
-Eine KI-gestützte Rezeptverwaltung mit intelligentem Wochenplaner (Score-Algorithmus + optionales KI-Reasoning), Kochmodus, Rezept-Sammlungen, Einkaufsliste mit Zutaten-Zusammenfassung und -Blockierung, REWE-Integration, Bring!-Anbindung, Tampermonkey-Userscript, Vorratsschrank und umfangreichem Admin-Bereich.
+Eine KI-gestützte Rezeptverwaltung mit intelligentem Wochenplaner (Score-Algorithmus + optionales KI-Reasoning, Portionen pro Mahlzeit, Auto-Lock), Kochmodus, Rezept-Sammlungen, Einkaufsliste mit Zutaten-Zusammenfassung und -Blockierung, REWE-Integration, Bring!-Anbindung, Tampermonkey-Userscript, Vorratsschrank und umfangreichem Admin-Bereich.
 
 ![Vue 3](https://img.shields.io/badge/Vue-3.5-4FC08D?logo=vuedotjs&logoColor=white)
 ![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-4-06B6D4?logo=tailwindcss&logoColor=white)
@@ -41,6 +41,9 @@ Eine KI-gestützte Rezeptverwaltung mit intelligentem Wochenplaner (Score-Algori
 - **Horizontal scrollbares 7-Tage-Raster** — Auch auf Mobile voll nutzbar
 - **Sammlungs-Filter** — Plan-Generierung optional auf bestimmte Sammlungen beschränken (Mehrfachauswahl). Mit Deduplizierungs-Option für Rezepte, die in mehreren Sammlungen vorkommen
 - **Rezept-Sperren** — Einzelne Rezepte für 1–52 Wochen aus der Generierung ausschließen (z. B. saisonale Zutaten nicht verfügbar). Mit optionalem Grund, Verwaltung in den Einstellungen und automatischem Ablauf
+- **Portionen pro Mahlzeit** — Portionszahl je Eintrag direkt im Wochenplaner anpassen. Klick auf die Personenzahl öffnet ein Popup mit −/+ Steuerung (viewport-optimiert für Mobile)
+- **Plan sperren/entsperren** — Wochenplan manuell fixieren, um versehentliche Änderungen zu verhindern
+- **Auto-Lock bei Einkaufsabschluss** — Wird der Einkauf einer verknüpften Einkaufsliste abgeschlossen, wird der zugehörige Wochenplan automatisch gesperrt
 
 ### 🛒 Einkaufsliste
 - **Automatisch generiert** — Aus dem Wochenplan, mit intelligenter Duplikat-Konsolidierung und Einheiten-Normalisierung
@@ -50,7 +53,7 @@ Eine KI-gestützte Rezeptverwaltung mit intelligentem Wochenplaner (Score-Algori
 - **In Vorratsschrank verschieben** — Einzelne Artikel direkt vom Einkaufszettel in den Vorratsschrank übertragen
 - **Rezept-Verknüpfung** — Zu jedem Artikel sehen, aus welchem Rezept er stammt (mit Thumbnail, ein-/ausblendbar)
 - **Fortschrittsbalken** — Visueller Einkaufsfortschritt
-- **Einkauf abschließen** → Abgehakte Artikel landen automatisch im Vorratsschrank
+- **Einkauf abschließen** → Abgehakte Artikel landen automatisch im Vorratsschrank. Ist die Liste mit einem Wochenplan verknüpft, wird dieser automatisch gesperrt
 - **Einkaufslisten-Verlauf** — Vorherige Einkaufslisten bleiben erhalten und können jederzeit wieder geladen/reaktiviert werden (auch nach Seiten-Reload). Übersicht mit Datum, Fortschritt und „Laden"-Button
 - **Zutaten zusammenfassen** — Gleiche Zutaten mit unterschiedlichen Schreibweisen (z. B. „Knoblauch" und „Knoblauchzehe") zu einem Eintrag zusammenführen. Multi-Merge: beliebig viele Artikel gleichzeitig auswählen und den kanonischen Namen wählen
 - **Automatische Alias-Auflösung** — Gespeicherte Zuordnungen (Aliases) werden bei jeder neuen Einkaufslistengenerierung automatisch angewandt, sodass zusammengeführte Zutaten dauerhaft konsolidiert bleiben
@@ -380,8 +383,9 @@ zauberjournal/
 | `POST` | `/generate` | Wochenplan generieren (Algorithmus + optionales KI-Reasoning) |
 | `GET` | `/` | Aktuellen Plan abrufen |
 | `GET` | `/history` | Vergangene Pläne |
-| `PUT` | `/:planId/entry/:entryId` | Eintrag bearbeiten |
+| `PUT` | `/:planId/entry/:entryId` | Eintrag bearbeiten (Rezept tauschen, Portionen ändern) |
 | `POST` | `/:planId/entry/:entryId/cooked` | Mahlzeit als gekocht |
+| `POST` | `/:planId/lock` | Plan sperren/entsperren (Toggle) |
 | `DELETE` | `/:id` | Plan löschen |
 
 ### Einkaufsliste (`/api/shopping`)
@@ -395,7 +399,7 @@ zauberjournal/
 | `DELETE` | `/item/:id` | Artikel löschen |
 | `PUT` | `/item/:id/rewe-product` | REWE-Produkt zuordnen (speichert auch Präferenz) |
 | `POST` | `/item/:id/to-pantry` | Artikel in den Vorratsschrank verschieben |
-| `POST` | `/:listId/complete` | Einkauf abschließen → abgehakte Artikel in Vorratsschrank |
+| `POST` | `/:listId/complete` | Einkauf abschließen → abgehakte Artikel in Vorratsschrank, verknüpften Plan auto-sperren |
 
 ### Vorratsschrank (`/api/pantry`)
 | Methode | Pfad | Beschreibung |
