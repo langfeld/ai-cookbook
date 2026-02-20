@@ -116,17 +116,6 @@
         >
           <Ban class="w-4 h-4" />
         </button>
-        <!-- Bring! Import -->
-        <button
-          v-if="shoppingStore.activeList && shoppingStore.bringStatus?.connected"
-          @click="importFromBring"
-          :disabled="shoppingStore.bringImporting"
-          class="flex items-center gap-1.5 bg-stone-100 hover:bg-teal-50 dark:bg-stone-800 dark:hover:bg-teal-900/20 disabled:opacity-50 px-2.5 py-2 border border-stone-300 dark:border-stone-600 rounded-xl font-medium text-teal-600 dark:text-teal-400 text-sm transition-colors"
-          title="Artikel aus Bring! importieren"
-        >
-          <Loader2 v-if="shoppingStore.bringImporting" class="w-4 h-4 animate-spin" />
-          <Download v-else class="w-4 h-4" />
-        </button>
         <!-- Einstellungen (zentral) -->
         <button
           v-if="shoppingStore.activeList"
@@ -211,8 +200,8 @@
       </div>
     </div>
 
-    <!-- Fortschrittsbalken -->
-    <div v-if="shoppingStore.activeList" class="bg-stone-200 dark:bg-stone-700 rounded-full w-full h-2">
+    <!-- Fortschrittsbalken (nur wenn mindestens 1 Artikel abgehakt) -->
+    <div v-if="shoppingStore.activeList && checkedCount > 0" class="bg-stone-200 dark:bg-stone-700 rounded-full w-full h-2">
       <div
         class="rounded-full h-2 transition-all duration-500 bg-accent-500"
         :style="{ width: `${progressPercent}%` }"
@@ -308,6 +297,18 @@
         title="Hinzufügen"
       >
         <Plus class="w-4 h-4" />
+      </button>
+      <!-- Bring! Import -->
+      <button
+        type="button"
+        v-if="shoppingStore.activeList && shoppingStore.bringStatus?.connected"
+        @click="openBringImportPicker"
+        :disabled="shoppingStore.bringImporting"
+        class="flex items-center bg-teal-600 hover:bg-teal-700 disabled:opacity-50 p-2.5 rounded-xl text-white transition-colors shrink-0"
+        title="Artikel aus Bring! importieren"
+      >
+        <Loader2 v-if="shoppingStore.bringImporting" class="w-4 h-4 animate-spin" />
+        <Download v-else class="w-4 h-4" />
       </button>
     </form>
 
@@ -1615,6 +1616,58 @@
       </Transition>
     </Teleport>
 
+    <!-- Bring! Listen-Auswahl beim Import -->
+    <Teleport to="body">
+      <Transition name="fade">
+        <div v-if="showBringImportPicker" class="z-50 fixed inset-0 flex justify-center items-end sm:items-center bg-black/50 p-4" @click.self="showBringImportPicker = false">
+          <div class="bg-white dark:bg-stone-900 shadow-2xl rounded-2xl w-full max-w-sm overflow-hidden">
+            <!-- Header -->
+            <div class="flex justify-between items-center px-5 py-4 border-stone-200 dark:border-stone-700 border-b">
+              <h2 class="flex items-center gap-2 font-display font-bold text-stone-800 dark:text-stone-100 text-lg">
+                <Download class="w-5 h-5 text-teal-600" />
+                Aus Bring! importieren
+              </h2>
+              <button @click="showBringImportPicker = false" class="hover:bg-stone-100 dark:hover:bg-stone-800 p-1.5 rounded-lg text-stone-400 transition-colors">
+                <X class="w-5 h-5" />
+              </button>
+            </div>
+            <div class="space-y-3 p-5">
+              <p class="text-stone-600 dark:text-stone-300 text-sm">Aus welcher Bring!-Liste möchtest du importieren?</p>
+              <!-- Listen -->
+              <div class="space-y-1.5 max-h-60 overflow-y-auto">
+                <button
+                  v-for="list in shoppingStore.bringLists"
+                  :key="list.uuid"
+                  @click="confirmBringImport(list.uuid)"
+                  :disabled="shoppingStore.bringImporting"
+                  :class="[
+                    'flex items-center gap-3 w-full px-4 py-3 rounded-xl border text-left transition-all',
+                    list.uuid === (shoppingStore.bringStatus?.list?.uuid)
+                      ? 'bg-teal-50 dark:bg-teal-900/20 border-teal-300 dark:border-teal-700'
+                      : 'bg-stone-50 dark:bg-stone-800 border-stone-200 dark:border-stone-700 hover:border-teal-300 dark:hover:border-teal-700'
+                  ]"
+                >
+                  <div class="flex justify-center items-center bg-teal-100 dark:bg-teal-900/40 rounded-lg w-8 h-8 shrink-0">
+                    <ShoppingBag class="w-4 h-4 text-teal-600 dark:text-teal-400" />
+                  </div>
+                  <div class="flex-1 min-w-0">
+                    <p class="font-medium text-stone-800 dark:text-stone-200 text-sm truncate">{{ list.name }}</p>
+                    <p v-if="list.uuid === shoppingStore.bringStatus?.list?.uuid" class="text-teal-600 dark:text-teal-400 text-xs">Standard-Liste</p>
+                  </div>
+                  <Download class="w-4 h-4 text-stone-400 shrink-0" />
+                </button>
+              </div>
+              <!-- Leer-Zustand -->
+              <div v-if="shoppingStore.bringLists.length === 0" class="py-4 text-center">
+                <Loader2 v-if="bringListsLoading" class="mx-auto w-5 h-5 text-teal-500 animate-spin" />
+                <p v-else class="text-stone-400 dark:text-stone-500 text-sm italic">Keine Listen gefunden.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
+
   </div>
 </template>
 
@@ -1803,6 +1856,7 @@ const bringPassword = ref('');
 const bringConnecting = ref(false);
 const bringListsLoading = ref(false);
 const selectedBringList = ref('');
+const showBringImportPicker = ref(false);
 
 // REWE Warenkorb-Script
 const showCartScript = ref(false);
@@ -2342,9 +2396,21 @@ async function disconnectBring() {
   }
 }
 
-async function importFromBring() {
+async function openBringImportPicker() {
+  showBringImportPicker.value = true;
+  // Listen laden falls noch nicht vorhanden
+  if (shoppingStore.bringLists.length === 0) {
+    bringListsLoading.value = true;
+    try {
+      await shoppingStore.fetchBringLists();
+    } catch { /* ignore */ }
+    bringListsLoading.value = false;
+  }
+}
+
+async function confirmBringImport(listUuid) {
+  showBringImportPicker.value = false;
   try {
-    const listUuid = selectedBringList.value || shoppingStore.bringStatus?.list?.uuid;
     const result = await shoppingStore.importFromBring(listUuid);
     if (result.importedCount > 0) {
       showSuccess(`${result.importedCount} Artikel aus Bring! importiert! 📥`);
