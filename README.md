@@ -70,7 +70,8 @@ Eine KI-gestützte Rezeptverwaltung mit intelligentem Wochenplaner (Score-Algori
 - **REWE-Bestell-Panel** — Alle zugeordneten Produkte auf einen Blick, mit Link zum REWE-Onlineshop
 - **Warenkorb-Script** — Generiert ein Browser-Konsolenscript, das alle gematchten Produkte automatisch in den REWE-Warenkorb legt (Listing-ID-basiert, mit Fortschrittsanzeige)
 - **Tampermonkey-Userscript** — Installiert sich als Browser-Extension auf rewe.de: Floating Action Button (🍳), Panel mit Produktliste, automatisches Einfügen in den Warenkorb, Live-Status pro Artikel (✅/❌/⚠️). Kommuniziert per `GM_xmlhttpRequest` CORS-frei mit der API
-- **Marktsuche** — REWE-Markt per PLZ finden, konfigurierbar über Admin-Einstellungen
+- **Marktsuche** — REWE-Markt per PLZ finden. Jeder Benutzer wählt seinen eigenen Markt in den REWE-Einstellungen der Einkaufsliste
+- **Admin-Toggle** — REWE-Integration zentral aktivieren/deaktivieren (Admin-Einstellungen)
 
 ### 🛍️ Bring!-Integration
 - **Account-Verbindung** — Bring!-Konto über E-Mail und Passwort verbinden (Passwort AES-256-GCM-verschlüsselt gespeichert)
@@ -97,7 +98,7 @@ Eine KI-gestützte Rezeptverwaltung mit intelligentem Wochenplaner (Score-Algori
 ### 🛡️ Admin-Bereich
 - **Dashboard** — Systemstatistiken (Benutzer, Rezepte, KI-Imports, Speicherverbrauch), beliebteste Rezepte, Admin-Aktivitätslog
 - **Benutzerverwaltung** — Alle Benutzer anzeigen/suchen, Rollen ändern (Admin/User), Konten sperren/entsperren, Passwort zurücksetzen, Benutzer löschen
-- **Systemeinstellungen** — Registrierung aktivieren/deaktivieren, Wartungsmodus, KI-Anbieter wählen, Upload-Größe konfigurieren, REWE-Markt-ID/PLZ
+- **Systemeinstellungen** — Registrierung aktivieren/deaktivieren, Wartungsmodus, KI-Anbieter wählen, Upload-Größe konfigurieren, REWE-Integration ein-/ausschalten
 - **Zutaten-Icons** — Keyword→Emoji-Mappings verwalten (Hinzufügen, Bearbeiten, Löschen), integrierter Emoji-Picker, Tabs für Mappings/verwendete/fehlende Zutaten
 - **Datei-Bereinigung** — Verwaiste Upload-Dateien automatisch erkennen und entfernen
 - **Datenverwaltung** — Zentrale Seite für alle Export/Import-Funktionen und Backups:
@@ -223,7 +224,8 @@ Beim **ersten Start** existiert kein Administrator. Die App erkennt das automati
 4. **Den ersten Account registrieren** — dieser wird automatisch zum **Administrator**
 5. In der Sidebar erscheint der **Admin-Bereich** (Shield-Icon)
 6. **Admin → Einstellungen → KI-Konfiguration** → API-Key eintragen
-7. Optional: Registrierung für weitere Benutzer deaktivieren, REWE-Integration konfigurieren
+7. Optional: Registrierung für weitere Benutzer deaktivieren
+8. Optional: REWE-Integration aktivieren (standardmäßig aktiviert) — Benutzer wählen ihren Markt selbst
 
 > **Sicherheit:** Nur der allererste registrierte Account wird zum Admin. Alle weiteren Accounts erhalten die Rolle „Benutzer".
 
@@ -265,7 +267,8 @@ zauberjournal/
 │       ├── server.js           # Fastify Server + Frontend-Serving + SPA-Fallback
 │       ├── config/
 │       │   ├── env.js          # Zentrale Config aus Umgebungsvariablen
-│       │   └── database.js     # SQLite-Initialisierung (WAL, FK, CASCADE)
+│       │   ├── database.js     # SQLite-Initialisierung (WAL, FK, CASCADE)
+│       │   └── settings.js     # Runtime-Einstellungen (DB + Env-Fallback, isReweEnabled)
 │       ├── routes/
 │       │   ├── auth.js         # Registrierung, Login, Token-Refresh
 │       │   ├── recipes.js      # CRUD + Foto-Import + Text-Import + Export/Import
@@ -415,6 +418,9 @@ zauberjournal/
 | `DELETE` | `/preferences` | Alle Präferenzen löschen |
 | `GET` | `/cart-script` | Warenkorb-Script generieren (Listing-ID-basiert, für Browser-Konsole) |
 | `GET` | `/userscript` | Tampermonkey/Greasemonkey-Userscript herunterladen (`?token=JWT`, ohne Auth-Hook) |
+| `GET` | `/settings` | Eigene REWE-Markt-Einstellungen laden (Markt-ID, Marktname, PLZ, reweEnabled) |
+| `PUT` | `/settings` | Eigenen REWE-Markt speichern (`{marketId, marketName, zipCode}`) |
+| `DELETE` | `/settings` | Eigenen REWE-Markt entfernen |
 
 ### Bring! (`/api/bring`)
 | Methode | Pfad | Beschreibung |
@@ -593,7 +599,7 @@ Dieses Projekt verwendet **Tailwind CSS 4** mit CSS-basierter Konfiguration:
 ## ⚠️ Bekannte Einschränkungen
 
 - **Vue Transition:** Alle Views müssen **genau ein Root-Element** haben (wegen `<Transition mode="out-in">` in `App.vue`)
-- **REWE-API:** Inoffizielle API, kann sich ändern. Fehlende Market-ID deaktiviert die Funktion
+- **REWE-API:** Inoffizielle API, kann sich ändern. Der Admin kann die Integration zentral deaktivieren
 - **REWE-Userscript:** Token läuft nach 7 Tagen ab — danach muss ein neues Userscript installiert werden
 - **Bring!-API:** Nutzt das Community-Paket `bring-shopping` (inoffiziell). Bring!-Passwörter werden AES-256-GCM-verschlüsselt in der DB gespeichert
 - **KI-Genauigkeit:** Foto-Import funktioniert am besten mit gut beleuchteten, scharfen Rezeptfotos

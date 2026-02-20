@@ -285,6 +285,19 @@ export function initializeDatabase() {
     CREATE INDEX IF NOT EXISTS idx_ingredient_icons_keyword ON ingredient_icons(keyword);
 
     -- ============================================
+    -- REWE Markt-Einstellungen pro User
+    -- ============================================
+    CREATE TABLE IF NOT EXISTS user_rewe_settings (
+      user_id INTEGER PRIMARY KEY,
+      market_id TEXT NOT NULL,
+      market_name TEXT,
+      zip_code TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+
+    -- ============================================
     -- REWE Produkt-Präferenzen (merkt sich die manuelle Auswahl)
     -- ============================================
     CREATE TABLE IF NOT EXISTS rewe_product_preferences (

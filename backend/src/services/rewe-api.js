@@ -13,7 +13,7 @@
  * die auch die REWE-Website verwendet. Diese kann sich ändern.
  */
 
-import { getReweConfig } from '../config/settings.js';
+import { isReweEnabled } from '../config/settings.js';
 
 const REWE_SEARCH_URL = 'https://www.rewe.de/shop/api/products';
 const REWE_SHOP_BASE = 'https://www.rewe.de/shop';
@@ -110,10 +110,13 @@ function parseHalFormat(data) {
  * Wir nutzen *\/* (Mobile-Format), parsen aber als Fallback auch HAL.
  */
 export async function searchProducts(query, options = {}) {
-  const { marketId } = getReweConfig();
+  if (!isReweEnabled()) {
+    return { products: [], error: 'REWE-Integration ist deaktiviert.' };
+  }
 
+  const marketId = options.marketId;
   if (!marketId) {
-    return { products: [], error: 'REWE Markt-ID nicht konfiguriert (Admin → Einstellungen)' };
+    return { products: [], error: 'REWE Markt-ID nicht konfiguriert. Bitte in den REWE-Einstellungen einen Markt auswählen.' };
   }
 
   try {
@@ -326,8 +329,8 @@ export function calculatePackagesNeeded(neededAmount, neededUnit, packageAmount,
  *   - "Knoblauch 1 Stk" 1,00€ → 2 Packungen → 2,00€ Gesamt
  *   - "Knoblauch 3er Netz" 1,50€ → 1 Packung → 1,50€ Gesamt ← günstiger!
  */
-async function findBestProduct(ingredientName, neededAmount, unit) {
-  const { products } = await searchProducts(ingredientName);
+async function findBestProduct(ingredientName, neededAmount, unit, options = {}) {
+  const { products } = await searchProducts(ingredientName, options);
 
   if (!products.length) {
     return null;
@@ -527,7 +530,7 @@ function formatPrice(priceCents) {
  * @param {function} [options.onPriceUpdate] - Callback wenn sich ein Preis geändert hat: (productId, ingredientName, newPrice, packageSize)
  */
 export async function matchShoppingListWithRewe(shoppingItems, onProgress, options = {}) {
-  const { preferences, onPriceUpdate } = options;
+  const { preferences, onPriceUpdate, marketId } = options;
   const results = [];
   const BATCH_SIZE = 10;
   const DELAY_BETWEEN = 500;       // ms zwischen einzelnen Anfragen
@@ -545,7 +548,7 @@ export async function matchShoppingListWithRewe(shoppingItems, onProgress, optio
     const pref = preferences?.get(item.name.toLowerCase().trim());
     if (pref) {
       // Trotzdem API abfragen um aktuellen Preis / Verfügbarkeit zu prüfen
-      const { products } = await searchProducts(item.name);
+      const { products } = await searchProducts(item.name, { marketId });
       let found = products.find(p => p.id === pref.rewe_product_id);
 
       // Fallback: Wenn Zutatennamen-Suche das Produkt nicht findet (z.B. "Weizenwraps (Dürüm)")
@@ -553,7 +556,7 @@ export async function matchShoppingListWithRewe(shoppingItems, onProgress, optio
       if (!found && pref.rewe_product_name) {
         console.log(`  🔄 ${item.name}: Nicht per Zutatname gefunden → suche per Produktname "${pref.rewe_product_name}"…`);
         await new Promise(resolve => setTimeout(resolve, DELAY_BETWEEN));
-        const { products: prodByName } = await searchProducts(pref.rewe_product_name);
+        const { products: prodByName } = await searchProducts(pref.rewe_product_name, { marketId });
         found = prodByName.find(p => p.id === pref.rewe_product_id);
       }
 
@@ -584,7 +587,7 @@ export async function matchShoppingListWithRewe(shoppingItems, onProgress, optio
       } else {
         // Produkt nicht mehr verfügbar → Fallback auf normales Scoring
         console.log(`  ⚠ ${item.name}: Gemerktes Produkt "${pref.rewe_product_name}" nicht mehr verfügbar → suche Alternative…`);
-        match = await findBestProduct(item.name, item.amount, item.unit);
+        match = await findBestProduct(item.name, item.amount, item.unit, { marketId });
         if (match) {
           matchedCount++;
           const qtyInfo = match.packagesNeeded > 1 ? ` [${match.packagesNeeded}×]` : '';
@@ -595,7 +598,7 @@ export async function matchShoppingListWithRewe(shoppingItems, onProgress, optio
       }
     } else {
       // 2. Kein gespeichertes Produkt → REWE API abfragen
-      match = await findBestProduct(item.name, item.amount, item.unit);
+      match = await findBestProduct(item.name, item.amount, item.unit, { marketId });
 
       if (match) {
         matchedCount++;

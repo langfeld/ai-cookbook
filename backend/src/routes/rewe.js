@@ -6,6 +6,7 @@
  */
 
 import { matchShoppingListWithRewe, searchProducts, scoreRelevance, buildReweProductUrl } from '../services/rewe-api.js';
+import { getUserReweConfig, isReweEnabled } from '../config/settings.js';
 import db from '../config/database.js';
 
 export default async function reweRoutes(fastify) {
@@ -31,7 +32,8 @@ export default async function reweRoutes(fastify) {
     },
   }, async (request) => {
     const query = request.query.q;
-    const { products, error } = await searchProducts(query, { limit: 10 });
+    const { marketId } = getUserReweConfig(request.user.id);
+    const { products, error } = await searchProducts(query, { limit: 10, marketId });
 
     if (error) {
       return { products: [], error };
@@ -101,6 +103,9 @@ export default async function reweRoutes(fastify) {
 
     console.log(`📦 ${preferences.size} gespeicherte Produkt-Präferenzen geladen`);
 
+    // User-spezifische REWE-Markt-Konfiguration laden
+    const { marketId } = getUserReweConfig(request.user.id);
+
     // SSE-Stream einrichten
     reply.raw.writeHead(200, {
       'Content-Type': 'text/event-stream',
@@ -127,9 +132,10 @@ export default async function reweRoutes(fastify) {
       (progress) => {
         sendEvent('progress', progress);
       },
-      // Optionen: gespeicherte Präferenzen + Preis-Update-Callback mitgeben
+      // Optionen: gespeicherte Präferenzen + Preis-Update-Callback + User-Markt-ID mitgeben
       {
         preferences,
+        marketId,
         onPriceUpdate: (productId, ingredientName, newPrice, packageSize) => {
           // Preis in der Präferenz-Tabelle aktualisieren
           db.prepare(`
@@ -357,6 +363,81 @@ export default async function reweRoutes(fastify) {
       'DELETE FROM rewe_product_preferences WHERE user_id = ?'
     ).run(request.user.id);
     return { message: `${result.changes} Präferenz(en) gelöscht`, deleted: result.changes };
+  });
+
+  // ============================================
+  // User-spezifische REWE-Markt-Einstellungen
+  // ============================================
+
+  /**
+   * GET /api/rewe/settings
+   * REWE-Markt-Einstellungen des Users laden
+   * Gibt User-Einstellung zurück, oder globalen Default
+   */
+  fastify.get('/settings', {
+    schema: {
+      description: 'Eigene REWE-Markt-Einstellungen laden',
+      tags: ['REWE'],
+      security: [{ bearerAuth: [] }],
+    },
+  }, async (request) => {
+    const config = getUserReweConfig(request.user.id);
+    return {
+      reweEnabled: isReweEnabled(),
+      marketId: config.marketId,
+      marketName: config.marketName || '',
+      zipCode: config.zipCode || '',
+      isConfigured: !!config.marketId,
+    };
+  });
+
+  /**
+   * PUT /api/rewe/settings
+   * REWE-Markt-Einstellungen für den User speichern
+   */
+  fastify.put('/settings', {
+    schema: {
+      description: 'Eigene REWE-Markt-Einstellungen speichern',
+      tags: ['REWE'],
+      security: [{ bearerAuth: [] }],
+      body: {
+        type: 'object',
+        required: ['marketId'],
+        properties: {
+          marketId: { type: 'string', minLength: 1 },
+          marketName: { type: 'string' },
+          zipCode: { type: 'string' },
+        },
+      },
+    },
+  }, async (request) => {
+    const { marketId, marketName, zipCode } = request.body;
+    db.prepare(`
+      INSERT INTO user_rewe_settings (user_id, market_id, market_name, zip_code, updated_at)
+      VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+      ON CONFLICT(user_id) DO UPDATE SET
+        market_id = excluded.market_id,
+        market_name = excluded.market_name,
+        zip_code = excluded.zip_code,
+        updated_at = CURRENT_TIMESTAMP
+    `).run(request.user.id, marketId, marketName || '', zipCode || '');
+
+    return { message: 'REWE-Markt gespeichert', marketId, marketName, zipCode };
+  });
+
+  /**
+   * DELETE /api/rewe/settings
+   * User-spezifische REWE-Einstellungen löschen (zurück zum globalen Default)
+   */
+  fastify.delete('/settings', {
+    schema: {
+      description: 'Eigene REWE-Markt-Einstellungen löschen (globalen Default verwenden)',
+      tags: ['REWE'],
+      security: [{ bearerAuth: [] }],
+    },
+  }, async (request) => {
+    db.prepare('DELETE FROM user_rewe_settings WHERE user_id = ?').run(request.user.id);
+    return { message: 'Eigene REWE-Einstellungen gelöscht. Globaler Default wird verwendet.' };
   });
 
   /**

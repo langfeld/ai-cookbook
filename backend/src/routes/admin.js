@@ -36,8 +36,7 @@ const ALLOWED_SETTINGS = new Set([
   'ollama_base_url',
   'ollama_model',
   // REWE
-  'rewe_market_id',
-  'rewe_zip_code',
+  'rewe_enabled',
 ]);
 
 export default async function adminRoutes(fastify) {

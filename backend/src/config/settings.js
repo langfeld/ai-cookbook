@@ -78,12 +78,26 @@ export function getAiConfig() {
 }
 
 /**
- * REWE-Konfiguration zusammenbauen
+ * Prüft ob die REWE-Integration vom Admin aktiviert ist
  */
-export function getReweConfig() {
-  const env = process.env;
-  return {
-    marketId: getSetting('rewe_market_id', env.REWE_MARKET_ID || ''),
-    zipCode:  getSetting('rewe_zip_code',  env.REWE_ZIP_CODE || ''),
-  };
+export function isReweEnabled() {
+  return getSetting('rewe_enabled', 'true') === 'true';
+}
+
+/**
+ * REWE-Konfiguration für einen bestimmten User
+ * Jeder User muss seinen eigenen Markt konfigurieren.
+ */
+export function getUserReweConfig(userId) {
+  try {
+    const row = db.prepare('SELECT market_id, market_name, zip_code FROM user_rewe_settings WHERE user_id = ?').get(userId);
+    if (row && row.market_id) {
+      return {
+        marketId: row.market_id,
+        marketName: row.market_name || '',
+        zipCode: row.zip_code || '',
+      };
+    }
+  } catch { /* Tabelle existiert evtl. noch nicht */ }
+  return { marketId: '', marketName: '', zipCode: '' };
 }
