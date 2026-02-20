@@ -611,15 +611,20 @@ export default async function shoppingRoutes(fastify) {
     const list = db.prepare(
       'SELECT meal_plan_id FROM shopping_lists WHERE id = ? AND user_id = ?'
     ).get(listId, userId);
+    let mealPlanLocked = false;
     if (list?.meal_plan_id) {
       db.prepare(
         'UPDATE meal_plans SET is_locked = 1 WHERE id = ? AND user_id = ?'
       ).run(list.meal_plan_id, userId);
+      mealPlanLocked = true;
+      console.log('🔒 Wochenplan %d automatisch fixiert (Liste %d abgeschlossen)', list.meal_plan_id, listId);
     }
 
     return {
       message: 'Einkauf abgeschlossen! Gekaufte Artikel wurden im Vorratsschrank gespeichert.',
       pantryItemsAdded: purchasedItems.length,
+      mealPlanLocked,
+      mealPlanId: list?.meal_plan_id || null,
     };
   });
 

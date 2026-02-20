@@ -2297,8 +2297,14 @@ async function selectPrefProduct(product) {
 
 async function completePurchase({ includeAll = false } = {}) {
   try {
-    await shoppingStore.completePurchase({ includeAll });
+    const result = await shoppingStore.completePurchase({ includeAll });
     showSuccess('Einkauf abgeschlossen! Vorräte aktualisiert. 🎉');
+    // Wochenplan im Store als fixiert markieren (falls Backend Auto-Lock gegriffen hat)
+    if (result?.mealPlanLocked && result.mealPlanId) {
+      if (mealPlanStore.currentPlan?.id === result.mealPlanId) {
+        mealPlanStore.currentPlan.is_locked = 1;
+      }
+    }
   } catch {
     // Fehler wird von useApi angezeigt
   }
