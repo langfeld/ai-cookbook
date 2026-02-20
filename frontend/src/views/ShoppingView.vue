@@ -90,66 +90,46 @@
             </div>
           </Transition>
         </div>
-        <!-- Zusammenfassen (Split-Button: Merge-Modus + Alias-Verwaltung) -->
-        <div v-if="shoppingStore.activeList" class="flex items-stretch">
-          <button
-            @click="toggleMergeMode"
-            :class="[
-              'flex items-center gap-1.5 px-3 py-2 text-sm font-medium transition-colors border',
-              mergeMode
-                ? 'bg-violet-50 dark:bg-violet-900/30 border-violet-300 dark:border-violet-700 text-violet-700 dark:text-violet-300'
-                : 'bg-stone-100 dark:bg-stone-800 border-stone-300 dark:border-stone-600 text-stone-500 dark:text-stone-400 hover:text-stone-700 dark:hover:text-stone-200',
-              aliasStore.aliases.length > 0 ? 'rounded-l-xl border-r-0' : 'rounded-xl'
-            ]"
-            :title="mergeMode ? 'Zusammenfassen beenden' : 'Zutaten zusammenfassen'"
-          >
-            <Merge class="w-4 h-4" />
-            <span class="hidden sm:inline">Zusammenfassen</span>
-          </button>
-          <button
-            v-if="aliasStore.aliases.length > 0"
-            @click="showAliasManager = true"
-            :class="[
-              'flex items-center px-2 rounded-r-xl text-sm transition-colors border',
-              mergeMode
-                ? 'bg-violet-50 dark:bg-violet-900/30 border-violet-300 dark:border-violet-700 border-l-violet-400 dark:border-l-violet-600 text-violet-500 dark:text-violet-400 hover:text-violet-700'
-                : 'bg-stone-100 dark:bg-stone-800 border-stone-300 dark:border-stone-600 border-l-stone-400 dark:border-l-stone-500 text-stone-400 dark:text-stone-500 hover:text-stone-600 dark:hover:text-stone-300'
-            ]"
-            title="Gespeicherte Zusammenfassungen verwalten"
-          >
-            <Settings class="w-3.5 h-3.5" />
-          </button>
-        </div>
-        <!-- Blockieren (Split-Button: Block-Modus + Blockliste verwalten) -->
-        <div v-if="shoppingStore.activeList" class="flex items-stretch">
-          <button
-            @click="toggleBlockMode"
-            :class="[
-              'flex items-center gap-1.5 px-3 py-2 text-sm font-medium transition-colors border',
-              blockMode
-                ? 'bg-red-50 dark:bg-red-900/30 border-red-300 dark:border-red-700 text-red-700 dark:text-red-300'
-                : 'bg-stone-100 dark:bg-stone-800 border-stone-300 dark:border-stone-600 text-stone-500 dark:text-stone-400 hover:text-stone-700 dark:hover:text-stone-200',
-              aliasStore.blockedIngredients.length > 0 ? 'rounded-l-xl border-r-0' : 'rounded-xl'
-            ]"
-            :title="blockMode ? 'Blockieren beenden' : 'Zutaten zum Blockieren auswählen'"
-          >
-            <Ban class="w-4 h-4" />
-            <span class="hidden sm:inline">Blockieren</span>
-          </button>
-          <button
-            v-if="aliasStore.blockedIngredients.length > 0"
-            @click="showBlockManager = true"
-            :class="[
-              'flex items-center px-2 rounded-r-xl text-sm transition-colors border',
-              blockMode
-                ? 'bg-red-50 dark:bg-red-900/30 border-red-300 dark:border-red-700 border-l-red-400 dark:border-l-red-600 text-red-500 dark:text-red-400 hover:text-red-700'
-                : 'bg-stone-100 dark:bg-stone-800 border-stone-300 dark:border-stone-600 border-l-stone-400 dark:border-l-stone-500 text-stone-400 dark:text-stone-500 hover:text-stone-600 dark:hover:text-stone-300'
-            ]"
-            title="Blockierte Zutaten verwalten"
-          >
-            <Settings class="w-3.5 h-3.5" />
-          </button>
-        </div>
+        <!-- Zusammenfassen -->
+        <button
+          v-if="shoppingStore.activeList"
+          @click="toggleMergeMode"
+          :class="[
+            'flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium transition-colors border',
+            mergeMode
+              ? 'bg-violet-50 dark:bg-violet-900/30 border-violet-300 dark:border-violet-700 text-violet-700 dark:text-violet-300'
+              : 'bg-stone-100 dark:bg-stone-800 border-stone-300 dark:border-stone-600 text-stone-500 dark:text-stone-400 hover:text-stone-700 dark:hover:text-stone-200'
+          ]"
+          :title="mergeMode ? 'Zusammenfassen beenden' : 'Zutaten zusammenfassen'"
+        >
+          <Merge class="w-4 h-4" />
+          <span class="hidden sm:inline">Zusammenfassen</span>
+        </button>
+        <!-- Blockieren -->
+        <button
+          v-if="shoppingStore.activeList"
+          @click="toggleBlockMode"
+          :class="[
+            'flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-medium transition-colors border',
+            blockMode
+              ? 'bg-red-50 dark:bg-red-900/30 border-red-300 dark:border-red-700 text-red-700 dark:text-red-300'
+              : 'bg-stone-100 dark:bg-stone-800 border-stone-300 dark:border-stone-600 text-stone-500 dark:text-stone-400 hover:text-stone-700 dark:hover:text-stone-200'
+          ]"
+          :title="blockMode ? 'Blockieren beenden' : 'Zutaten zum Blockieren auswählen'"
+        >
+          <Ban class="w-4 h-4" />
+          <span class="hidden sm:inline">Blockieren</span>
+        </button>
+        <!-- Einstellungen (zentral) -->
+        <button
+          v-if="shoppingStore.activeList"
+          @click="openSettings()"
+          class="flex items-center gap-1.5 bg-stone-100 dark:bg-stone-800 px-3 py-2 border border-stone-300 dark:border-stone-600 rounded-xl font-medium text-stone-500 hover:text-stone-700 dark:hover:text-stone-200 dark:text-stone-400 text-sm transition-colors"
+          title="Einstellungen"
+        >
+          <Settings class="w-4 h-4" />
+          <span class="hidden sm:inline">Einstellungen</span>
+        </button>
         <!-- Aus Wochenplan erstellen (Split-Button) -->
         <div class="relative flex items-stretch w-full sm:w-auto">
           <button
@@ -211,25 +191,17 @@
             </div>
           </Transition>
         </div>
-        <!-- REWE abgleichen (Split-Button: Match + Einstellungen) -->
-        <div v-if="shoppingStore.activeList && reweEnabled" class="flex items-stretch w-full sm:w-auto">
-          <button
-            @click="matchWithRewe"
-            :disabled="reweLoading"
-            class="flex sm:flex-initial flex-1 justify-center items-center gap-2 bg-rewe-500 hover:bg-rewe-600 disabled:opacity-50 px-4 py-2 rounded-l-xl font-medium text-white text-sm transition-colors"
-          >
-            <Loader2 v-if="reweLoading" class="w-4 h-4 animate-spin" />
-            <span v-else>🏪</span>
-            REWE abgleichen
-          </button>
-          <button
-            @click="showReweSettings = true; loadReweMarketSettings()"
-            class="flex items-center bg-rewe-500 hover:bg-rewe-600 px-3 border-rewe-400 border-l rounded-r-xl text-white transition-colors"
-            title="REWE-Einstellungen"
-          >
-            <Settings class="w-4 h-4" />
-          </button>
-        </div>
+        <!-- REWE abgleichen -->
+        <button
+          v-if="shoppingStore.activeList && reweEnabled"
+          @click="matchWithRewe"
+          :disabled="reweLoading"
+          class="flex justify-center items-center gap-2 bg-rewe-500 hover:bg-rewe-600 disabled:opacity-50 px-4 py-2 rounded-xl w-full sm:w-auto font-medium text-white text-sm transition-colors"
+        >
+          <Loader2 v-if="reweLoading" class="w-4 h-4 animate-spin" />
+          <span v-else>🏪</span>
+          REWE abgleichen
+        </button>
       </div>
     </div>
 
@@ -632,55 +604,49 @@
           </span>
         </div>
         <div class="flex sm:flex-row flex-col sm:flex-wrap gap-2 w-full sm:w-auto">
-          <!-- An Bring! senden -->
-          <div v-if="shoppingStore.bringStatus?.connected" class="flex items-stretch w-full sm:w-auto">
+          <!-- An Bring! senden + Importieren -->
+          <div v-if="shoppingStore.bringStatus?.connected" class="flex gap-2 w-full sm:w-auto">
             <button
               v-if="shoppingStore.openItemsCount > 0"
               @click="sendToBring"
               :disabled="shoppingStore.bringSending"
-              class="flex sm:flex-initial flex-1 justify-center items-center gap-2 bg-teal-600 hover:bg-teal-700 disabled:opacity-50 px-5 py-3 rounded-l-xl font-medium text-white transition-colors"
+              class="flex sm:flex-initial flex-1 justify-center items-center gap-2 bg-teal-600 hover:bg-teal-700 disabled:opacity-50 px-5 py-3 rounded-xl font-medium text-white transition-colors"
             >
               <Loader2 v-if="shoppingStore.bringSending" class="w-4 h-4 animate-spin" />
               <Send v-else class="w-4 h-4" />
               An Bring! senden
             </button>
             <button
-              @click="showBringModal = true"
-              class="flex items-center bg-teal-600 hover:bg-teal-700 px-3 font-medium text-white transition-colors"
-              :class="shoppingStore.openItemsCount > 0 ? 'rounded-r-xl border-l border-teal-500' : 'rounded-xl py-3'"
-              title="Bring!-Einstellungen"
+              @click="importFromBring"
+              :disabled="shoppingStore.bringImporting"
+              class="flex justify-center items-center gap-2 bg-teal-50 hover:bg-teal-100 dark:bg-teal-900/20 dark:hover:bg-teal-900/40 disabled:opacity-50 px-4 py-3 border border-teal-300 dark:border-teal-700 rounded-xl font-medium text-teal-700 dark:text-teal-300 transition-colors"
+              title="Artikel aus Bring! importieren"
             >
-              <Settings class="w-4 h-4" />
+              <Loader2 v-if="shoppingStore.bringImporting" class="w-4 h-4 animate-spin" />
+              <Download v-else class="w-4 h-4" />
+              <span class="hidden sm:inline">Importieren</span>
             </button>
           </div>
           <button
             v-else
-            @click="showBringModal = true"
+            @click="openSettings('bring')"
             class="flex justify-center items-center gap-2 bg-teal-600 hover:bg-teal-700 px-5 py-3 rounded-xl w-full sm:w-auto font-medium text-white transition-colors"
           >
             <Link2 class="w-4 h-4" />
             Bring! verbinden
           </button>
 
-          <!-- Bei REWE bestellen (Split-Button) -->
-          <div v-if="reweEnabled && shoppingStore.reweLinkedItems.length" class="flex items-stretch w-full sm:w-auto">
-            <button
-              @click="handleReweMainAction"
-              :disabled="cartScriptLoading"
-              class="flex sm:flex-initial flex-1 justify-center items-center gap-2 bg-rewe-500 hover:bg-rewe-600 disabled:opacity-50 px-5 py-3 rounded-l-xl font-medium text-white transition-colors"
-            >
-              <Loader2 v-if="cartScriptLoading" class="w-4 h-4 animate-spin" />
-              <ShoppingCart v-else class="w-4 h-4" />
-              Bei REWE bestellen ({{ shoppingStore.reweLinkedItems.length }})
-            </button>
-            <button
-              @click="showReweOrderSettings = true"
-              class="flex items-center bg-rewe-500 hover:bg-rewe-600 px-3 border-rewe-400 border-l rounded-r-xl font-medium text-white transition-colors"
-              title="Bestell-Einstellungen"
-            >
-              <Settings class="w-4 h-4" />
-            </button>
-          </div>
+          <!-- Bei REWE bestellen -->
+          <button
+            v-if="reweEnabled && shoppingStore.reweLinkedItems.length"
+            @click="handleReweMainAction"
+            :disabled="cartScriptLoading"
+            class="flex justify-center items-center gap-2 bg-rewe-500 hover:bg-rewe-600 disabled:opacity-50 px-5 py-3 rounded-xl w-full sm:w-auto font-medium text-white transition-colors"
+          >
+            <Loader2 v-if="cartScriptLoading" class="w-4 h-4 animate-spin" />
+            <ShoppingCart v-else class="w-4 h-4" />
+            Bei REWE bestellen ({{ shoppingStore.reweLinkedItems.length }})
+          </button>
           <button
             @click="completePurchase"
             :disabled="checkedCount === 0"
@@ -692,228 +658,410 @@
         </div>
       </div>
 
-      <!-- REWE Einstellungen Modal (Markt + Präferenzen) -->
+      <!-- =============================================
+           Zentrale Einstellungen Modal (Tabs)
+           ============================================= -->
       <Teleport to="body">
         <Transition name="fade">
-          <div v-if="showReweSettings" class="z-50 fixed inset-0 flex justify-center items-end sm:items-center bg-black/50 p-4" @click.self="showReweSettings = false">
-            <div class="flex flex-col bg-white dark:bg-stone-900 shadow-2xl rounded-2xl w-full max-w-md max-h-[85vh] overflow-hidden">
+          <div v-if="showSettings" class="z-50 fixed inset-0 flex justify-center items-end sm:items-center bg-black/50 p-4" @click.self="showSettings = false">
+            <div class="flex flex-col bg-white dark:bg-stone-900 shadow-2xl rounded-2xl w-full max-w-lg max-h-[85vh] overflow-hidden">
 
               <!-- Header -->
-              <div class="flex justify-between items-center px-5 py-4 border-stone-200 dark:border-stone-700 border-b shrink-0">
-                <div>
-                  <h2 class="font-display font-bold text-stone-800 dark:text-stone-100 text-lg">🏪 REWE-Einstellungen</h2>
-                  <p class="mt-0.5 text-stone-500 dark:text-stone-400 text-xs">Markt auswählen und Produkt-Präferenzen verwalten</p>
+              <div class="px-5 pt-4 pb-0 shrink-0">
+                <div class="flex justify-between items-center mb-4">
+                  <h2 class="font-display font-bold text-stone-800 dark:text-stone-100 text-lg">⚙️ Einstellungen</h2>
+                  <button @click="showSettings = false" class="hover:bg-stone-100 dark:hover:bg-stone-800 p-1.5 rounded-lg text-stone-400 transition-colors">
+                    <X class="w-5 h-5" />
+                  </button>
                 </div>
-                <button @click="showReweSettings = false" class="hover:bg-stone-100 dark:hover:bg-stone-800 p-1.5 rounded-lg text-stone-400 transition-colors">
-                  <X class="w-5 h-5" />
-                </button>
+
+                <!-- Tabs -->
+                <div class="flex gap-1 -mb-px">
+                  <button
+                    v-if="reweEnabled"
+                    @click="settingsTab = 'rewe'"
+                    :class="[
+                      'px-4 py-2 text-sm font-medium rounded-t-lg border border-b-0 transition-colors',
+                      settingsTab === 'rewe'
+                        ? 'bg-white dark:bg-stone-900 border-stone-200 dark:border-stone-700 text-rewe-600 dark:text-rewe-400'
+                        : 'bg-stone-50 dark:bg-stone-800 border-transparent text-stone-500 dark:text-stone-400 hover:text-stone-700 dark:hover:text-stone-300'
+                    ]"
+                  >
+                    🏪 REWE
+                  </button>
+                  <button
+                    @click="settingsTab = 'bring'"
+                    :class="[
+                      'px-4 py-2 text-sm font-medium rounded-t-lg border border-b-0 transition-colors',
+                      settingsTab === 'bring'
+                        ? 'bg-white dark:bg-stone-900 border-stone-200 dark:border-stone-700 text-teal-600 dark:text-teal-400'
+                        : 'bg-stone-50 dark:bg-stone-800 border-transparent text-stone-500 dark:text-stone-400 hover:text-stone-700 dark:hover:text-stone-300'
+                    ]"
+                  >
+                    🛍️ Bring!
+                  </button>
+                  <button
+                    @click="settingsTab = 'ingredients'"
+                    :class="[
+                      'px-4 py-2 text-sm font-medium rounded-t-lg border border-b-0 transition-colors',
+                      settingsTab === 'ingredients'
+                        ? 'bg-white dark:bg-stone-900 border-stone-200 dark:border-stone-700 text-stone-700 dark:text-stone-300'
+                        : 'bg-stone-50 dark:bg-stone-800 border-transparent text-stone-500 dark:text-stone-400 hover:text-stone-700 dark:hover:text-stone-300'
+                    ]"
+                  >
+                    🥕 Zutaten
+                  </button>
+                </div>
               </div>
 
-              <div class="space-y-5 p-5 overflow-y-auto">
+              <!-- Tab-Content -->
+              <div class="flex-1 border-stone-200 dark:border-stone-700 border-t overflow-y-auto">
 
-                <!-- Mein REWE-Markt -->
-                <div>
-                  <h3 class="flex items-center gap-2 mb-3 font-medium text-stone-700 dark:text-stone-300 text-sm">
-                    <MapPin class="w-4 h-4 text-rewe-500" />
-                    Mein REWE-Markt
-                  </h3>
+                <!-- ========== REWE Tab ========== -->
+                <div v-if="settingsTab === 'rewe'" class="space-y-5 p-5">
 
-                  <!-- Aktueller Markt -->
-                  <div v-if="reweMarketId" class="bg-rewe-50 dark:bg-rewe-900/20 mb-3 p-3 border border-rewe-200 dark:border-rewe-800 rounded-xl">
-                    <div class="flex justify-between items-start gap-2">
-                      <div class="min-w-0">
-                        <span class="font-medium text-stone-800 dark:text-stone-200 text-sm">
-                          {{ reweMarketName || 'REWE Markt' }}
-                        </span>
-                        <p class="mt-0.5 text-stone-500 dark:text-stone-400 text-xs">
-                          <span v-if="reweZipCode">PLZ {{ reweZipCode }} · </span>
-                          ID: {{ reweMarketId }}
-                        </p>
+                  <!-- Mein REWE-Markt -->
+                  <div>
+                    <h3 class="flex items-center gap-2 mb-3 font-medium text-stone-700 dark:text-stone-300 text-sm">
+                      <MapPin class="w-4 h-4 text-rewe-500" />
+                      Mein REWE-Markt
+                    </h3>
+
+                    <!-- Aktueller Markt -->
+                    <div v-if="reweMarketId" class="bg-rewe-50 dark:bg-rewe-900/20 mb-3 p-3 border border-rewe-200 dark:border-rewe-800 rounded-xl">
+                      <div class="flex justify-between items-start gap-2">
+                        <div class="min-w-0">
+                          <span class="font-medium text-stone-800 dark:text-stone-200 text-sm">
+                            {{ reweMarketName || 'REWE Markt' }}
+                          </span>
+                          <p class="mt-0.5 text-stone-500 dark:text-stone-400 text-xs">
+                            <span v-if="reweZipCode">PLZ {{ reweZipCode }} · </span>
+                            ID: {{ reweMarketId }}
+                          </p>
+                        </div>
+                        <button
+                          @click="resetReweMarket"
+                          class="hover:bg-stone-100 dark:hover:bg-stone-800 p-1 rounded-lg text-stone-400 hover:text-stone-600 transition-colors shrink-0"
+                          title="REWE-Markt entfernen"
+                        >
+                          <RotateCcw class="w-3.5 h-3.5" />
+                        </button>
                       </div>
+                    </div>
+                    <div v-else-if="!reweMarketSettingsLoading" class="bg-amber-50 dark:bg-amber-900/20 mb-3 p-3 border border-amber-200 dark:border-amber-800 rounded-xl">
+                      <p class="text-amber-700 dark:text-amber-300 text-xs">
+                        ⚠️ Kein REWE-Markt konfiguriert. Bitte PLZ eingeben und Markt auswählen.
+                      </p>
+                    </div>
+
+                    <!-- Markt-Suche -->
+                    <div class="flex gap-2">
+                      <input
+                        v-model="reweMarketSearch"
+                        type="text"
+                        placeholder="PLZ eingeben…"
+                        @keyup.enter="searchReweMarkets"
+                        class="flex-1 bg-stone-50 dark:bg-stone-800 px-3 py-2 border border-stone-300 focus:border-transparent dark:border-stone-600 rounded-lg focus:ring-2 focus:ring-rewe-500 text-stone-800 dark:text-stone-200 placeholder:text-stone-400 text-sm"
+                      />
                       <button
-                        @click="resetReweMarket"
-                        class="hover:bg-stone-100 dark:hover:bg-stone-800 p-1 rounded-lg text-stone-400 hover:text-stone-600 transition-colors shrink-0"
-                        title="REWE-Markt entfernen"
+                        @click="searchReweMarkets"
+                        :disabled="!reweMarketSearch.trim() || reweMarketSearchLoading"
+                        class="flex items-center gap-1.5 bg-rewe-500 hover:bg-rewe-600 disabled:opacity-50 px-4 py-2 rounded-lg font-medium text-white text-sm transition-colors"
                       >
-                        <RotateCcw class="w-3.5 h-3.5" />
+                        <Loader2 v-if="reweMarketSearchLoading" class="w-4 h-4 animate-spin" />
+                        <Search v-else class="w-4 h-4" />
                       </button>
                     </div>
-                  </div>
-                  <div v-else-if="!reweMarketSettingsLoading" class="bg-amber-50 dark:bg-amber-900/20 mb-3 p-3 border border-amber-200 dark:border-amber-800 rounded-xl">
-                    <p class="text-amber-700 dark:text-amber-300 text-xs">
-                      ⚠️ Kein REWE-Markt konfiguriert. Bitte PLZ eingeben und Markt auswählen.
+
+                    <!-- Suchergebnisse -->
+                    <div v-if="reweMarketResults.length" class="space-y-1.5 mt-3 max-h-48 overflow-y-auto">
+                      <button
+                        v-for="market in reweMarketResults"
+                        :key="market.id"
+                        @click="selectReweMarket(market)"
+                        :class="[
+                          'w-full text-left px-3 py-2.5 rounded-lg border transition-all text-sm',
+                          reweMarketId === String(market.id)
+                            ? 'bg-rewe-50 dark:bg-rewe-900/20 border-rewe-300 dark:border-rewe-700 ring-1 ring-rewe-300 dark:ring-rewe-700'
+                            : 'bg-stone-50 dark:bg-stone-800 border-stone-200 dark:border-stone-700 hover:border-rewe-300 dark:hover:border-rewe-600'
+                        ]"
+                      >
+                        <div class="flex justify-between items-start gap-2">
+                          <div class="min-w-0">
+                            <span class="font-medium text-stone-800 dark:text-stone-200">{{ market.name }}</span>
+                            <p class="mt-0.5 text-stone-500 dark:text-stone-400 text-xs">
+                              {{ market.street }}, {{ market.zipCode }} {{ market.city }}
+                            </p>
+                          </div>
+                          <div class="flex flex-col items-end gap-0.5 shrink-0">
+                            <span class="bg-stone-200 dark:bg-stone-700 px-2 py-0.5 rounded font-mono text-[10px] text-stone-500 dark:text-stone-400">
+                              ID: {{ market.id }}
+                            </span>
+                            <span v-if="market.distance != null" class="text-[10px] text-stone-400 dark:text-stone-500">
+                              {{ market.distance >= 1000 ? (market.distance / 1000).toFixed(1) + ' km' : market.distance + ' m' }}
+                            </span>
+                          </div>
+                        </div>
+                      </button>
+                    </div>
+                    <p v-if="reweMarketSearchError" class="mt-2 text-amber-600 dark:text-amber-400 text-xs">
+                      {{ reweMarketSearchError }}
                     </p>
                   </div>
 
-                  <!-- Markt-Suche -->
-                  <div class="flex gap-2">
-                    <input
-                      v-model="reweMarketSearch"
-                      type="text"
-                      placeholder="PLZ eingeben…"
-                      @keyup.enter="searchReweMarkets"
-                      class="flex-1 bg-stone-50 dark:bg-stone-800 px-3 py-2 border border-stone-300 focus:border-transparent dark:border-stone-600 rounded-lg focus:ring-2 focus:ring-rewe-500 text-stone-800 dark:text-stone-200 placeholder:text-stone-400 text-sm"
-                    />
-                    <button
-                      @click="searchReweMarkets"
-                      :disabled="!reweMarketSearch.trim() || reweMarketSearchLoading"
-                      class="flex items-center gap-1.5 bg-rewe-500 hover:bg-rewe-600 disabled:opacity-50 px-4 py-2 rounded-lg font-medium text-white text-sm transition-colors"
-                    >
-                      <Loader2 v-if="reweMarketSearchLoading" class="w-4 h-4 animate-spin" />
-                      <Search v-else class="w-4 h-4" />
-                    </button>
-                  </div>
+                  <div class="border-stone-200 dark:border-stone-700 border-t"></div>
 
-                  <!-- Suchergebnisse -->
-                  <div v-if="reweMarketResults.length" class="space-y-1.5 mt-3 max-h-48 overflow-y-auto">
-                    <button
-                      v-for="market in reweMarketResults"
-                      :key="market.id"
-                      @click="selectReweMarket(market)"
-                      :class="[
-                        'w-full text-left px-3 py-2.5 rounded-lg border transition-all text-sm',
-                        reweMarketId === String(market.id)
-                          ? 'bg-rewe-50 dark:bg-rewe-900/20 border-rewe-300 dark:border-rewe-700 ring-1 ring-rewe-300 dark:ring-rewe-700'
-                          : 'bg-stone-50 dark:bg-stone-800 border-stone-200 dark:border-stone-700 hover:border-rewe-300 dark:hover:border-rewe-600'
-                      ]"
-                    >
-                      <div class="flex justify-between items-start gap-2">
-                        <div class="min-w-0">
-                          <span class="font-medium text-stone-800 dark:text-stone-200">{{ market.name }}</span>
-                          <p class="mt-0.5 text-stone-500 dark:text-stone-400 text-xs">
-                            {{ market.street }}, {{ market.zipCode }} {{ market.city }}
-                          </p>
-                        </div>
-                        <div class="flex flex-col items-end gap-0.5 shrink-0">
-                          <span class="bg-stone-200 dark:bg-stone-700 px-2 py-0.5 rounded font-mono text-[10px] text-stone-500 dark:text-stone-400">
-                            ID: {{ market.id }}
-                          </span>
-                          <span v-if="market.distance != null" class="text-[10px] text-stone-400 dark:text-stone-500">
-                            {{ market.distance >= 1000 ? (market.distance / 1000).toFixed(1) + ' km' : market.distance + ' m' }}
-                          </span>
-                        </div>
-                      </div>
-                    </button>
-                  </div>
-                  <p v-if="reweMarketSearchError" class="mt-2 text-amber-600 dark:text-amber-400 text-xs">
-                    {{ reweMarketSearchError }}
-                  </p>
-                </div>
-
-                <!-- Trennlinie -->
-                <div class="border-stone-200 dark:border-stone-700 border-t"></div>
-
-                <!-- Bevorzugte Produkte -->
-                <button
-                  @click="showReweSettings = false; openRewePreferences()"
-                  class="group flex items-center gap-3 bg-stone-50 hover:bg-stone-100 dark:bg-stone-800 dark:hover:bg-stone-700 p-4 border border-stone-200 dark:border-stone-700 rounded-xl w-full text-left transition-colors"
-                >
-                  <div class="flex justify-center items-center bg-rewe-100 dark:bg-rewe-900/30 rounded-lg w-10 h-10 shrink-0">
-                    <Star class="w-5 h-5 text-rewe-500" />
-                  </div>
-                  <div class="flex-1 min-w-0">
-                    <span class="font-medium text-stone-800 dark:text-stone-200 text-sm">Bevorzugte Produkte</span>
-                    <p class="text-stone-500 dark:text-stone-400 text-xs">Gespeicherte Zuordnungen von Zutaten zu REWE-Produkten verwalten</p>
-                  </div>
-                  <ChevronRight class="w-4 h-4 text-stone-400 dark:group-hover:text-stone-300 group-hover:text-stone-600 transition-colors shrink-0" />
-                </button>
-              </div>
-            </div>
-          </div>
-        </Transition>
-      </Teleport>
-
-      <!-- REWE Bestell-Einstellungen Modal -->
-      <Teleport to="body">
-        <Transition name="fade">
-          <div v-if="showReweOrderSettings" class="z-50 fixed inset-0 flex justify-center items-end sm:items-center bg-black/50 p-4" @click.self="showReweOrderSettings = false">
-            <div class="flex flex-col bg-white dark:bg-stone-900 shadow-2xl rounded-2xl w-full max-w-md max-h-[85vh] overflow-hidden">
-
-              <!-- Header -->
-              <div class="flex justify-between items-center px-5 py-4 border-stone-200 dark:border-stone-700 border-b shrink-0">
-                <div>
-                  <h2 class="font-display font-bold text-stone-800 dark:text-stone-100 text-lg">🛒 Bestell-Einstellungen</h2>
-                  <p class="mt-0.5 text-stone-500 dark:text-stone-400 text-xs">Bestell-Methode und Userscript verwalten</p>
-                </div>
-                <button @click="showReweOrderSettings = false" class="hover:bg-stone-100 dark:hover:bg-stone-800 p-1.5 rounded-lg text-stone-400 transition-colors">
-                  <X class="w-5 h-5" />
-                </button>
-              </div>
-
-              <div class="space-y-5 p-5 overflow-y-auto">
-
-                <!-- Bestell-Methode wählen -->
-                <div>
-                  <label class="block mb-2 font-medium text-stone-700 dark:text-stone-300 text-sm">Bestell-Methode</label>
-                  <div class="space-y-2">
-                    <label
-                      v-for="opt in reweActionOptions"
-                      :key="opt.value"
-                      :class="[
-                        'flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-all',
-                        reweAction === opt.value
-                          ? 'bg-rewe-50 dark:bg-rewe-900/20 border-rewe-300 dark:border-rewe-700'
-                          : 'bg-stone-50 dark:bg-stone-800 border-stone-200 dark:border-stone-700 hover:border-stone-300 dark:hover:border-stone-600'
-                      ]"
-                    >
-                      <input
-                        type="radio"
-                        :value="opt.value"
-                        v-model="reweAction"
-                        @change="saveReweSettings"
-                        class="mt-0.5 accent-rewe-600"
-                      />
-                      <div>
-                        <span class="font-medium text-stone-800 dark:text-stone-200 text-sm">{{ opt.icon }} {{ opt.label }}</span>
-                        <p class="mt-0.5 text-stone-500 dark:text-stone-400 text-xs">{{ opt.description }}</p>
-                      </div>
-                    </label>
-                  </div>
-                </div>
-
-                <!-- Vorschau-Option -->
-                <label class="flex items-center gap-3 cursor-pointer select-none">
-                  <div class="relative">
-                    <input type="checkbox" v-model="reweShowPreview" @change="saveReweSettings" class="sr-only peer" />
-                    <div class="bg-stone-200 dark:bg-stone-700 peer-checked:bg-rewe-500 rounded-full w-10 h-5 transition-colors"></div>
-                    <div class="top-0.5 left-0.5 absolute bg-white rounded-full w-4 h-4 transition-transform peer-checked:translate-x-5"></div>
-                  </div>
+                  <!-- Bestell-Methode -->
                   <div>
-                    <span class="font-medium text-stone-700 dark:text-stone-300 text-sm">Vorschau anzeigen</span>
-                    <p class="text-stone-400 dark:text-stone-500 text-xs">Produkt-Übersicht vor dem Bestellen zeigen</p>
+                    <label class="block mb-2 font-medium text-stone-700 dark:text-stone-300 text-sm">Bestell-Methode</label>
+                    <div class="space-y-2">
+                      <label
+                        v-for="opt in reweActionOptions"
+                        :key="opt.value"
+                        :class="[
+                          'flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-all',
+                          reweAction === opt.value
+                            ? 'bg-rewe-50 dark:bg-rewe-900/20 border-rewe-300 dark:border-rewe-700'
+                            : 'bg-stone-50 dark:bg-stone-800 border-stone-200 dark:border-stone-700 hover:border-stone-300 dark:hover:border-stone-600'
+                        ]"
+                      >
+                        <input
+                          type="radio"
+                          :value="opt.value"
+                          v-model="reweAction"
+                          @change="saveReweSettings"
+                          class="mt-0.5 accent-rewe-600"
+                        />
+                        <div>
+                          <span class="font-medium text-stone-800 dark:text-stone-200 text-sm">{{ opt.icon }} {{ opt.label }}</span>
+                          <p class="mt-0.5 text-stone-500 dark:text-stone-400 text-xs">{{ opt.description }}</p>
+                        </div>
+                      </label>
+                    </div>
                   </div>
-                </label>
 
-                <!-- Trennlinie -->
-                <div class="border-stone-200 dark:border-stone-700 border-t"></div>
+                  <!-- Vorschau-Option -->
+                  <label class="flex items-center gap-3 cursor-pointer select-none">
+                    <div class="relative">
+                      <input type="checkbox" v-model="reweShowPreview" @change="saveReweSettings" class="sr-only peer" />
+                      <div class="bg-stone-200 dark:bg-stone-700 peer-checked:bg-rewe-500 rounded-full w-10 h-5 transition-colors"></div>
+                      <div class="top-0.5 left-0.5 absolute bg-white rounded-full w-4 h-4 transition-transform peer-checked:translate-x-5"></div>
+                    </div>
+                    <div>
+                      <span class="font-medium text-stone-700 dark:text-stone-300 text-sm">Vorschau anzeigen</span>
+                      <p class="text-stone-400 dark:text-stone-500 text-xs">Produkt-Übersicht vor dem Bestellen zeigen</p>
+                    </div>
+                  </label>
 
-                <!-- Userscript-Bereich -->
-                <div>
-                  <h3 class="mb-2 font-medium text-stone-700 dark:text-stone-300 text-sm">🧩 Tampermonkey Userscript</h3>
-                  <p class="mb-3 text-stone-500 dark:text-stone-400 text-xs leading-relaxed">
-                    Einmal installieren – dann legt der 🍳-Button auf rewe.de deine Einkaufsliste direkt in den Warenkorb.
-                  </p>
-                  <div class="flex gap-2">
-                    <button
-                      @click="installUserscript"
-                      class="flex flex-1 justify-center items-center gap-2 bg-purple-600 hover:bg-purple-700 py-2.5 rounded-xl font-medium text-white text-sm transition-colors"
-                    >
-                      <Download class="w-3.5 h-3.5" />
-                      Userscript installieren
-                    </button>
-                    <button
-                      @click="regenerateToken"
-                      class="flex items-center gap-2 bg-stone-200 hover:bg-stone-300 dark:bg-stone-700 dark:hover:bg-stone-600 px-3 py-2.5 rounded-xl font-medium text-stone-700 dark:text-stone-300 text-sm transition-colors"
-                      title="Neues API-Token für das Userscript erzeugen und Userscript neu installieren"
-                    >
-                      <RefreshCw class="w-3.5 h-3.5" />
-                      Token erneuern
-                    </button>
+                  <div class="border-stone-200 dark:border-stone-700 border-t"></div>
+
+                  <!-- Bevorzugte Produkte -->
+                  <button
+                    @click="openRewePreferences()"
+                    class="group flex items-center gap-3 bg-stone-50 hover:bg-stone-100 dark:bg-stone-800 dark:hover:bg-stone-700 p-4 border border-stone-200 dark:border-stone-700 rounded-xl w-full text-left transition-colors"
+                  >
+                    <div class="flex justify-center items-center bg-rewe-100 dark:bg-rewe-900/30 rounded-lg w-10 h-10 shrink-0">
+                      <Star class="w-5 h-5 text-rewe-500" />
+                    </div>
+                    <div class="flex-1 min-w-0">
+                      <span class="font-medium text-stone-800 dark:text-stone-200 text-sm">Bevorzugte Produkte</span>
+                      <p class="text-stone-500 dark:text-stone-400 text-xs">Gespeicherte Zuordnungen von Zutaten zu REWE-Produkten verwalten</p>
+                    </div>
+                    <ChevronRight class="w-4 h-4 text-stone-400 dark:group-hover:text-stone-300 group-hover:text-stone-600 transition-colors shrink-0" />
+                  </button>
+
+                  <div class="border-stone-200 dark:border-stone-700 border-t"></div>
+
+                  <!-- Userscript -->
+                  <div>
+                    <h3 class="mb-2 font-medium text-stone-700 dark:text-stone-300 text-sm">🧩 Tampermonkey Userscript</h3>
+                    <p class="mb-3 text-stone-500 dark:text-stone-400 text-xs leading-relaxed">
+                      Einmal installieren – dann legt der 🍳-Button auf rewe.de deine Einkaufsliste direkt in den Warenkorb.
+                    </p>
+                    <div class="flex gap-2">
+                      <button
+                        @click="installUserscript"
+                        class="flex flex-1 justify-center items-center gap-2 bg-purple-600 hover:bg-purple-700 py-2.5 rounded-xl font-medium text-white text-sm transition-colors"
+                      >
+                        <Download class="w-3.5 h-3.5" />
+                        Userscript installieren
+                      </button>
+                      <button
+                        @click="regenerateToken"
+                        class="flex items-center gap-2 bg-stone-200 hover:bg-stone-300 dark:bg-stone-700 dark:hover:bg-stone-600 px-3 py-2.5 rounded-xl font-medium text-stone-700 dark:text-stone-300 text-sm transition-colors"
+                        title="Neues API-Token für das Userscript erzeugen und Userscript neu installieren"
+                      >
+                        <RefreshCw class="w-3.5 h-3.5" />
+                        Token erneuern
+                      </button>
+                    </div>
+                    <p class="mt-2 text-[10px] text-stone-400 dark:text-stone-500 text-center">
+                      ℹ️ Das Userscript enthält deinen Login-Token. Bei Ablauf hier „Token erneuern" klicken.
+                    </p>
                   </div>
-                  <p class="mt-2 text-[10px] text-stone-400 dark:text-stone-500 text-center">
-                    ℹ️ Das Userscript enthält deinen Login-Token. Bei Ablauf hier „Token erneuern" klicken.
-                  </p>
                 </div>
+
+                <!-- ========== Bring! Tab ========== -->
+                <div v-if="settingsTab === 'bring'" class="p-5">
+
+                  <!-- Verbunden -->
+                  <div v-if="shoppingStore.bringStatus?.connected" class="space-y-4">
+                    <div class="flex items-center gap-3 bg-teal-50 dark:bg-teal-900/20 px-4 py-3 border border-teal-200 dark:border-teal-800 rounded-xl">
+                      <div class="flex justify-center items-center bg-teal-500 rounded-full w-8 h-8 text-white shrink-0">
+                        <Check class="w-4 h-4" />
+                      </div>
+                      <div class="min-w-0">
+                        <p class="font-medium text-teal-800 dark:text-teal-300 text-sm">Verbunden</p>
+                        <p class="text-teal-600 dark:text-teal-400 text-xs truncate">{{ shoppingStore.bringStatus.email }}</p>
+                      </div>
+                    </div>
+
+                    <!-- Listenauswahl -->
+                    <div>
+                      <label class="block mb-1.5 font-medium text-stone-600 dark:text-stone-400 text-sm">
+                        Standard-Liste
+                      </label>
+                      <div class="relative">
+                        <select
+                          v-model="selectedBringList"
+                          @change="changeBringList"
+                          class="bg-stone-50 dark:bg-stone-800 px-3 py-2.5 pr-10 border border-stone-300 dark:border-stone-600 rounded-lg w-full text-stone-800 dark:text-stone-200 text-sm appearance-none"
+                        >
+                          <option v-for="list in shoppingStore.bringLists" :key="list.uuid" :value="list.uuid">
+                            {{ list.name }}
+                          </option>
+                        </select>
+                        <ChevronDown class="top-1/2 right-3 absolute w-4 h-4 text-stone-400 -translate-y-1/2 pointer-events-none" />
+                      </div>
+                    </div>
+
+                    <!-- Trennen -->
+                    <button
+                      @click="disconnectBring"
+                      class="flex justify-center items-center gap-2 hover:bg-red-50 dark:hover:bg-red-900/20 py-2 rounded-lg w-full text-red-500 text-sm transition-colors"
+                    >
+                      <Unlink class="w-3.5 h-3.5" />
+                      Verbindung trennen
+                    </button>
+                  </div>
+
+                  <!-- Nicht verbunden: Login -->
+                  <form v-else @submit.prevent="connectBring" class="space-y-4">
+                    <p class="text-stone-500 dark:text-stone-400 text-sm">
+                      Melde dich mit deinem Bring!-Account an, um Einkaufslisten mit der Bring!-App zu synchronisieren.
+                    </p>
+                    <div>
+                      <label class="block mb-1 font-medium text-stone-600 dark:text-stone-400 text-sm">E-Mail</label>
+                      <input
+                        v-model="bringEmail"
+                        type="email"
+                        placeholder="deine@email.de"
+                        required
+                        autocomplete="email"
+                        class="bg-stone-50 dark:bg-stone-800 px-3 py-2.5 border border-stone-300 focus:border-transparent dark:border-stone-600 rounded-lg focus:ring-2 focus:ring-teal-500 w-full text-stone-800 dark:text-stone-200 placeholder:text-stone-400 text-sm"
+                      />
+                    </div>
+                    <div>
+                      <label class="block mb-1 font-medium text-stone-600 dark:text-stone-400 text-sm">Passwort</label>
+                      <input
+                        v-model="bringPassword"
+                        type="password"
+                        placeholder="Bring!-Passwort"
+                        required
+                        autocomplete="current-password"
+                        class="bg-stone-50 dark:bg-stone-800 px-3 py-2.5 border border-stone-300 focus:border-transparent dark:border-stone-600 rounded-lg focus:ring-2 focus:ring-teal-500 w-full text-stone-800 dark:text-stone-200 placeholder:text-stone-400 text-sm"
+                      />
+                    </div>
+                    <button
+                      type="submit"
+                      :disabled="bringConnecting || !bringEmail.trim() || !bringPassword"
+                      class="flex justify-center items-center gap-2 bg-teal-600 hover:bg-teal-700 disabled:opacity-50 py-3 rounded-xl w-full font-medium text-white transition-colors"
+                    >
+                      <Loader2 v-if="bringConnecting" class="w-4 h-4 animate-spin" />
+                      <LogIn v-else class="w-4 h-4" />
+                      Verbinden
+                    </button>
+                    <p class="text-[10px] text-stone-400 dark:text-stone-500 text-center">
+                      🔒 Dein Passwort wird verschlüsselt gespeichert und nur zur Kommunikation mit Bring! verwendet.
+                    </p>
+                  </form>
+                </div>
+
+                <!-- ========== Zutaten Tab ========== -->
+                <div v-if="settingsTab === 'ingredients'" class="space-y-6 p-5">
+
+                  <!-- Zusammenfassungen -->
+                  <div>
+                    <h3 class="flex items-center gap-2 mb-3 font-medium text-stone-700 dark:text-stone-300 text-sm">
+                      <Merge class="w-4 h-4 text-violet-500" />
+                      Zusammenfassungen
+                      <span class="bg-stone-200 dark:bg-stone-700 px-1.5 py-0.5 rounded font-mono text-[10px] text-stone-500 dark:text-stone-400">{{ aliasStore.aliases.length }}</span>
+                    </h3>
+
+                    <div v-if="aliasStore.aliases.length === 0" class="py-6 text-stone-400 dark:text-stone-500 text-sm text-center">
+                      <Merge class="mx-auto mb-2 w-8 h-8 text-stone-300 dark:text-stone-600" />
+                      <p>Keine Zusammenfassungen vorhanden.</p>
+                      <p class="mt-1 text-xs">Nutze den „Zusammenfassen"-Button in der Liste, um ähnliche Zutaten zu vereinen.</p>
+                    </div>
+                    <div v-else class="space-y-2">
+                      <div
+                        v-for="alias in aliasStore.aliases"
+                        :key="alias.id"
+                        class="flex justify-between items-center bg-stone-50 dark:bg-stone-800 px-4 py-3 rounded-xl"
+                      >
+                        <div class="flex items-center gap-2 min-w-0">
+                          <span class="text-stone-500 dark:text-stone-400 text-sm truncate">{{ alias.alias_name }}</span>
+                          <ArrowRight class="w-3.5 h-3.5 text-stone-300 dark:text-stone-600 shrink-0" />
+                          <span class="font-medium text-stone-800 dark:text-stone-200 text-sm truncate">{{ alias.canonical_name }}</span>
+                        </div>
+                        <button
+                          @click="deleteAlias(alias)"
+                          class="hover:bg-red-50 dark:hover:bg-red-900/30 ml-2 p-1.5 rounded-lg text-stone-300 hover:text-red-500 dark:hover:text-red-400 dark:text-stone-600 transition-all shrink-0"
+                          title="Zusammenfassung löschen"
+                        >
+                          <Trash2 class="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="border-stone-200 dark:border-stone-700 border-t"></div>
+
+                  <!-- Blockierte Zutaten -->
+                  <div>
+                    <h3 class="flex items-center gap-2 mb-3 font-medium text-stone-700 dark:text-stone-300 text-sm">
+                      <Ban class="w-4 h-4 text-red-500" />
+                      Blockierte Zutaten
+                      <span class="bg-stone-200 dark:bg-stone-700 px-1.5 py-0.5 rounded font-mono text-[10px] text-stone-500 dark:text-stone-400">{{ aliasStore.blockedIngredients.length }}</span>
+                    </h3>
+
+                    <div v-if="aliasStore.blockedIngredients.length === 0" class="py-6 text-stone-400 dark:text-stone-500 text-sm text-center">
+                      <Ban class="mx-auto mb-2 w-8 h-8 text-stone-300 dark:text-stone-600" />
+                      <p>Keine blockierten Zutaten.</p>
+                      <p class="mt-1 text-xs">Nutze den „Blockieren"-Button, um Zutaten aus zukünftigen Listen auszuschließen.</p>
+                    </div>
+                    <div v-else class="space-y-2">
+                      <div
+                        v-for="blocked in aliasStore.blockedIngredients"
+                        :key="blocked.id"
+                        class="flex justify-between items-center bg-red-50 dark:bg-red-900/10 px-4 py-3 border border-red-100 dark:border-red-900/30 rounded-xl"
+                      >
+                        <div class="flex items-center gap-2 min-w-0">
+                          <Ban class="w-3.5 h-3.5 text-red-400 dark:text-red-500 shrink-0" />
+                          <span class="font-medium text-stone-800 dark:text-stone-200 text-sm truncate">{{ blocked.ingredient_name }}</span>
+                        </div>
+                        <button
+                          @click="unblockIngredient(blocked)"
+                          class="hover:bg-green-50 dark:hover:bg-green-900/30 ml-2 px-2.5 py-1 rounded-lg font-medium text-green-600 hover:text-green-700 dark:hover:text-green-300 dark:text-green-400 text-xs transition-all shrink-0"
+                          title="Block aufheben"
+                        >
+                          Freigeben
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
               </div>
             </div>
           </div>
@@ -1329,135 +1477,6 @@
         </Transition>
       </Teleport>
 
-      <!-- Bring! Verbinden / Verwalten Modal -->
-      <Teleport to="body">
-        <Transition name="fade">
-          <div v-if="showBringModal" class="z-50 fixed inset-0 flex justify-center items-end sm:items-center bg-black/50 p-4" @click.self="showBringModal = false">
-            <div class="bg-white dark:bg-stone-900 shadow-2xl rounded-2xl w-full max-w-md overflow-hidden">
-
-              <!-- Header -->
-              <div class="flex justify-between items-center px-5 py-4 border-stone-200 dark:border-stone-700 border-b">
-                <div>
-                  <h2 class="font-display font-bold text-stone-800 dark:text-stone-100 text-lg">
-                    🛍️ Bring! Einkaufsliste
-                  </h2>
-                  <p class="mt-0.5 text-stone-500 dark:text-stone-400 text-xs">
-                    Sende deine Einkaufsliste direkt an die Bring!-App.
-                  </p>
-                </div>
-                <button @click="showBringModal = false" class="hover:bg-stone-100 dark:hover:bg-stone-800 p-1.5 rounded-lg text-stone-400 transition-colors">
-                  <X class="w-5 h-5" />
-                </button>
-              </div>
-
-              <!-- Verbunden: Status + Listen-Auswahl -->
-              <div v-if="shoppingStore.bringStatus?.connected" class="space-y-4 p-5">
-                <div class="flex items-center gap-3 bg-teal-50 dark:bg-teal-900/20 px-4 py-3 border border-teal-200 dark:border-teal-800 rounded-xl">
-                  <div class="flex justify-center items-center bg-teal-500 rounded-full w-8 h-8 text-white shrink-0">
-                    <Check class="w-4 h-4" />
-                  </div>
-                  <div class="min-w-0">
-                    <p class="font-medium text-teal-800 dark:text-teal-300 text-sm">Verbunden</p>
-                    <p class="text-teal-600 dark:text-teal-400 text-xs truncate">{{ shoppingStore.bringStatus.email }}</p>
-                  </div>
-                </div>
-
-                <!-- Listenauswahl -->
-                <div>
-                  <label class="block mb-1.5 font-medium text-stone-600 dark:text-stone-400 text-sm">
-                    Bring!-Liste
-                  </label>
-                  <div class="relative">
-                    <select
-                      v-model="selectedBringList"
-                      @change="changeBringList"
-                      class="bg-stone-50 dark:bg-stone-800 px-3 py-2.5 pr-10 border border-stone-300 dark:border-stone-600 rounded-lg w-full text-stone-800 dark:text-stone-200 text-sm appearance-none"
-                    >
-                      <option v-for="list in shoppingStore.bringLists" :key="list.uuid" :value="list.uuid">
-                        {{ list.name }}
-                      </option>
-                    </select>
-                    <ChevronDown class="top-1/2 right-3 absolute w-4 h-4 text-stone-400 -translate-y-1/2 pointer-events-none" />
-                  </div>
-                </div>
-
-                <!-- Senden + Importieren Buttons -->
-                <div class="flex gap-2">
-                  <button
-                    @click="sendToBring"
-                    :disabled="shoppingStore.bringSending || shoppingStore.openItemsCount === 0"
-                    class="flex flex-1 justify-center items-center gap-2 bg-teal-600 hover:bg-teal-700 disabled:opacity-50 py-3 rounded-xl font-medium text-white transition-colors"
-                  >
-                    <Loader2 v-if="shoppingStore.bringSending" class="w-4 h-4 animate-spin" />
-                    <Send v-else class="w-4 h-4" />
-                    {{ shoppingStore.openItemsCount }} senden
-                  </button>
-                  <button
-                    @click="importFromBring"
-                    :disabled="shoppingStore.bringImporting"
-                    class="flex flex-1 justify-center items-center gap-2 bg-stone-100 hover:bg-stone-200 dark:bg-stone-800 dark:hover:bg-stone-700 disabled:opacity-50 py-3 border border-stone-300 dark:border-stone-600 rounded-xl font-medium text-stone-700 dark:text-stone-300 transition-colors"
-                  >
-                    <Loader2 v-if="shoppingStore.bringImporting" class="w-4 h-4 animate-spin" />
-                    <Download v-else class="w-4 h-4" />
-                    Importieren
-                  </button>
-                </div>
-
-                <!-- Trennen -->
-                <button
-                  @click="disconnectBring"
-                  class="flex justify-center items-center gap-2 hover:bg-red-50 dark:hover:bg-red-900/20 py-2 rounded-lg w-full text-red-500 text-sm transition-colors"
-                >
-                  <Unlink class="w-3.5 h-3.5" />
-                  Verbindung trennen
-                </button>
-              </div>
-
-              <!-- Nicht verbunden: Login-Formular -->
-              <form v-else @submit.prevent="connectBring" class="space-y-4 p-5">
-                <p class="text-stone-500 dark:text-stone-400 text-sm">
-                  Melde dich mit deinem Bring!-Account an, um Einkaufslisten direkt an die App zu senden.
-                </p>
-                <div>
-                  <label class="block mb-1 font-medium text-stone-600 dark:text-stone-400 text-sm">E-Mail</label>
-                  <input
-                    v-model="bringEmail"
-                    type="email"
-                    placeholder="deine@email.de"
-                    required
-                    autocomplete="email"
-                    class="bg-stone-50 dark:bg-stone-800 px-3 py-2.5 border border-stone-300 focus:border-transparent dark:border-stone-600 rounded-lg focus:ring-2 focus:ring-teal-500 w-full text-stone-800 dark:text-stone-200 placeholder:text-stone-400 text-sm"
-                  />
-                </div>
-                <div>
-                  <label class="block mb-1 font-medium text-stone-600 dark:text-stone-400 text-sm">Passwort</label>
-                  <input
-                    v-model="bringPassword"
-                    type="password"
-                    placeholder="Bring!-Passwort"
-                    required
-                    autocomplete="current-password"
-                    class="bg-stone-50 dark:bg-stone-800 px-3 py-2.5 border border-stone-300 focus:border-transparent dark:border-stone-600 rounded-lg focus:ring-2 focus:ring-teal-500 w-full text-stone-800 dark:text-stone-200 placeholder:text-stone-400 text-sm"
-                  />
-                </div>
-                <button
-                  type="submit"
-                  :disabled="bringConnecting || !bringEmail.trim() || !bringPassword"
-                  class="flex justify-center items-center gap-2 bg-teal-600 hover:bg-teal-700 disabled:opacity-50 py-3 rounded-xl w-full font-medium text-white transition-colors"
-                >
-                  <Loader2 v-if="bringConnecting" class="w-4 h-4 animate-spin" />
-                  <LogIn v-else class="w-4 h-4" />
-                  Verbinden
-                </button>
-                <p class="text-[10px] text-stone-400 dark:text-stone-500 text-center">
-                  🔒 Dein Passwort wird verschlüsselt gespeichert und nur zur Kommunikation mit Bring! verwendet.
-                </p>
-              </form>
-            </div>
-          </div>
-        </Transition>
-      </Teleport>
-
       <!-- REWE Warenkorb-Script Modal -->
       <Teleport to="body">
         <Transition name="fade">
@@ -1633,112 +1652,6 @@
       </Transition>
     </Teleport>
 
-    <!-- Zusammenfassungen verwalten (nur Aliase) -->
-    <Teleport to="body">
-      <Transition name="fade">
-        <div v-if="showAliasManager" class="z-50 fixed inset-0 flex justify-center items-end sm:items-center bg-black/50 p-4" @click.self="showAliasManager = false">
-          <div class="flex flex-col bg-white dark:bg-stone-900 shadow-2xl rounded-2xl w-full max-w-md max-h-[80vh] overflow-hidden">
-            <!-- Header -->
-            <div class="flex justify-between items-center px-5 py-4 border-stone-200 dark:border-stone-700 border-b shrink-0">
-              <div>
-                <h2 class="flex items-center gap-2 font-display font-bold text-stone-800 dark:text-stone-100 text-lg">
-                  <Merge class="w-5 h-5 text-violet-600" />
-                  Zusammenfassungen
-                </h2>
-                <p class="mt-0.5 text-stone-500 dark:text-stone-400 text-xs">
-                  {{ aliasStore.aliases.length }} gespeicherte Regeln
-                </p>
-              </div>
-              <button @click="showAliasManager = false" class="hover:bg-stone-100 dark:hover:bg-stone-800 p-1.5 rounded-lg text-stone-400 transition-colors">
-                <X class="w-5 h-5" />
-              </button>
-            </div>
-
-            <!-- Aliase-Liste -->
-            <div class="flex-1 p-4 overflow-y-auto">
-              <div v-if="aliasStore.aliases.length === 0" class="py-8 text-stone-400 dark:text-stone-500 text-sm text-center">
-                <Merge class="mx-auto mb-2 w-8 h-8 text-stone-300 dark:text-stone-600" />
-                <p>Keine Zusammenfassungen vorhanden.</p>
-                <p class="mt-1 text-xs">Nutze den „Zusammenfassen"-Button, um ähnliche Zutaten zu vereinen.</p>
-              </div>
-              <div v-else class="space-y-2">
-                <div
-                  v-for="alias in aliasStore.aliases"
-                  :key="alias.id"
-                  class="flex justify-between items-center bg-stone-50 dark:bg-stone-800 px-4 py-3 rounded-xl"
-                >
-                  <div class="flex items-center gap-2 min-w-0">
-                    <span class="text-stone-500 dark:text-stone-400 text-sm truncate">{{ alias.alias_name }}</span>
-                    <ArrowRight class="w-3.5 h-3.5 text-stone-300 dark:text-stone-600 shrink-0" />
-                    <span class="font-medium text-stone-800 dark:text-stone-200 text-sm truncate">{{ alias.canonical_name }}</span>
-                  </div>
-                  <button
-                    @click="deleteAlias(alias)"
-                    class="hover:bg-red-50 dark:hover:bg-red-900/30 ml-2 p-1.5 rounded-lg text-stone-300 hover:text-red-500 dark:hover:text-red-400 dark:text-stone-600 transition-all shrink-0"
-                    title="Zusammenfassung löschen"
-                  >
-                    <Trash2 class="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </Transition>
-    </Teleport>
-
-    <!-- Blockierte Zutaten verwalten -->
-    <Teleport to="body">
-      <Transition name="fade">
-        <div v-if="showBlockManager" class="z-50 fixed inset-0 flex justify-center items-end sm:items-center bg-black/50 p-4" @click.self="showBlockManager = false">
-          <div class="flex flex-col bg-white dark:bg-stone-900 shadow-2xl rounded-2xl w-full max-w-md max-h-[80vh] overflow-hidden">
-            <!-- Header -->
-            <div class="flex justify-between items-center px-5 py-4 border-stone-200 dark:border-stone-700 border-b shrink-0">
-              <div>
-                <h2 class="flex items-center gap-2 font-display font-bold text-stone-800 dark:text-stone-100 text-lg">
-                  <Ban class="w-5 h-5 text-red-500" />
-                  Blockierte Zutaten
-                </h2>
-                <p class="mt-0.5 text-stone-500 dark:text-stone-400 text-xs">
-                  {{ aliasStore.blockedIngredients.length }} blockiert – erscheinen nicht in neuen Listen
-                </p>
-              </div>
-              <button @click="showBlockManager = false" class="hover:bg-stone-100 dark:hover:bg-stone-800 p-1.5 rounded-lg text-stone-400 transition-colors">
-                <X class="w-5 h-5" />
-              </button>
-            </div>
-
-            <!-- Blockliste -->
-            <div class="flex-1 p-4 overflow-y-auto">
-              <div v-if="aliasStore.blockedIngredients.length === 0" class="py-8 text-stone-400 dark:text-stone-500 text-sm text-center">
-                <Ban class="mx-auto mb-2 w-8 h-8 text-stone-300 dark:text-stone-600" />
-                <p>Keine blockierten Zutaten.</p>
-                <p class="mt-1 text-xs">Nutze den „Blockieren"-Button, um Zutaten aus zukünftigen Listen auszuschließen.</p>
-              </div>
-              <div v-else class="space-y-2">
-                <div
-                  v-for="blocked in aliasStore.blockedIngredients"
-                  :key="blocked.id"
-                  class="flex justify-between items-center bg-red-50 dark:bg-red-900/10 px-4 py-3 border border-red-100 dark:border-red-900/30 rounded-xl"
-                >
-                  <div class="flex items-center gap-2 min-w-0">
-                    <Ban class="w-3.5 h-3.5 text-red-400 dark:text-red-500 shrink-0" />
-                    <span class="font-medium text-stone-800 dark:text-stone-200 text-sm truncate">{{ blocked.ingredient_name }}</span>
-                  </div>
-                  <button
-                    @click="unblockIngredient(blocked)"
-                    class="hover:bg-green-50 dark:hover:bg-green-900/30 ml-2 px-2.5 py-1 rounded-lg font-medium text-green-600 hover:text-green-700 dark:hover:text-green-300 dark:text-green-400 text-xs transition-all shrink-0"
-                    title="Block aufheben"
-                  >
-                    Freigeben
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </Transition>
-    </Teleport>
   </div>
 </template>
 
@@ -1787,9 +1700,11 @@ const genWeekLabel = computed(() => {
   return `${fmt(monday)} – ${fmt(sunday)}`;
 });
 
+// Zentrales Einstellungs-Modal
+const showSettings = ref(false);
+const settingsTab = ref('rewe');
+
 // REWE-Einstellungen (persistent)
-const showReweSettings = ref(false);
-const showReweOrderSettings = ref(false);
 const showRewePreview = ref(false);
 const reweAction = ref(localStorage.getItem('rewe_action') || 'script');
 const reweShowPreview = ref(localStorage.getItem('rewe_preview') !== 'false');
@@ -1919,7 +1834,6 @@ const currentReweActionIcon = computed(() => {
 });
 
 // Bring! Integration
-const showBringModal = ref(false);
 const bringEmail = ref('');
 const bringPassword = ref('');
 const bringConnecting = ref(false);
@@ -1957,13 +1871,9 @@ const mergeSelection = ref([]);  // Ausgewählte Items
 const showMergeDialog = ref(false);
 const mergeName = ref('');       // Gewählter Name für das zusammengefasste Item
 
-// Alias-Verwaltung
-const showAliasManager = ref(false);
-
 // Blockier-Modus – Multi-Select
 const blockMode = ref(false);
 const blockSelection = ref([]);
-const showBlockManager = ref(false);
 
 const totalCount = computed(() => shoppingStore.activeList?.items?.length || 0);
 const checkedCount = computed(() => shoppingStore.activeList?.items?.filter(i => i.is_checked).length || 0);
@@ -2406,8 +2316,20 @@ onMounted(async () => {
   loadReweMarketSettings();
 });
 
-// Bring!-Listen laden, wenn Modal geöffnet wird
-watch(showBringModal, async (open) => {
+// ============================================
+// Einstellungen (zentrales Modal)
+// ============================================
+
+function openSettings(tab = 'rewe') {
+  settingsTab.value = tab;
+  showSettings.value = true;
+  if (tab === 'rewe') {
+    loadReweMarketSettings();
+  }
+}
+
+// Bring!-Listen laden, wenn Bring!-Tab im Einstellungs-Modal geöffnet wird
+watch(() => showSettings.value && settingsTab.value === 'bring', async (open) => {
   if (open && shoppingStore.bringStatus?.connected) {
     bringListsLoading.value = true;
     try {
@@ -2447,7 +2369,6 @@ async function sendToBring() {
     if (result.errors?.length) {
       showError(`${result.errors.length} Artikel konnten nicht gesendet werden.`);
     }
-    showBringModal.value = false;
     showCompletePurchasePrompt.value = true;
   } catch {
     showError('Senden an Bring! fehlgeschlagen.');
