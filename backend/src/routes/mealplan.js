@@ -48,6 +48,12 @@ export default async function mealplanRoutes(fastify) {
             default: false,
             description: 'KI-Begründung zum generierten Plan erstellen',
           },
+          activeDays: {
+            type: 'array',
+            items: { type: 'integer', minimum: 0, maximum: 6 },
+            default: [0, 1, 2, 3, 4, 5, 6],
+            description: 'Für welche Wochentage Gerichte generiert werden (0=Mo...6=So)',
+          },
         },
       },
     },
@@ -65,6 +71,9 @@ export default async function mealplanRoutes(fastify) {
 
       const planData = await generateWeekPlan(userId, options);
       const planId = saveMealPlan(userId, weekStart, planData);
+
+      // Wenn nicht alle Tage aktiv sind, Lock-relevante Info speichern
+      // (Plan wurde bewusst nur für bestimmte Tage erstellt)
 
       // Gespeicherten Plan mit vollständigen Entries zurückgeben
       const savedPlan = getMealPlan(userId, weekStart);
@@ -445,6 +454,31 @@ export default async function mealplanRoutes(fastify) {
       message: newState ? 'Als gekocht markiert!' : 'Markierung entfernt',
       is_cooked: newState,
       pantryUpdated,
+    };
+  });
+
+  // ─────────────────────────────────────────────
+  // POST /:planId/lock – Woche fixieren/freigeben
+  // ─────────────────────────────────────────────
+  fastify.post('/:planId/lock', {
+    schema: {
+      description: 'Wochenplan fixieren oder Fixierung aufheben',
+      tags: ['Wochenplan'],
+      security: [{ bearerAuth: [] }],
+    },
+  }, async (request, reply) => {
+    const { planId } = request.params;
+    const userId = request.user.id;
+
+    const plan = db.prepare('SELECT id, is_locked FROM meal_plans WHERE id = ? AND user_id = ?').get(planId, userId);
+    if (!plan) return reply.status(404).send({ error: 'Plan nicht gefunden' });
+
+    const newState = plan.is_locked ? 0 : 1;
+    db.prepare('UPDATE meal_plans SET is_locked = ? WHERE id = ?').run(newState, planId);
+
+    return {
+      message: newState ? 'Wochenplan fixiert 🔒' : 'Fixierung aufgehoben 🔓',
+      is_locked: newState,
     };
   });
 

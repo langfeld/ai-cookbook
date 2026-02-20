@@ -339,6 +339,7 @@ export async function generateWeekPlan(userId, options = {}) {
     collectionIds = [],       // Nur Rezepte aus diesen Sammlungen
     deduplicateCollections = true, // Rezepte in mehreren Sammlungen nur einmal zählen
     enableAiReasoning = false,    // KI-Begründung generieren?
+    activeDays = [0, 1, 2, 3, 4, 5, 6], // Für welche Tage generiert wird
   } = options;
 
   // --- 1. Alle Rezepte des Benutzers laden (ggf. gefiltert nach Sammlungen) ---
@@ -422,7 +423,15 @@ export async function generateWeekPlan(userId, options = {}) {
     recipesPerMealType[mt] = filterByMealType(recipeData, mt);
   }
 
+  const activeDaySet = new Set(activeDays);
+
   for (let dayIdx = 0; dayIdx < 7; dayIdx++) {
+    // Tag überspringen wenn nicht aktiv
+    if (!activeDaySet.has(dayIdx)) {
+      plan.push({ day: dayIdx, day_name: DAY_NAMES[dayIdx], meals: [] });
+      continue;
+    }
+
     const dayMeals = [];
 
     for (const mealType of mealTypes) {
@@ -565,7 +574,7 @@ export function saveMealPlan(userId, weekStart, planData) {
  */
 export function getMealPlan(userId, weekStart) {
   const plan = db.prepare(
-    'SELECT * FROM meal_plans WHERE user_id = ? AND week_start = ?'
+    'SELECT id, user_id, week_start, created_at, reasoning, is_locked FROM meal_plans WHERE user_id = ? AND week_start = ?'
   ).get(userId, weekStart);
 
   if (!plan) return null;

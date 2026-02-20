@@ -496,6 +496,12 @@ function migrateDatabase() {
     console.log('  ↳ Migration: meal_plans.reasoning hinzugefügt');
   }
 
+  // Spalte 'is_locked' in meal_plans hinzufügen (Woche fixieren)
+  if (!mpCols.includes('is_locked')) {
+    db.exec("ALTER TABLE meal_plans ADD COLUMN is_locked INTEGER DEFAULT 0");
+    console.log('  ↳ Migration: meal_plans.is_locked hinzugefügt');
+  }
+
   // Standard-Zutaten-Icons seeden (nur wenn Tabelle leer)
   const iconsCount = db.prepare("SELECT COUNT(*) as count FROM ingredient_icons").get().count;
   if (iconsCount === 0) {

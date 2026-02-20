@@ -113,6 +113,16 @@ export const useMealPlanStore = defineStore('mealplan', () => {
     return data;
   }
 
+  /** Portionen eines Eintrags ändern */
+  async function updateServings(planId, entryId, servings) {
+    const data = await api.put(`/mealplan/${planId}/entry/${entryId}`, { servings });
+    if (currentPlan.value?.entries && data.entry) {
+      const idx = currentPlan.value.entries.findIndex(e => e.id === entryId);
+      if (idx !== -1) currentPlan.value.entries[idx] = data.entry;
+    }
+    return data;
+  }
+
   /** Rezept eines Eintrags tauschen */
   async function swapRecipe(planId, entryId, newRecipeId) {
     const data = await api.put(`/mealplan/${planId}/entry/${entryId}`, { recipe_id: newRecipeId });
@@ -178,10 +188,20 @@ export const useMealPlanStore = defineStore('mealplan', () => {
     currentPlan.value = null;
   }
 
+  /** Wochenplan fixieren/freigeben */
+  async function toggleLock(planId) {
+    const data = await api.post(`/mealplan/${planId}/lock`);
+    if (currentPlan.value && currentPlan.value.id === planId) {
+      currentPlan.value.is_locked = data.is_locked;
+    }
+    return data;
+  }
+
   return {
     currentPlan, reasoning, reasoningSource, reasoningLoading, planHistory, loading, generating,
     mealTypeLabels,
     generatePlan, pollReasoning, fetchCurrentPlan, fetchHistory,
-    fetchSuggestions, markCooked, swapRecipe, addEntry, addRecipeToPlan, moveEntry, removeEntry, deletePlan,
+    fetchSuggestions, markCooked, updateServings, swapRecipe, addEntry, addRecipeToPlan, moveEntry, removeEntry, deletePlan,
+    toggleLock,
   };
 });

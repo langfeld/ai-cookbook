@@ -607,6 +607,16 @@ export default async function shoppingRoutes(fastify) {
       'UPDATE shopping_lists SET is_active = 0 WHERE id = ? AND user_id = ?'
     ).run(listId, userId);
 
+    // Zugehörigen Wochenplan automatisch fixieren
+    const list = db.prepare(
+      'SELECT meal_plan_id FROM shopping_lists WHERE id = ? AND user_id = ?'
+    ).get(listId, userId);
+    if (list?.meal_plan_id) {
+      db.prepare(
+        'UPDATE meal_plans SET is_locked = 1 WHERE id = ? AND user_id = ?'
+      ).run(list.meal_plan_id, userId);
+    }
+
     return {
       message: 'Einkauf abgeschlossen! Gekaufte Artikel wurden im Vorratsschrank gespeichert.',
       pantryItemsAdded: purchasedItems.length,

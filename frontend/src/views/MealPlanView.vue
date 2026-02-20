@@ -23,7 +23,17 @@
         </p>
       </div>
       <div class="flex items-center gap-2">
-        <button v-if="currentPlan" @click="confirmDeletePlan"
+        <button v-if="currentPlan" @click="toggleLockPlan"
+          :class="['flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm transition-colors',
+            isLocked
+              ? 'bg-amber-50 dark:bg-amber-950 text-amber-600 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-900'
+              : 'hover:bg-stone-100 dark:hover:bg-stone-800 text-stone-400']"
+          :title="isLocked ? 'Fixierung aufheben' : 'Woche fixieren (bereits eingekauft)'">
+          <Lock v-if="isLocked" class="w-4 h-4" />
+          <Unlock v-else class="w-4 h-4" />
+          <span class="hidden sm:inline">{{ isLocked ? 'Fixiert' : 'Fixieren' }}</span>
+        </button>
+        <button v-if="currentPlan && !isLocked" @click="confirmDeletePlan"
           class="flex items-center gap-1.5 hover:bg-red-50 dark:hover:bg-red-950 px-3 py-2 rounded-xl text-red-500 text-sm transition-colors">
           <Trash2 class="w-4 h-4" /> Löschen
         </button>
@@ -173,7 +183,18 @@
     </div>
 
     <!-- ═══════════════════ WOCHEN-ANSICHT ═══════════════════ -->
-    <div v-else-if="viewMode === 'week'" class="-mx-4 lg:mx-0 px-4 lg:px-0 overflow-x-auto">
+    <!-- Fixiert-Banner -->
+    <div v-if="isLocked && currentPlan" class="flex items-center gap-2 bg-amber-50 dark:bg-amber-950/50 px-4 py-2.5 border border-amber-200 dark:border-amber-800 rounded-xl">
+      <Lock class="w-4 h-4 text-amber-500 shrink-0" />
+      <p class="text-amber-700 dark:text-amber-300 text-sm">
+        <span class="font-medium">Woche fixiert</span> – Bereits eingekauft. Änderungen sind gesperrt.
+      </p>
+      <button @click="toggleLockPlan" class="ml-auto text-amber-600 hover:text-amber-800 dark:hover:text-amber-200 dark:text-amber-400 text-xs underline hover:no-underline shrink-0">
+        Aufheben
+      </button>
+    </div>
+
+    <div v-if="currentPlan && viewMode === 'week'" class="-mx-4 lg:mx-0 px-4 lg:px-0 overflow-x-auto">
       <div class="gap-x-2 gap-y-1.5 grid grid-cols-7 lg:min-w-0 min-w-4xl">
 
         <!-- ── Zeile 1: Tag-Header ── -->
@@ -187,10 +208,13 @@
         <template v-for="mt in mealTypes" :key="mt.key">
           <div v-for="(day, dayIdx) in weekDays" :key="mt.key+'-'+dayIdx"
             class="meal-slot"
-            :class="{ 'meal-slot-dragover': dragTarget?.day === dayIdx && dragTarget?.meal === mt.key }"
-            @dragover.prevent="onDragOver(dayIdx, mt.key)"
+            :class="[
+              { 'meal-slot-dragover': dragTarget?.day === dayIdx && dragTarget?.meal === mt.key },
+              { 'meal-slot--inactive': !dayHasMeals(dayIdx) }
+            ]"
+            @dragover.prevent="!isLocked && onDragOver(dayIdx, mt.key)"
             @dragleave="onDragLeave"
-            @drop.prevent="onDrop(dayIdx, mt.key)">
+            @drop.prevent="!isLocked && onDrop(dayIdx, mt.key)">
 
             <div class="mb-0.5 text-[0.65rem] text-stone-400 dark:text-stone-500 uppercase tracking-wide">
               {{ mt.icon }} {{ mt.label }}
@@ -199,8 +223,8 @@
             <!-- Gefüllter Slot -->
             <div v-if="getMeal(dayIdx, mt.key)" class="group meal-card"
               :class="{ 'meal-card--cooked': getMeal(dayIdx, mt.key).is_cooked }"
-              draggable="true"
-              @dragstart="onDragStart($event, getMeal(dayIdx, mt.key))"
+              :draggable="!isLocked"
+              @dragstart="!isLocked && onDragStart($event, getMeal(dayIdx, mt.key))"
               @dragend="onDragEnd"
               @click="selectMeal(getMeal(dayIdx, mt.key))">
 
@@ -218,6 +242,20 @@
                 <div v-if="getMeal(dayIdx, mt.key).is_cooked"
                   class="top-1 right-1 absolute place-items-center grid rounded-full w-5 h-5 bg-accent-500">
                   <Check class="w-3 h-3 text-white" />
+                </div>
+                <!-- Portionen-Badge -->
+                <div class="top-1 left-1 absolute flex items-center gap-0.5 bg-black/50 rounded text-[0.6rem] text-white servings-badge"
+                  @click.stop>
+                  <button v-if="!isLocked" class="servings-btn" @click="changeServings(getMeal(dayIdx, mt.key), -1)"
+                    :disabled="getMeal(dayIdx, mt.key).servings <= 1">
+                    <Minus class="w-2.5 h-2.5" />
+                  </button>
+                  <span class="flex items-center gap-0.5 px-1 py-0.5">
+                    <Users class="w-2.5 h-2.5" /> {{ getMeal(dayIdx, mt.key).servings }}
+                  </span>
+                  <button v-if="!isLocked" class="servings-btn" @click="changeServings(getMeal(dayIdx, mt.key), 1)">
+                    <Plus class="w-2.5 h-2.5" />
+                  </button>
                 </div>
                 <!-- Schwierigkeit -->
                 <span v-if="getMeal(dayIdx, mt.key).difficulty"
@@ -238,10 +276,12 @@
 
             <!-- Leerer Slot -->
             <button v-else class="meal-card-empty"
-              @click="openSwapModal({ day_of_week: dayIdx, meal_type: mt.key, _isNew: true })"
-              @dragover.prevent="onDragOver(dayIdx, mt.key)"
-              @drop.prevent="onDrop(dayIdx, mt.key)">
-              <Plus class="w-4 h-4 text-stone-300 dark:text-stone-600" />
+              :disabled="isLocked"
+              @click="!isLocked && openSwapModal({ day_of_week: dayIdx, meal_type: mt.key, _isNew: true })"
+              @dragover.prevent="!isLocked && onDragOver(dayIdx, mt.key)"
+              @drop.prevent="!isLocked && onDrop(dayIdx, mt.key)">
+              <Plus v-if="!isLocked" class="w-4 h-4 text-stone-300 dark:text-stone-600" />
+              <Lock v-else class="w-3.5 h-3.5 text-stone-300 dark:text-stone-600" />
             </button>
           </div>
         </template>
@@ -249,7 +289,7 @@
     </div>
 
     <!-- ═══════════════════ TAGES-ANSICHT ═══════════════════ -->
-    <div v-else-if="viewMode === 'day'" class="space-y-3">
+    <div v-if="currentPlan && viewMode === 'day'" class="space-y-3">
       <!-- Tag-Navigation -->
       <div class="flex gap-1.5 pb-2 overflow-x-auto">
         <button v-for="(day, idx) in weekDays" :key="idx"
@@ -291,6 +331,16 @@
                   {{ getMeal(selectedDayIdx, mt.key).recipe_title }}
                 </h4>
                 <div class="flex flex-wrap items-center gap-3 mt-1 text-stone-500 dark:text-stone-400 text-xs">
+                  <span class="servings-inline flex items-center gap-1" @click.stop>
+                    <button v-if="!isLocked" class="servings-btn-day" @click="changeServings(getMeal(selectedDayIdx, mt.key), -1)"
+                      :disabled="getMeal(selectedDayIdx, mt.key).servings <= 1">
+                      <Minus class="w-3 h-3" />
+                    </button>
+                    <Users class="w-3.5 h-3.5" /> {{ getMeal(selectedDayIdx, mt.key).servings }} Pers.
+                    <button v-if="!isLocked" class="servings-btn-day" @click="changeServings(getMeal(selectedDayIdx, mt.key), 1)">
+                      <Plus class="w-3 h-3" />
+                    </button>
+                  </span>
                   <span v-if="getMeal(selectedDayIdx, mt.key).total_time" class="flex items-center gap-1">
                     <Clock class="w-3.5 h-3.5" /> {{ getMeal(selectedDayIdx, mt.key).total_time }} min
                   </span>
@@ -310,18 +360,23 @@
                     <Check class="w-3.5 h-3.5" />
                     {{ getMeal(selectedDayIdx, mt.key).is_cooked ? 'Rückgängig' : 'Gekocht' }}
                   </button>
-                  <button @click="openSwapModal(getMeal(selectedDayIdx, mt.key))" class="day-action-btn">
-                    <RefreshCw class="w-3.5 h-3.5" /> Tauschen
-                  </button>
-                  <router-link :to="`/recipes/${getMeal(selectedDayIdx, mt.key).recipe_id}`" class="day-action-btn">
+                  <template v-if="!isLocked">
+                    <button @click="openSwapModal(getMeal(selectedDayIdx, mt.key))" class="day-action-btn">
+                      <RefreshCw class="w-3.5 h-3.5" /> Tauschen
+                    </button>
+                    <router-link :to="`/recipes/${getMeal(selectedDayIdx, mt.key).recipe_id}`" class="day-action-btn">
+                      <Eye class="w-3.5 h-3.5" /> Rezept
+                    </router-link>
+                    <button @click="removeEntry(getMeal(selectedDayIdx, mt.key))" class="day-action-btn day-action-btn--danger">
+                      <X class="w-3.5 h-3.5" /> Entfernen
+                    </button>
+                    <button @click="openBlockDialog(getMeal(selectedDayIdx, mt.key))" class="day-action-btn day-action-btn--danger">
+                      <Ban class="w-3.5 h-3.5" /> Sperren
+                    </button>
+                  </template>
+                  <router-link v-else :to="`/recipes/${getMeal(selectedDayIdx, mt.key).recipe_id}`" class="day-action-btn">
                     <Eye class="w-3.5 h-3.5" /> Rezept
                   </router-link>
-                  <button @click="removeEntry(getMeal(selectedDayIdx, mt.key))" class="day-action-btn day-action-btn--danger">
-                    <X class="w-3.5 h-3.5" /> Entfernen
-                  </button>
-                  <button @click="openBlockDialog(getMeal(selectedDayIdx, mt.key))" class="day-action-btn day-action-btn--danger">
-                    <Ban class="w-3.5 h-3.5" /> Sperren
-                  </button>
                 </div>
               </div>
             </div>
@@ -360,7 +415,7 @@
             </div>
 
             <!-- Personen -->
-            <div class="mb-5">
+            <div class="mb-4">
               <label class="block mb-2 font-medium text-stone-700 dark:text-stone-300 text-sm">Personen</label>
               <div class="flex items-center gap-3">
                 <button @click="genPersons = Math.max(1, genPersons - 1)"
@@ -369,6 +424,24 @@
                 <button @click="genPersons = Math.min(20, genPersons + 1)"
                   class="place-items-center grid bg-stone-100 dark:bg-stone-800 rounded-lg w-8 h-8 font-bold text-stone-600 dark:text-stone-400">+</button>
               </div>
+            </div>
+
+            <!-- Aktive Tage -->
+            <div class="mb-5">
+              <label class="block mb-2 font-medium text-stone-700 dark:text-stone-300 text-sm">Für welche Tage?</label>
+              <div class="flex gap-1.5">
+                <button v-for="(dayLabel, dayIdx) in ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So']" :key="dayIdx"
+                  @click="genActiveDays.includes(dayIdx) ? genActiveDays.splice(genActiveDays.indexOf(dayIdx), 1) : genActiveDays.push(dayIdx)"
+                  :class="['flex-1 py-2 rounded-lg text-xs font-semibold transition-colors border',
+                    genActiveDays.includes(dayIdx)
+                      ? 'bg-primary-50 dark:bg-primary-950 border-primary-400 dark:border-primary-700 text-primary-700 dark:text-primary-300'
+                      : 'border-stone-200 dark:border-stone-700 text-stone-400 dark:text-stone-600 hover:bg-stone-50 dark:hover:bg-stone-800']">
+                  {{ dayLabel }}
+                </button>
+              </div>
+              <p v-if="genActiveDays.length === 0" class="mt-1 text-amber-600 text-xs">
+                Mindestens ein Tag sollte aktiv sein
+              </p>
             </div>
 
             <!-- Aktive Sammlungs-Info -->
@@ -387,7 +460,7 @@
                 class="hover:bg-stone-100 dark:hover:bg-stone-800 px-4 py-2 rounded-xl text-stone-600 dark:text-stone-400 text-sm transition-colors">
                 Abbrechen
               </button>
-              <button @click="doGenerate" :disabled="store.generating || !genMealTypes.length"
+              <button @click="doGenerate" :disabled="store.generating || !genMealTypes.length || !genActiveDays.length"
                 class="flex items-center gap-2 bg-primary-600 hover:bg-primary-700 disabled:opacity-50 px-4 py-2 rounded-xl font-medium text-white text-sm transition-colors">
                 <Sparkles class="w-4 h-4" /> Generieren
               </button>
@@ -604,6 +677,16 @@
             <div class="space-y-3 p-5">
               <h3 class="font-bold text-stone-800 dark:text-stone-100 text-lg">{{ selectedMeal.recipe_title }}</h3>
               <div class="flex flex-wrap items-center gap-3 text-stone-500 text-sm">
+                <span class="servings-inline flex items-center gap-1" @click.stop>
+                  <button v-if="!isLocked" class="servings-btn-day" @click="changeServings(selectedMeal, -1)"
+                    :disabled="selectedMeal.servings <= 1">
+                    <Minus class="w-3.5 h-3.5" />
+                  </button>
+                  <Users class="w-4 h-4" /> {{ selectedMeal.servings }} Personen
+                  <button v-if="!isLocked" class="servings-btn-day" @click="changeServings(selectedMeal, 1)">
+                    <Plus class="w-3.5 h-3.5" />
+                  </button>
+                </span>
                 <span v-if="selectedMeal.total_time" class="flex items-center gap-1">
                   <Clock class="w-4 h-4" /> {{ selectedMeal.total_time }} min
                 </span>
@@ -616,18 +699,23 @@
                   class="action-pill" :class="selectedMeal.is_cooked ? 'action-pill--active' : ''">
                   <Check class="w-4 h-4" /> {{ selectedMeal.is_cooked ? 'Rückgängig' : 'Gekocht' }}
                 </button>
-                <button @click="openSwapModal(selectedMeal); selectedMeal = null;" class="action-pill">
-                  <RefreshCw class="w-4 h-4" /> Tauschen
-                </button>
-                <router-link :to="`/recipes/${selectedMeal.recipe_id}`" class="action-pill" @click="selectedMeal = null">
+                <template v-if="!isLocked">
+                  <button @click="openSwapModal(selectedMeal); selectedMeal = null;" class="action-pill">
+                    <RefreshCw class="w-4 h-4" /> Tauschen
+                  </button>
+                  <router-link :to="`/recipes/${selectedMeal.recipe_id}`" class="action-pill" @click="selectedMeal = null">
+                    <Eye class="w-4 h-4" /> Rezept
+                  </router-link>
+                  <button @click="removeEntry(selectedMeal); selectedMeal = null;" class="action-pill action-pill--danger">
+                    <X class="w-4 h-4" /> Entfernen
+                  </button>
+                  <button @click="openBlockDialog(selectedMeal)" class="action-pill action-pill--danger">
+                    <Ban class="w-4 h-4" /> Sperren
+                  </button>
+                </template>
+                <router-link v-else :to="`/recipes/${selectedMeal.recipe_id}`" class="action-pill" @click="selectedMeal = null">
                   <Eye class="w-4 h-4" /> Rezept
                 </router-link>
-                <button @click="removeEntry(selectedMeal); selectedMeal = null;" class="action-pill action-pill--danger">
-                  <X class="w-4 h-4" /> Entfernen
-                </button>
-                <button @click="openBlockDialog(selectedMeal)" class="action-pill action-pill--danger">
-                  <Ban class="w-4 h-4" /> Sperren
-                </button>
               </div>
             </div>
           </div>
@@ -694,9 +782,9 @@ import { useRecipeBlocksStore } from '@/stores/recipe-blocks.js';
 import { useNotification } from '@/composables/useNotification.js';
 import {
   Sparkles, ChevronLeft, ChevronRight, Check, Eye, RefreshCw,
-  X, Clock, ChefHat, UtensilsCrossed, Plus, Star, Trash2,
+  X, Clock, ChefHat, UtensilsCrossed, Plus, Minus, Star, Trash2,
   LayoutGrid, CalendarDays, Settings, Settings2, FolderOpen, Info,
-  Ban, ShieldOff,
+  Ban, ShieldOff, Lock, Unlock, Users,
 } from 'lucide-vue-next';
 
 const store = useMealPlanStore();
@@ -724,10 +812,11 @@ const genSourceMode = ref(savedPrefs.sourceMode ?? 'all');
 const genCollectionIds = ref(savedPrefs.collectionIds ?? []);
 const genDeduplicate = ref(savedPrefs.deduplicate ?? true);
 const genAiReasoning = ref(savedPrefs.aiReasoning ?? false);
+const genActiveDays = ref(savedPrefs.activeDays ?? [0, 1, 2, 3, 4, 5, 6]);
 const showSlotSettings = ref(false);
 
 // Bei Änderung automatisch in localStorage speichern
-watch([genMealTypes, genPersons, visibleSlots, genSourceMode, genCollectionIds, genDeduplicate, genAiReasoning], () => {
+watch([genMealTypes, genPersons, visibleSlots, genSourceMode, genCollectionIds, genDeduplicate, genAiReasoning, genActiveDays], () => {
   localStorage.setItem(STORAGE_KEY, JSON.stringify({
     mealTypes: genMealTypes.value,
     personCount: genPersons.value,
@@ -736,6 +825,7 @@ watch([genMealTypes, genPersons, visibleSlots, genSourceMode, genCollectionIds, 
     collectionIds: genCollectionIds.value,
     deduplicate: genDeduplicate.value,
     aiReasoning: genAiReasoning.value,
+    activeDays: genActiveDays.value,
   }));
 }, { deep: true });
 
@@ -812,9 +902,20 @@ function getMeal(dayIdx, mealType) {
   return currentPlan.value.entries.find(e => e.day_of_week === dayIdx && e.meal_type === mealType);
 }
 
+/** Prüft ob ein Tag mindestens ein Rezept in irgendeinem Slot hat */
+function dayHasMeals(dayIdx) {
+  if (!currentPlan.value?.entries) return false;
+  return currentPlan.value.entries.some(e => e.day_of_week === dayIdx);
+}
+
+/** Ist der aktuelle Plan fixiert? */
+const isLocked = computed(() => !!currentPlan.value?.is_locked);
+
 function dayHeaderClass(dayIdx) {
   const base = 'w-full text-center py-2 rounded-lg transition-colors cursor-pointer';
-  if (isToday(dayIdx)) return `${base} bg-primary-100 dark:bg-primary-900/40 text-primary-700 dark:text-primary-300 hover:bg-primary-200 dark:hover:bg-primary-900/60`;
+  const hasMeals = dayHasMeals(dayIdx);
+  if (isToday(dayIdx)) return `${base} bg-primary-100 dark:bg-primary-900/40 text-primary-700 dark:text-primary-300 hover:bg-primary-200 dark:hover:bg-primary-900/60${!hasMeals ? ' opacity-50' : ''}`;
+  if (!hasMeals) return `${base} bg-stone-100 dark:bg-stone-800 text-stone-400 dark:text-stone-600 opacity-50`;
   return `${base} bg-stone-100 dark:bg-stone-800 text-stone-600 dark:text-stone-400 hover:bg-stone-200 dark:hover:bg-stone-700`;
 }
 
@@ -835,6 +936,8 @@ function selectMeal(meal) {
 
 // ─── Generierung ───
 async function doGenerate() {
+  // Warnung wenn fixierter Plan überschrieben wird
+  if (isLocked.value && !confirm('Der aktuelle Plan ist fixiert (bereits eingekauft). Trotzdem überschreiben?')) return;
   showGenerateModal.value = false;
   try {
     const options = {
@@ -842,6 +945,7 @@ async function doGenerate() {
       mealTypes: genMealTypes.value,
       personCount: genPersons.value,
       enableAiReasoning: genAiReasoning.value,
+      activeDays: genActiveDays.value,
     };
     // Sammlungs-Filter nur wenn explizit Sammlungen gewählt
     if (genSourceMode.value === 'collections' && genCollectionIds.value.length > 0) {
@@ -912,6 +1016,19 @@ async function doSwap(newRecipeId) {
   } catch { /* useApi */ }
 }
 
+// ─── Portionen ändern ───
+async function changeServings(meal, delta) {
+  const newServings = Math.max(1, (meal.servings || 4) + delta);
+  if (newServings === meal.servings) return;
+  try {
+    await store.updateServings(meal.meal_plan_id, meal.id, newServings);
+    // Falls das Detail-Popup offen ist, dort auch aktualisieren
+    if (selectedMeal.value?.id === meal.id) {
+      selectedMeal.value = { ...selectedMeal.value, servings: newServings };
+    }
+  } catch { /* useApi */ }
+}
+
 // ─── Entfernen ───
 async function removeEntry(meal) {
   try {
@@ -923,10 +1040,20 @@ async function removeEntry(meal) {
 // ─── Plan löschen ───
 async function confirmDeletePlan() {
   if (!currentPlan.value) return;
+  if (isLocked.value) return;
   if (!confirm('Wochenplan wirklich löschen?')) return;
   try {
     await store.deletePlan(currentPlan.value.id);
     showSuccess('Wochenplan gelöscht');
+  } catch { /* useApi */ }
+}
+
+// ─── Fixieren ───
+async function toggleLockPlan() {
+  if (!currentPlan.value) return;
+  try {
+    const data = await store.toggleLock(currentPlan.value.id);
+    showSuccess(data.message);
   } catch { /* useApi */ }
 }
 
@@ -1013,6 +1140,41 @@ onMounted(async () => {
 :is(.dark .meal-slot-dragover) {
   background-color: color-mix(in srgb, var(--color-primary-900) 30%, transparent);
 }
+
+/* Tage ohne Rezepte  */
+.meal-slot--inactive {
+  opacity: 0.4;
+}
+
+/* ─── Servings Controls ─── */
+.servings-badge {
+  overflow: hidden;
+}
+.servings-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.2rem 0.25rem;
+  opacity: 0;
+  transition: opacity 0.15s ease, background-color 0.15s ease;
+  cursor: pointer;
+}
+.servings-btn:hover { background-color: rgba(255,255,255,0.25); }
+.servings-btn:disabled { opacity: 0 !important; cursor: default; }
+.meal-card:hover .servings-btn,
+.servings-badge:hover .servings-btn { opacity: 1; }
+.servings-btn-day {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.15rem;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: background-color 0.15s ease;
+}
+.servings-btn-day:hover { background-color: var(--color-stone-200); }
+:is(.dark .servings-btn-day:hover) { background-color: var(--color-stone-700); }
+.servings-btn-day:disabled { opacity: 0.3; cursor: default; }
 
 /* ─── Meal Card (Wochenansicht) ─── */
 .meal-card {
