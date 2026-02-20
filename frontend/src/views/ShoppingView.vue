@@ -819,6 +819,30 @@
                         <span>{{ opt.icon }} {{ opt.label }}</span>
                       </label>
                     </div>
+                    <!-- Userscript-Hinweis (nur bei Userscript-Methode) -->
+                    <div v-if="reweAction === 'direct'" class="flex items-center gap-3 bg-stone-100 dark:bg-stone-800 mt-3 px-3 py-2.5 rounded-lg">
+                      <div class="flex-1 min-w-0">
+                        <p class="text-stone-500 dark:text-stone-400 text-xs leading-relaxed">
+                          Benötigt das Tampermonkey-Userscript – legt per 🍳-Button auf rewe.de alles in den Warenkorb.
+                        </p>
+                      </div>
+                      <div class="flex gap-1.5 shrink-0">
+                        <button
+                          @click="installUserscript"
+                          class="flex items-center gap-1 bg-stone-200 hover:bg-stone-300 dark:bg-stone-700 dark:hover:bg-stone-600 px-2.5 py-1 rounded-md font-medium text-stone-600 dark:text-stone-300 text-xs transition-colors"
+                        >
+                          <Download class="w-3 h-3" />
+                          Installieren
+                        </button>
+                        <button
+                          @click="regenerateToken"
+                          class="flex items-center gap-1 px-2 py-1 rounded-md text-stone-400 hover:text-stone-600 dark:hover:text-stone-300 text-xs transition-colors"
+                          title="Neues API-Token erzeugen und Userscript neu installieren"
+                        >
+                          <RefreshCw class="w-3 h-3" />
+                        </button>
+                      </div>
+                    </div>
                   </div>
 
                   <!-- Vorschau-Option -->
@@ -845,35 +869,9 @@
                     <span class="flex-1 font-medium text-stone-700 dark:text-stone-200 text-sm">Bevorzugte Produkte</span>
                     <ChevronRight class="w-4 h-4 text-stone-400 dark:group-hover:text-stone-300 group-hover:text-stone-600 transition-colors shrink-0" />
                   </button>
-
-                  <!-- Userscript (dezent) -->
-                  <div class="bg-stone-50 dark:bg-stone-800/50 px-4 py-3 border border-stone-200 dark:border-stone-700 rounded-xl">
-                    <div class="flex items-start gap-3">
-                      <div class="flex-1 min-w-0">
-                        <p class="font-medium text-stone-600 dark:text-stone-400 text-sm">🧩 Tampermonkey Userscript</p>
-                        <p class="mt-0.5 text-stone-400 dark:text-stone-500 text-xs leading-relaxed">
-                          Installiere das Userscript, um mit dem 🍳-Button auf rewe.de direkt in den Warenkorb zu legen.
-                        </p>
-                      </div>
-                    </div>
-                    <div class="flex gap-2 mt-3">
-                      <button
-                        @click="installUserscript"
-                        class="flex items-center gap-1.5 bg-stone-200 hover:bg-stone-300 dark:bg-stone-700 dark:hover:bg-stone-600 px-3 py-1.5 rounded-lg font-medium text-stone-600 dark:text-stone-300 text-xs transition-colors"
-                      >
-                        <Download class="w-3 h-3" />
-                        Installieren
-                      </button>
-                      <button
-                        @click="regenerateToken"
-                        class="flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-stone-400 hover:text-stone-600 dark:hover:text-stone-300 text-xs transition-colors"
-                        title="Neues API-Token erzeugen und Userscript neu installieren"
-                      >
-                        <RefreshCw class="w-3 h-3" />
-                        Token erneuern
-                      </button>
-                    </div>
-                  </div>
+                  <p class="-mt-2 px-1 text-stone-400 dark:text-stone-500 text-xs">
+                    Wenn du ein REWE-Produkt im Picker änderst, wird es hier gespeichert und beim nächsten Mal automatisch zugeordnet.
+                  </p>
                 </div>
 
                 <!-- ========== Bring! Tab ========== -->
