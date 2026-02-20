@@ -118,6 +118,7 @@ body {
   background: #1c1917;
   border-radius: 12px;
   overflow: hidden;
+  max-width: 100%;
 }
 
 .code-block pre {
@@ -125,6 +126,7 @@ body {
   overflow-x: auto;
   font-size: 0.875rem;
   line-height: 1.7;
+  max-width: 100%;
 }
 
 /* Lightbox */

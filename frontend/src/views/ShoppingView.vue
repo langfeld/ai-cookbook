@@ -695,7 +695,7 @@
               </div>
 
               <!-- Tab-Content -->
-              <div class="flex-1 border-stone-200 dark:border-stone-700 border-t min-h-[530px] overflow-y-auto">
+              <div class="flex-1 border-stone-200 dark:border-stone-700 border-t min-h-132.5 overflow-y-auto">
 
                 <!-- ========== REWE Tab ========== -->
                 <div v-if="settingsTab === 'rewe'" class="space-y-4 p-5">
@@ -1163,7 +1163,7 @@
       <!-- Präferenz ändern: Produkt-Suche (Inline-Overlay) -->
       <Teleport to="body">
         <Transition name="fade">
-          <div v-if="changingPref" class="z-[60] fixed inset-0 flex justify-center items-end sm:items-center bg-black/50 p-4" @click.self="changingPref = null">
+          <div v-if="changingPref" class="z-60 fixed inset-0 flex justify-center items-end sm:items-center bg-black/50 p-4" @click.self="changingPref = null">
             <div class="flex flex-col bg-white dark:bg-stone-900 shadow-2xl rounded-2xl w-full max-w-md max-h-[70vh] overflow-hidden">
               <!-- Header -->
               <div class="flex justify-between items-center px-5 py-4 border-stone-200 dark:border-stone-700 border-b shrink-0">
