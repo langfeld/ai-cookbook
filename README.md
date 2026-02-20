@@ -1,6 +1,6 @@
 # Zauberjournal 🍳🤖
 
-Eine KI-gestützte Rezeptverwaltung mit intelligentem Wochenplaner (Score-Algorithmus + optionales KI-Reasoning), Kochmodus, Rezept-Sammlungen, Einkaufsliste mit Zutaten-Zusammenfassung, REWE-Integration, Bring!-Anbindung, Tampermonkey-Userscript, Vorratsschrank und umfangreichem Admin-Bereich.
+Eine KI-gestützte Rezeptverwaltung mit intelligentem Wochenplaner (Score-Algorithmus + optionales KI-Reasoning), Kochmodus, Rezept-Sammlungen, Einkaufsliste mit Zutaten-Zusammenfassung und -Blockierung, REWE-Integration, Bring!-Anbindung, Tampermonkey-Userscript, Vorratsschrank und umfangreichem Admin-Bereich.
 
 ![Vue 3](https://img.shields.io/badge/Vue-3.5-4FC08D?logo=vuedotjs&logoColor=white)
 ![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-4-06B6D4?logo=tailwindcss&logoColor=white)
@@ -55,6 +55,9 @@ Eine KI-gestützte Rezeptverwaltung mit intelligentem Wochenplaner (Score-Algori
 - **Zutaten zusammenfassen** — Gleiche Zutaten mit unterschiedlichen Schreibweisen (z. B. „Knoblauch" und „Knoblauchzehe") zu einem Eintrag zusammenführen. Multi-Merge: beliebig viele Artikel gleichzeitig auswählen und den kanonischen Namen wählen
 - **Automatische Alias-Auflösung** — Gespeicherte Zuordnungen (Aliases) werden bei jeder neuen Einkaufslistengenerierung automatisch angewandt, sodass zusammengeführte Zutaten dauerhaft konsolidiert bleiben
 - **Alias-Verwaltung** — Alle gespeicherten Zutatenzuordnungen einsehen und einzeln löschen (Split-Button in der Einkaufsliste)
+- **Zutaten blockieren** — Zutaten für zukünftige Einkaufslisten blockieren. Auswahl-Modus (wie Zusammenfassen): beliebig viele Artikel markieren und mit Bestätigung dauerhaft blockieren. Blockierte Zutaten werden bei der Listengenerierung automatisch übersprungen
+- **Block-Verwaltung** — Alle blockierten Zutaten einsehen und einzeln freigeben (Split-Button in der Einkaufsliste)
+- **Zutaten-Einstellungen Export/Import** — Aliase und blockierte Zutaten als JSON exportieren und importieren (über „Meine Daten")
 
 ### 🏪 REWE-Integration
 - **Automatisches Produkt-Matching** — Alle Zutaten werden per SSE-Stream mit Live-Fortschrittsanzeige REWE-Produkten zugeordnet
@@ -102,7 +105,7 @@ Eine KI-gestützte Rezeptverwaltung mit intelligentem Wochenplaner (Score-Algori
   - **Rezept Export/Import** — Alle Rezepte (oder pro Benutzer) als JSON exportieren/importieren, mit Benutzer-Zuweisung beim Import
   - **Vorratsschrank Export/Import** — Vorräte aller Benutzer exportieren (oder nach Benutzer filtern), importieren mit Zielbenutzer-Auswahl
   - **REWE-Präferenzen Export/Import** — Alle gespeicherten REWE-Produkt-Zuordnungen exportieren/importieren (pro Benutzer filterbar)
-  - **Zutaten-Aliase Export/Import** — Zutaten-Zusammenfassungen exportieren/importieren (z. B. „Gurke Mini" → „Mini-Gurke")
+  - **Zutaten-Einstellungen Export/Import** — Zutaten-Zusammenfassungen und blockierte Zutaten exportieren/importieren (Aliase z. B. „Gurke Mini" → „Mini-Gurke", Blockierungen z. B. 🚫 „Petersilie")
   - **Komplett-Backup** — Komplette SQLite-Datenbank als Datei herunterladen
 - **Aktivitätslog** — Alle Admin-Aktionen werden protokolliert (Wer hat was wann gemacht?)
 
@@ -275,6 +278,7 @@ zauberjournal/
 │       │   ├── rewe-userscript.js # REWE: Tampermonkey/Greasemonkey Userscript-Generator
 │       │   ├── bring.js        # Bring!: Account-Verbindung, Listen, Senden, Trennen
 │       │   ├── ingredient-icons.js # Zutaten-Emoji-Mappings (CRUD)
+│       │   ├── ingredient-aliases.js # Zutaten-Aliase, Blockierungen, Export/Import
 │       │   └── admin.js        # Admin: Stats, Benutzer, Settings, Logs, Export/Import (Rezepte + Pantry)
 │       ├── services/
 │       │   ├── ai/
@@ -306,14 +310,16 @@ zauberjournal/
         │   ├── recipes/        # RecipeCard, RecipeImportModal, RecipeImportExportModal
         │   ├── collections/    # CollectionManager, AddToCollection
         │   ├── pantry/         # PantryImportExportModal
+        │   ├── shopping/       # IngredientSettingsImportExportModal
         │   └── dashboard/      # StatCard
         ├── views/
         │   ├── LoginView.vue
         │   ├── DashboardView.vue
         │   ├── RecipesView.vue / RecipeDetailView.vue / RecipeFormView.vue
         │   ├── MealPlanView.vue / ShoppingView.vue / PantryView.vue
+        │   ├── UserDataManagementView.vue  # Meine Daten (Export/Import)
         │   └── admin/          # AdminDashboard, AdminUsers, AdminSettings, AdminIngredientIcons
-        ├── stores/             # Pinia (auth, recipes, mealplan, shopping, pantry, collections)
+        ├── stores/             # Pinia (auth, recipes, mealplan, shopping, pantry, collections, ingredient-aliases)
         ├── composables/        # useApi, useTheme, useNotification, useIngredientIcons
         └── router/index.js
 ```
@@ -427,6 +433,19 @@ zauberjournal/
 | `POST` | `/` | Neues Mapping erstellen 🔒 |
 | `PUT` | `/:id` | Mapping bearbeiten 🔒 |
 | `DELETE` | `/:id` | Mapping löschen 🔒 |
+
+### Zutaten-Einstellungen (`/api/ingredient-aliases`)
+| Methode | Pfad | Beschreibung |
+|---------|------|-------------|
+| `GET` | `/` | Alle Aliase des Benutzers |
+| `POST` | `/` | Neuen Alias erstellen |
+| `POST` | `/merge` | Mehrere Zutaten zusammenführen (Multi-Merge) |
+| `DELETE` | `/:id` | Alias löschen |
+| `GET` | `/blocked` | Alle blockierten Zutaten des Benutzers |
+| `POST` | `/blocked` | Zutat(en) blockieren |
+| `DELETE` | `/blocked/:id` | Blockierung aufheben |
+| `GET` | `/export` | Aliase + blockierte Zutaten als JSON exportieren |
+| `POST` | `/import` | Aliase + blockierte Zutaten aus JSON importieren |
 
 ### Admin (`/api/admin`) 🔒
 > Alle Routen erfordern `role=admin`.
