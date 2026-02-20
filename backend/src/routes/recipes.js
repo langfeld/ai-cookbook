@@ -817,7 +817,7 @@ export default async function recipesRoutes(fastify) {
     const exportData = {
       version: '1.0',
       exported_at: new Date().toISOString(),
-      source: 'AI Cookbook',
+      source: 'Zauberjournal',
       recipe_count: recipes.length,
       recipes: [],
     };

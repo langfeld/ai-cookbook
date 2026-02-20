@@ -1,7 +1,7 @@
 {
-  "name": "ai-cookbook-backend",
+  "name": "zauberjournal-backend",
   "version": "1.0.0",
-  "description": "AI Cookbook Backend - Fastify API mit KI-Anbindung",
+  "description": "Zauberjournal Backend - Fastify API mit KI-Anbindung",
   "main": "src/server.js",
   "type": "module",
   "scripts": {

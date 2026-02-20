@@ -1,5 +1,5 @@
 # ============================================
-# AI Cookbook — Docker Compose
+# Zauberjournal — Docker Compose
 # ============================================
 # Ein Container, ein Port, ein Volume.
 #
@@ -10,13 +10,13 @@
 
 services:
   cookbook:
-    image: ghcr.io/GITHUB_USER/ai-cookbook:latest   # ← GitHub-User anpassen!
-    container_name: ai-cookbook
+    image: ghcr.io/GITHUB_USER/zauberjournal:latest   # ← GitHub-User anpassen!
+    container_name: zauberjournal
     restart: unless-stopped
     ports:
       - "8080:3001"
     volumes:
-      - /mnt/tank/apps/ai-cookbook:/app/data   # ← Pfad an dein NAS anpassen!
+      - /mnt/tank/apps/zauberjournal:/app/data   # ← Pfad an dein NAS anpassen!
     environment:
       # --- Pflicht ---
       - JWT_SECRET=CHANGE_ME         # openssl rand -base64 48

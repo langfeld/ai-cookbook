@@ -127,7 +127,7 @@ router.beforeEach((to) => {
   }
 
   // Seitentitel setzen
-  document.title = `${to.meta.title || 'AI Cookbook'} | AI Cookbook 🍳`;
+  document.title = `${to.meta.title || 'Zauberjournal'} | Zauberjournal 🍳`;
 });
 
 export default router;

@@ -11,7 +11,7 @@
       <div class="mb-8 text-center">
         <div class="mb-4 text-6xl">🍳</div>
         <h1 class="font-display font-bold text-stone-800 dark:text-stone-100 text-3xl">
-          AI Cookbook
+          Zauberjournal
         </h1>
         <p class="mt-2 text-stone-500 dark:text-stone-400">
           Dein intelligenter Kochassistent

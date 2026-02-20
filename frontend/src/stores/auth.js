@@ -13,7 +13,13 @@ import { apiRaw } from '@/composables/useApi.js';
 export const useAuthStore = defineStore('auth', () => {
   // --- State ---
   const user = ref(null);
-  const token = ref(localStorage.getItem('ai-cookbook-token') || null);
+  const token = ref(localStorage.getItem('zauberjournal-token') || localStorage.getItem('ai-cookbook-token') || null);
+
+  // Alten localStorage-Key migrieren
+  if (localStorage.getItem('ai-cookbook-token') && !localStorage.getItem('zauberjournal-token')) {
+    localStorage.setItem('zauberjournal-token', localStorage.getItem('ai-cookbook-token'));
+    localStorage.removeItem('ai-cookbook-token');
+  }
   const loading = ref(false);
 
   // --- Getters ---
@@ -76,6 +82,7 @@ export const useAuthStore = defineStore('auth', () => {
   function logout() {
     token.value = null;
     user.value = null;
+    localStorage.removeItem('zauberjournal-token');
     localStorage.removeItem('ai-cookbook-token');
   }
 
@@ -85,7 +92,7 @@ export const useAuthStore = defineStore('auth', () => {
   function setAuth(newToken, userData) {
     token.value = newToken;
     user.value = userData;
-    localStorage.setItem('ai-cookbook-token', newToken);
+    localStorage.setItem('zauberjournal-token', newToken);
   }
 
   return {

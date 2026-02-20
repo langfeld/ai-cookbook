@@ -522,7 +522,7 @@ export default async function adminRoutes(fastify) {
     const exportData = {
       version: '1.0',
       exported_at: new Date().toISOString(),
-      source: 'AI Cookbook (Admin-Export)',
+      source: 'Zauberjournal (Admin-Export)',
       recipe_count: recipes.length,
       recipes: [],
     };
@@ -811,7 +811,7 @@ export default async function adminRoutes(fastify) {
     const exportData = {
       version: '1.0',
       exported_at: new Date().toISOString(),
-      source: 'AI Cookbook (Admin-Export)',
+      source: 'Zauberjournal (Admin-Export)',
       type: 'pantry',
       item_count: items.length,
       items: items.map(i => ({
@@ -985,7 +985,7 @@ export default async function adminRoutes(fastify) {
     const exportData = {
       version: '1.0',
       exported_at: new Date().toISOString(),
-      source: 'AI Cookbook (Admin-Export)',
+      source: 'Zauberjournal (Admin-Export)',
       type: 'rewe-preferences',
       preference_count: prefs.length,
       preferences: prefs.map(p => ({
@@ -1162,7 +1162,7 @@ export default async function adminRoutes(fastify) {
     const exportData = {
       version: '1.0',
       exported_at: new Date().toISOString(),
-      source: 'AI Cookbook (Admin-Export)',
+      source: 'Zauberjournal (Admin-Export)',
       type: 'users',
       user_count: enrichedUsers.length,
       users: enrichedUsers,
@@ -1323,7 +1323,7 @@ export default async function adminRoutes(fastify) {
     const exportData = {
       version: '1.0',
       exported_at: new Date().toISOString(),
-      source: 'AI Cookbook (Admin-Export)',
+      source: 'Zauberjournal (Admin-Export)',
       type: 'ingredient-aliases',
       alias_count: aliases.length,
       aliases: aliases.map(a => ({
@@ -1509,7 +1509,7 @@ export default async function adminRoutes(fastify) {
     const exportData = {
       version: '1.0',
       exported_at: new Date().toISOString(),
-      source: 'AI Cookbook (Admin-Export)',
+      source: 'Zauberjournal (Admin-Export)',
       type: 'meal_plans',
       plan_count: plansWithEntries.length,
       plans: plansWithEntries,
@@ -1676,7 +1676,7 @@ export default async function adminRoutes(fastify) {
     const exportData = {
       version: '1.0',
       exported_at: new Date().toISOString(),
-      source: 'AI Cookbook (Admin-Export)',
+      source: 'Zauberjournal (Admin-Export)',
       type: 'shopping_lists',
       list_count: listsWithItems.length,
       lists: listsWithItems,
@@ -1807,7 +1807,7 @@ export default async function adminRoutes(fastify) {
     const exportData = {
       version: '1.0',
       exported_at: new Date().toISOString(),
-      source: 'AI Cookbook (Admin-Export)',
+      source: 'Zauberjournal (Admin-Export)',
       type: 'recipe_blocks',
       block_count: blocks.length,
       blocks: blocks.map(b => ({

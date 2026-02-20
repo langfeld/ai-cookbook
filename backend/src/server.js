@@ -128,7 +128,7 @@ if (config.isDev) {
   await app.register(swagger, {
     openapi: {
       info: {
-        title: 'AI Cookbook API',
+        title: 'Zauberjournal API',
         description: 'KI-gestützte Rezeptverwaltung mit Wochenplaner und Einkaufsliste',
         version: '1.0.0',
       },
@@ -220,7 +220,7 @@ const start = async () => {
 
     // Server starten
     await app.listen({ port: config.port, host: '0.0.0.0' });
-    console.log(`🚀 AI Cookbook läuft auf Port ${config.port}`);
+    console.log(`🚀 Zauberjournal läuft auf Port ${config.port}`);
     if (config.isDev) console.log(`📚 API-Docs: http://localhost:${config.port}/docs`);
   } catch (err) {
     app.log.error(err);

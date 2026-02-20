@@ -1,6 +1,6 @@
 #!/bin/sh
 # ============================================
-# AI Cookbook — Entrypoint mit PUID/PGID-Support
+# Zauberjournal — Entrypoint mit PUID/PGID-Support
 # ============================================
 # Passt den internen 'node'-User an die gewünschte
 # UID/GID an, damit Volume-Dateien auf dem NAS

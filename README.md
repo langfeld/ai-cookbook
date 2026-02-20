@@ -1,4 +1,4 @@
-# AI Cookbook 🍳🤖
+# Zauberjournal 🍳🤖
 
 Eine KI-gestützte Rezeptverwaltung mit intelligentem Wochenplaner (Score-Algorithmus + optionales KI-Reasoning), Kochmodus, Rezept-Sammlungen, Einkaufsliste mit Zutaten-Zusammenfassung, REWE-Integration, Bring!-Anbindung, Tampermonkey-Userscript, Vorratsschrank und umfangreichem Admin-Bereich.
 
@@ -73,7 +73,7 @@ Eine KI-gestützte Rezeptverwaltung mit intelligentem Wochenplaner (Score-Algori
 - **Account-Verbindung** — Bring!-Konto über E-Mail und Passwort verbinden (Passwort AES-256-GCM-verschlüsselt gespeichert)
 - **Listen-Auswahl** — Alle eigenen Bring!-Listen werden geladen, Zielliste frei wählbar
 - **Einkaufsliste senden** — Alle offenen Artikel der Einkaufsliste per Klick an die Bring!-App senden (mit Mengenangaben als Specification)
-- **Bidirektionale Nutzung** — Einkaufsliste im AI Cookbook verwalten, unterwegs in der Bring!-App abhaken
+- **Bidirektionale Nutzung** — Einkaufsliste im Zauberjournal verwalten, unterwegs in der Bring!-App abhaken
 - **Account trennen** — Bring!-Verbindung jederzeit entfernen (Zugangsdaten werden gelöscht)
 
 ### 🗄️ Vorratsschrank
@@ -153,7 +153,7 @@ docker run -d \
   -e JWT_SECRET=$(openssl rand -base64 48) \
   -e PUID=1000 \
   -e PGID=1000 \
-  ghcr.io/GITHUB_USER/ai-cookbook:latest
+  ghcr.io/GITHUB_USER/zauberjournal:latest
 ```
 
 > ⚠️ **`GITHUB_USER`** durch deinen GitHub-Benutzernamen ersetzen (Kleinbuchstaben).
@@ -204,10 +204,10 @@ npm run dev          # → http://localhost:5173
 ### Docker selber bauen
 
 ```bash
-git clone <repo-url> ai-cookbook
-cd ai-cookbook
-docker build -t ai-cookbook .
-docker run -d --name cookbook -p 8080:3001 -v cookbook-data:/app/data --env-file .env ai-cookbook
+git clone <repo-url> zauberjournal
+cd zauberjournal
+docker build -t zauberjournal .
+docker run -d --name cookbook -p 8080:3001 -v cookbook-data:/app/data --env-file .env zauberjournal
 ```
 
 ### 🛡️ Ersteinrichtung
@@ -231,7 +231,7 @@ Beim **ersten Start** existiert kein Administrator. Die App erkennt das automati
 docker compose pull && docker compose up -d
 
 # Oder manuell:
-docker pull ghcr.io/GITHUB_USER/ai-cookbook:latest
+docker pull ghcr.io/GITHUB_USER/zauberjournal:latest
 docker stop cookbook && docker rm cookbook
 # Gleicher docker run Befehl wie oben (Volume bleibt erhalten)
 ```
@@ -247,7 +247,7 @@ Der Workflow (`.github/workflows/docker-build.yml`) baut das Image automatisch b
 ## 📁 Projektstruktur
 
 ```
-ai-cookbook/
+zauberjournal/
 ├── Dockerfile                  # Single-Container Build (Frontend + Backend)
 ├── docker-compose.yml          # Compose für NAS / einfaches Deployment
 ├── entrypoint.sh               # PUID/PGID-Handling für NAS-Berechtigungen
@@ -458,7 +458,7 @@ ai-cookbook/
 {
   "version": "1.0",
   "exported_at": "2026-02-14T12:00:00.000Z",
-  "source": "AI Cookbook",
+  "source": "Zauberjournal",
   "recipe_count": 3,
   "recipes": [
     {

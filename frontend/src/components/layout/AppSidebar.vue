@@ -23,7 +23,7 @@
           v-if="!isCollapsed || isMobileOpen"
           class="ml-3 font-display font-bold text-stone-800 dark:text-stone-100 text-lg"
         >
-          AI Cookbook
+          Zauberjournal
         </span>
       </transition>
       <!-- Mobile: Schließen-Button -->

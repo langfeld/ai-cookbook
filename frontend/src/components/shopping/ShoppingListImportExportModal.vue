@@ -102,7 +102,7 @@
               <input ref="fileInput" type="file" accept=".json" class="hidden" @change="handleFileSelect" />
               <Upload class="mx-auto mb-2 w-8 h-8 text-stone-400" />
               <p class="font-medium text-stone-600 dark:text-stone-300 text-sm">JSON-Datei hier ablegen oder klicken</p>
-              <p class="mt-1 text-stone-400 text-xs">Unterstützt AI Cookbook Export-Dateien</p>
+              <p class="mt-1 text-stone-400 text-xs">Unterstützt Zauberjournal Export-Dateien</p>
             </div>
 
             <!-- Vorschau -->

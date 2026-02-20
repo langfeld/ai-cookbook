@@ -89,7 +89,7 @@ const searchQuery = ref('');
 const showUserMenu = ref(false);
 
 // Seitentitel aus Route-Meta
-const pageTitle = computed(() => route.meta.title || 'AI Cookbook');
+const pageTitle = computed(() => route.meta.title || 'Zauberjournal');
 
 // Benutzerinitialen für Avatar
 const userInitials = computed(() => {

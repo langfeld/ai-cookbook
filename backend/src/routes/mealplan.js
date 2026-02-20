@@ -522,7 +522,7 @@ export default async function mealplanRoutes(fastify) {
     const exportData = {
       version: '1.0',
       exported_at: new Date().toISOString(),
-      source: 'AI Cookbook',
+      source: 'Zauberjournal',
       type: 'meal_plans',
       plan_count: plansWithEntries.length,
       plans: plansWithEntries,

@@ -64,11 +64,11 @@ export default async function reweUserscriptRoute(fastify) {
  */
 function generateReweUserscript(apiBaseUrl, authToken) {
   return `// ==UserScript==
-// @name         AI Cookbook → REWE Warenkorb
-// @namespace    ai-cookbook-rewe
+// @name         Zauberjournal → REWE Warenkorb
+// @namespace    zauberjournal-rewe
 // @version      1.0
-// @description  Einkaufsliste aus dem AI Cookbook automatisch in den REWE-Warenkorb legen
-// @author       AI Cookbook
+// @description  Einkaufsliste aus dem Zauberjournal automatisch in den REWE-Warenkorb legen
+// @author       Zauberjournal
 // @match        https://shop.rewe.de/*
 // @match        https://www.rewe.de/*
 // @icon         https://www.rewe.de/favicon.ico
@@ -259,7 +259,7 @@ function generateReweUserscript(apiBaseUrl, authToken) {
   const fab = document.createElement('button');
   fab.id = 'ac-fab';
   fab.innerHTML = '🍳';
-  fab.title = 'AI Cookbook – Einkaufsliste';
+  fab.title = 'Zauberjournal – Einkaufsliste';
   fab.onclick = togglePanel;
   document.body.appendChild(fab);
 
@@ -269,7 +269,7 @@ function generateReweUserscript(apiBaseUrl, authToken) {
   panel.innerHTML = \`
     <div id="ac-panel-header">
       <div>
-        <h3>🍳 AI Cookbook</h3>
+        <h3>🍳 Zauberjournal</h3>
         <div class="ac-subtitle">Einkaufsliste → REWE Warenkorb</div>
       </div>
       <button id="ac-panel-close" title="Schließen">✕</button>
@@ -370,7 +370,7 @@ function generateReweUserscript(apiBaseUrl, authToken) {
       products = data.products || [];
 
       if (!products.length) {
-        setStatus('<div class="ac-error-box">Keine REWE-Produkte in der Einkaufsliste zugeordnet.<br>Bitte zuerst im AI Cookbook mit REWE matchen.</div>');
+        setStatus('<div class="ac-error-box">Keine REWE-Produkte in der Einkaufsliste zugeordnet.<br>Bitte zuerst im Zauberjournal mit REWE matchen.</div>');
         footer.innerHTML = \`<button class="ac-btn ac-btn-secondary" id="ac-btn-load">🔄 Erneut laden</button>\`;
         document.getElementById('ac-btn-load').onclick = loadProducts;
         return;
@@ -381,9 +381,9 @@ function generateReweUserscript(apiBaseUrl, authToken) {
 
     } catch(err) {
       if (err.message === 'TOKEN_EXPIRED') {
-        setStatus('<div class="ac-error-box">🔑 Sitzung abgelaufen!<br><br>Bitte im AI Cookbook ein neues Userscript generieren und in Tampermonkey aktualisieren.</div>');
+        setStatus('<div class="ac-error-box">🔑 Sitzung abgelaufen!<br><br>Bitte im Zauberjournal ein neues Userscript generieren und in Tampermonkey aktualisieren.</div>');
       } else {
-        setStatus('<div class="ac-error-box">❌ ' + err.message + '<br><br>Ist der AI Cookbook Server erreichbar?</div>');
+        setStatus('<div class="ac-error-box">❌ ' + err.message + '<br><br>Ist der Zauberjournal Server erreichbar?</div>');
       }
       footer.innerHTML = \`<button class="ac-btn ac-btn-secondary" id="ac-btn-load">🔄 Erneut versuchen</button>\`;
       document.getElementById('ac-btn-load').onclick = loadProducts;
@@ -565,7 +565,7 @@ function generateReweUserscript(apiBaseUrl, authToken) {
     return div.innerHTML;
   }
 
-  console.log('%c🍳 AI Cookbook Userscript geladen!', 'color:#c75b52;font-weight:bold;font-size:14px');
+  console.log('%c🍳 Zauberjournal Userscript geladen!', 'color:#c75b52;font-weight:bold;font-size:14px');
   console.log('%c   Klicke auf den 🍳-Button unten rechts.', 'color:#666');
 })();
 `;

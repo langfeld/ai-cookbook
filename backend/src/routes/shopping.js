@@ -662,7 +662,7 @@ export default async function shoppingRoutes(fastify) {
     const exportData = {
       version: '1.0',
       exported_at: new Date().toISOString(),
-      source: 'AI Cookbook',
+      source: 'Zauberjournal',
       type: 'shopping_lists',
       list_count: listsWithItems.length,
       lists: listsWithItems,

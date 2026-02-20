@@ -1,7 +1,7 @@
 {
-  "name": "ai-cookbook-frontend",
+  "name": "zauberjournal-frontend",
   "version": "1.0.0",
-  "description": "AI Cookbook Frontend - Vue 3 + Tailwind CSS 4",
+  "description": "Zauberjournal Frontend - Vue 3 + Tailwind CSS 4",
   "type": "module",
   "scripts": {
     "dev": "vite",

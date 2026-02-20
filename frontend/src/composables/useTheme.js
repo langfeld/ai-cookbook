@@ -16,10 +16,15 @@ const isDark = ref(false);
  * Berücksichtigt: 1. localStorage, 2. System-Präferenz
  */
 function initTheme() {
-  const stored = localStorage.getItem('ai-cookbook-theme');
+  const stored = localStorage.getItem('zauberjournal-theme') || localStorage.getItem('ai-cookbook-theme');
 
   if (stored) {
     isDark.value = stored === 'dark';
+    // Alten Key migrieren
+    if (localStorage.getItem('ai-cookbook-theme')) {
+      localStorage.setItem('zauberjournal-theme', stored);
+      localStorage.removeItem('ai-cookbook-theme');
+    }
   } else {
     // System-Präferenz als Fallback
     isDark.value = window.matchMedia('(prefers-color-scheme: dark)').matches;
@@ -42,7 +47,7 @@ function applyTheme() {
 
 // Theme-Wechsel beobachten und persistieren
 watch(isDark, (newVal) => {
-  localStorage.setItem('ai-cookbook-theme', newVal ? 'dark' : 'light');
+  localStorage.setItem('zauberjournal-theme', newVal ? 'dark' : 'light');
   applyTheme();
 });
 

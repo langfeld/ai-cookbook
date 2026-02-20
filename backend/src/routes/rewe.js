@@ -219,7 +219,7 @@ export default async function reweRoutes(fastify) {
     try {
       const response = await fetch(url, {
         headers: {
-          'User-Agent': 'Mozilla/5.0 (compatible; AI-Cookbook/1.0)',
+          'User-Agent': 'Mozilla/5.0 (compatible; Zauberjournal/1.0)',
           Accept: 'application/json',
         },
         signal: AbortSignal.timeout(8000),
@@ -442,7 +442,7 @@ function generateReweCartScript(products) {
   const productsJson = JSON.stringify(products);
 
   return `(async function() {
-  /* AI Cookbook → REWE Warenkorb v4 */
+  /* Zauberjournal → REWE Warenkorb v4 */
   if (!location.hostname.includes('rewe.de')) {
     alert('Dieses Script muss auf www.rewe.de ausgeführt werden!');
     return;
@@ -453,14 +453,14 @@ function generateReweCartScript(products) {
   const wait = (ms) => new Promise(r => setTimeout(r, ms));
 
   const totalPackages = products.reduce((s, p) => s + (p.quantity || 1), 0);
-  log('AI Cookbook: ' + products.length + ' Produkte (' + totalPackages + ' Packungen) in den Warenkorb legen...');
+  log('Zauberjournal: ' + products.length + ' Produkte (' + totalPackages + ' Packungen) in den Warenkorb legen...');
 
   /* ──── Fortschritts-Banner ──── */
-  const oldBanner = document.getElementById('ai-cookbook-banner');
+  const oldBanner = document.getElementById('zauberjournal-banner');
   if (oldBanner) oldBanner.remove();
 
   const banner = document.createElement('div');
-  banner.id = 'ai-cookbook-banner';
+  banner.id = 'zauberjournal-banner';
   banner.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:999999;background:#cc0000;color:white;padding:14px 24px;font-family:system-ui,sans-serif;font-size:14px;text-align:center;box-shadow:0 4px 12px rgba(0,0,0,0.3);display:flex;align-items:center;justify-content:center;gap:12px';
   const bannerText = document.createElement('span');
   bannerText.textContent = '🛒 Starte...';

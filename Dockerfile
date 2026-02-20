@@ -1,5 +1,5 @@
 # ============================================
-# AI Cookbook — Single-Container Build
+# Zauberjournal — Single-Container Build
 # ============================================
 # Ein Image, ein Container, ein Port.
 # Backend (Fastify) liefert das Frontend gleich mit aus.

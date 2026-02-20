@@ -141,7 +141,7 @@ export async function parseRecipeFromUrl(url, existingCategories = []) {
   // Webseite abrufen
   const response = await fetch(url, {
     headers: {
-      'User-Agent': 'Mozilla/5.0 (compatible; AI-Cookbook/1.0)',
+      'User-Agent': 'Mozilla/5.0 (compatible; Zauberjournal/1.0)',
       'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
       'Accept-Language': 'de-DE,de;q=0.9,en;q=0.5',
     },

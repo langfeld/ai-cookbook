@@ -200,7 +200,7 @@ export default async function recipeBlockRoutes(fastify) {
     const exportData = {
       version: '1.0',
       exported_at: new Date().toISOString(),
-      source: 'AI Cookbook',
+      source: 'Zauberjournal',
       type: 'recipe_blocks',
       block_count: blocks.length,
       blocks: blocks.map(b => ({
