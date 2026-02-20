@@ -90,34 +90,33 @@
             </div>
           </Transition>
         </div>
-        <!-- Zusammenfassen (Split-Button: Merge + Alias-Verwaltung) -->
+        <!-- Zutaten-Einstellungen (Split-Button: Einstellungen + Merge) -->
         <div v-if="shoppingStore.activeList" class="flex items-stretch">
           <button
-            @click="toggleMergeMode"
+            @click="showAliasManager = true"
             :class="[
               'flex items-center gap-1.5 px-3 py-2 text-sm font-medium transition-colors border',
               mergeMode
                 ? 'bg-violet-50 dark:bg-violet-900/30 border-violet-300 dark:border-violet-700 text-violet-700 dark:text-violet-300'
-                : 'bg-stone-100 dark:bg-stone-800 border-stone-300 dark:border-stone-600 text-stone-500 dark:text-stone-400',
-              aliasStore.aliases.length > 0 || aliasStore.blockedIngredients.length > 0 ? 'rounded-l-xl border-r-0' : 'rounded-xl'
+                : 'bg-stone-100 dark:bg-stone-800 border-stone-300 dark:border-stone-600 text-stone-500 dark:text-stone-400 hover:text-stone-700 dark:hover:text-stone-200',
+              'rounded-l-xl border-r-0'
             ]"
-            :title="mergeMode ? 'Zusammenfassen beenden' : 'Zutaten zusammenfassen'"
+            title="Zutaten-Einstellungen"
           >
-            <Merge class="w-4 h-4" />
-            <span class="hidden sm:inline">Zusammenfassen</span>
+            <Settings class="w-4 h-4" />
+            <span class="hidden sm:inline">Zutaten</span>
           </button>
           <button
-            v-if="aliasStore.aliases.length > 0 || aliasStore.blockedIngredients.length > 0"
-            @click="showAliasManager = true"
+            @click="toggleMergeMode"
             :class="[
               'flex items-center px-2 rounded-r-xl text-sm transition-colors border',
               mergeMode
-                ? 'bg-violet-50 dark:bg-violet-900/30 border-violet-300 dark:border-violet-700 border-l-violet-400 dark:border-l-violet-600 text-violet-500 dark:text-violet-400 hover:text-violet-700'
-                : 'bg-stone-100 dark:bg-stone-800 border-stone-300 dark:border-stone-600 border-l-stone-400 dark:border-l-stone-500 text-stone-400 dark:text-stone-500 hover:text-stone-600'
+                ? 'bg-violet-50 dark:bg-violet-900/30 border-violet-300 dark:border-violet-700 border-l-violet-400 dark:border-l-violet-600 text-violet-600 dark:text-violet-300'
+                : 'bg-stone-100 dark:bg-stone-800 border-stone-300 dark:border-stone-600 border-l-stone-400 dark:border-l-stone-500 text-stone-400 dark:text-stone-500 hover:text-stone-600 dark:hover:text-stone-300'
             ]"
-            title="Gespeicherte Zusammenfassungen verwalten"
+            :title="mergeMode ? 'Zusammenfassen beenden' : 'Zutaten zusammenfassen'"
           >
-            <Settings class="w-3.5 h-3.5" />
+            <Merge class="w-3.5 h-3.5" />
           </button>
         </div>
         <!-- Aus Wochenplan erstellen (Split-Button) -->
@@ -1564,7 +1563,7 @@ import { useShoppingStore } from '@/stores/shopping.js';
 import { useMealPlanStore } from '@/stores/mealplan.js';
 import { useIngredientAliasStore } from '@/stores/ingredient-aliases.js';
 import { useNotification } from '@/composables/useNotification.js';
-import { ListPlus, Check, ShoppingBag, Plus, Minus, Package, BookOpen, BookX, ExternalLink, ShoppingCart, X, ArrowRightLeft, Search, Tag, Trash2, Star, Heart, Archive, Send, Link2, Unlink, ClipboardCopy, LogIn, LogOut, ChevronDown, ChevronLeft, ChevronRight, Loader2, Terminal, Download, Settings, RefreshCw, Merge, ArrowRight, History, RotateCcw, Ban } from 'lucide-vue-next';
+import { ListPlus, Check, ShoppingBag, Plus, Minus, Package, BookOpen, BookX, ExternalLink, ShoppingCart, X, ArrowRightLeft, Search, Tag, Trash2, Star, Heart, Archive, Send, Link2, Unlink, ClipboardCopy, LogIn, LogOut, ChevronDown, ChevronLeft, ChevronRight, Loader2, Terminal, Download, Settings, RefreshCw, Merge, ArrowRight, History, RotateCcw, Ban, SlidersHorizontal } from 'lucide-vue-next';
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue';
 
 const shoppingStore = useShoppingStore();
