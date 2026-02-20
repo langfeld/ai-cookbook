@@ -14,7 +14,7 @@
         </h2>
         <p class="text-stone-500 text-sm">{{ recipesStore.totalRecipes }} Rezepte in deiner Sammlung</p>
       </div>
-      <div class="flex gap-2">
+      <div class="flex flex-wrap gap-2 w-full sm:w-auto">
         <!-- Sammlungen verwalten -->
         <button
           @click="showCollectionManager = true"
@@ -57,7 +57,7 @@
         <!-- Neues Rezept -->
         <router-link
           to="/recipes/new"
-          class="flex items-center gap-2 bg-primary-600 hover:bg-primary-700 px-4 py-2 rounded-lg font-medium text-white text-sm transition-colors"
+          class="flex justify-center items-center gap-2 bg-primary-600 hover:bg-primary-700 px-4 py-2 rounded-lg w-full sm:w-auto font-medium text-white text-sm transition-colors"
         >
           <Plus class="w-4 h-4" />
           Neues Rezept

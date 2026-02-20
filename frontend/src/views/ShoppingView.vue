@@ -121,11 +121,11 @@
           </button>
         </div>
         <!-- Aus Wochenplan erstellen (Split-Button) -->
-        <div class="relative flex items-stretch">
+        <div class="relative flex items-stretch w-full sm:w-auto">
           <button
             @click="generateList"
             :disabled="shoppingStore.loading"
-            class="flex items-center gap-2 bg-primary-600 hover:bg-primary-700 disabled:opacity-50 px-4 py-2 rounded-l-xl font-medium text-white text-sm transition-colors"
+            class="flex sm:flex-initial flex-1 justify-center items-center gap-2 bg-primary-600 hover:bg-primary-700 disabled:opacity-50 px-4 py-2 rounded-l-xl font-medium text-white text-sm transition-colors"
           >
             <ListPlus class="w-4 h-4" />
             Aus Wochenplan erstellen
@@ -185,7 +185,7 @@
           v-if="shoppingStore.activeList"
           @click="matchWithRewe"
           :disabled="reweLoading"
-          class="flex items-center gap-2 bg-rewe-500 hover:bg-rewe-600 disabled:opacity-50 px-4 py-2 rounded-xl font-medium text-white text-sm transition-colors"
+          class="flex justify-center items-center gap-2 bg-rewe-500 hover:bg-rewe-600 disabled:opacity-50 px-4 py-2 rounded-xl w-full sm:w-auto font-medium text-white text-sm transition-colors"
         >
           🏪 REWE-Zuordnung
         </button>
@@ -539,14 +539,14 @@
             Geschätzte Kosten: {{ formatPrice(estimatedTotal) }}
           </span>
         </div>
-        <div class="flex flex-wrap gap-2">
+        <div class="flex sm:flex-row flex-col sm:flex-wrap gap-2 w-full sm:w-auto">
           <!-- An Bring! senden -->
-          <div v-if="shoppingStore.bringStatus?.connected" class="flex items-stretch">
+          <div v-if="shoppingStore.bringStatus?.connected" class="flex items-stretch w-full sm:w-auto">
             <button
               v-if="shoppingStore.openItemsCount > 0"
               @click="sendToBring"
               :disabled="shoppingStore.bringSending"
-              class="flex items-center gap-2 bg-teal-600 hover:bg-teal-700 disabled:opacity-50 px-5 py-3 rounded-l-xl font-medium text-white transition-colors"
+              class="flex sm:flex-initial flex-1 justify-center items-center gap-2 bg-teal-600 hover:bg-teal-700 disabled:opacity-50 px-5 py-3 rounded-l-xl font-medium text-white transition-colors"
             >
               <Loader2 v-if="shoppingStore.bringSending" class="w-4 h-4 animate-spin" />
               <Send v-else class="w-4 h-4" />
@@ -564,18 +564,18 @@
           <button
             v-else
             @click="showBringModal = true"
-            class="flex items-center gap-2 bg-teal-600 hover:bg-teal-700 px-5 py-3 rounded-xl font-medium text-white transition-colors"
+            class="flex justify-center items-center gap-2 bg-teal-600 hover:bg-teal-700 px-5 py-3 rounded-xl w-full sm:w-auto font-medium text-white transition-colors"
           >
             <Link2 class="w-4 h-4" />
             Bring! verbinden
           </button>
 
           <!-- Bei REWE bestellen (Split-Button) -->
-          <div v-if="shoppingStore.reweLinkedItems.length" class="flex items-stretch">
+          <div v-if="shoppingStore.reweLinkedItems.length" class="flex items-stretch w-full sm:w-auto">
             <button
               @click="handleReweMainAction"
               :disabled="cartScriptLoading"
-              class="flex items-center gap-2 bg-rewe-500 hover:bg-rewe-600 disabled:opacity-50 px-5 py-3 rounded-l-xl font-medium text-white transition-colors"
+              class="flex sm:flex-initial flex-1 justify-center items-center gap-2 bg-rewe-500 hover:bg-rewe-600 disabled:opacity-50 px-5 py-3 rounded-l-xl font-medium text-white transition-colors"
             >
               <Loader2 v-if="cartScriptLoading" class="w-4 h-4 animate-spin" />
               <ShoppingCart v-else class="w-4 h-4" />
@@ -592,7 +592,7 @@
           <button
             @click="completePurchase"
             :disabled="checkedCount === 0"
-            class="flex items-center gap-2 disabled:opacity-50 px-6 py-3 rounded-xl font-medium text-white transition-colors bg-accent-600 hover:bg-accent-700"
+            class="flex justify-center items-center gap-2 disabled:opacity-50 px-6 py-3 rounded-xl w-full sm:w-auto font-medium text-white transition-colors bg-accent-600 hover:bg-accent-700"
           >
             <ShoppingBag class="w-4 h-4" />
             Einkauf abschließen

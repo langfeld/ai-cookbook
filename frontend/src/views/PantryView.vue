@@ -17,7 +17,7 @@
           {{ pantryStore.items.length }} Artikel vorrätig
         </p>
       </div>
-      <div class="flex flex-wrap items-stretch gap-2">
+      <div class="flex flex-wrap items-stretch gap-2 w-full sm:w-auto">
         <!-- Auswahl-Modus -->
         <button
           @click="toggleSelectMode"
@@ -36,7 +36,7 @@
         <!-- Link zu Meine Daten -->
         <router-link
           to="/my-data"
-          class="flex items-center gap-2 bg-white hover:bg-stone-50 dark:bg-stone-800 dark:hover:bg-stone-700 px-4 py-2 border border-stone-200 dark:border-stone-700 rounded-xl font-medium text-stone-700 dark:text-stone-300 text-sm transition-colors"
+          class="flex sm:flex-initial flex-1 justify-center items-center gap-2 bg-white hover:bg-stone-50 dark:bg-stone-800 dark:hover:bg-stone-700 px-4 py-2 border border-stone-200 dark:border-stone-700 rounded-xl font-medium text-stone-700 dark:text-stone-300 text-sm transition-colors"
         >
           <Download class="w-4 h-4" />
           Export/Import
@@ -44,7 +44,7 @@
 
         <button
           @click="showAddModal = true"
-          class="flex items-center gap-2 bg-primary-600 hover:bg-primary-700 px-4 py-2 rounded-xl font-medium text-white text-sm transition-colors"
+          class="flex justify-center items-center gap-2 bg-primary-600 hover:bg-primary-700 px-4 py-2 rounded-xl w-full sm:w-auto font-medium text-white text-sm transition-colors"
         >
           <Plus class="w-4 h-4" />
           Vorrat hinzufügen
