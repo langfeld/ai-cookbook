@@ -60,8 +60,11 @@ Antworte im folgenden JSON-Format:
 }
 
 Wichtig:
-- Alle Mengenangaben als Zahlen (nicht als Brüche)
-- Einheiten standardisiert: g, kg, ml, l, TL, EL, Stk, Bund, Prise, Dose
+- Alle Mengenangaben als Zahlen (nicht als Brüche wie ½)
+- NUR diese Einheiten verwenden: g, kg, ml, l, TL, EL, Stk, Bund, Dose, Becher, Pkg, Prise, Scheibe, Zehe
+- "Stk" für alle zählbaren Einzelstücke (Kopf, Knolle, Stange, Zweig, Blatt, Rispe etc.)
+- "Pkg" für Packung/Päckchen
+- Bei ungewöhnlichen Einheiten (z.B. "1 Handvoll", "1 Messerspitze") in TL/EL/g umrechnen
 - Kochschritte klar unterteilt mit sinnvollen Titeln
 - In den Kochschritten die Zutaten im Text erwähnen
 - Schwierigkeitsgrad realistisch einschätzen
@@ -121,6 +124,11 @@ Antworte im folgenden JSON-Format:
 }
 
 Wichtig:
+- Alle Mengenangaben als Zahlen (nicht als Brüche wie ½)
+- NUR diese Einheiten verwenden: g, kg, ml, l, TL, EL, Stk, Bund, Dose, Becher, Pkg, Prise, Scheibe, Zehe
+- "Stk" für alle zählbaren Einzelstücke (Kopf, Knolle, Stange, Zweig, Blatt, Rispe etc.)
+- "Pkg" für Packung/Päckchen
+- Bei ungewöhnlichen Einheiten (z.B. "1 Handvoll", "1 Messerspitze") in TL/EL/g umrechnen
 - Fehlende Informationen sinnvoll ergänzen
 - Realistische Mengenangaben und Zeiten
 - Kochschritte klar und nachvollziehbar
@@ -245,7 +253,10 @@ Antworte im folgenden JSON-Format:
 
 Wichtig:
 - Alle Mengenangaben als Zahlen (nicht als Brüche wie ½)
-- Einheiten standardisiert: g, kg, ml, l, TL, EL, Stk, Bund, Prise, Dose
+- NUR diese Einheiten verwenden: g, kg, ml, l, TL, EL, Stk, Bund, Dose, Becher, Pkg, Prise, Scheibe, Zehe
+- "Stk" für alle zählbaren Einzelstücke (Kopf, Knolle, Stange, Zweig, Blatt, Rispe etc.)
+- "Pkg" für Packung/Päckchen
+- Bei ungewöhnlichen Einheiten (z.B. "1 Handvoll", "1 Messerspitze") in TL/EL/g umrechnen
 - Kochschritte klar unterteilt mit sinnvollen Titeln
 - In den Kochschritten die Zutaten im Text erwähnen
 - Falls die Seite kein erkennbares Rezept enthält, erstelle ein Rezept basierend auf dem Titel oder Thema der Seite
