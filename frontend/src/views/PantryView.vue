@@ -260,7 +260,15 @@
                 >
                   <!-- Status-Icon -->
                   <div class="shrink-0">
-                    <CheckCircle2 v-if="ing.is_covered || ing.is_permanent" class="w-4.5 h-4.5 text-green-500" />
+                    <CheckCircle2
+                      v-if="(ing.is_covered && !ing.unit_mismatch) || ing.is_permanent"
+                      class="w-4.5 h-4.5 text-green-500"
+                    />
+                    <CheckCircle2
+                      v-else-if="ing.unit_mismatch"
+                      class="w-4.5 h-4.5 text-blue-400"
+                      :title="`Im Vorrat: ${ing.pantry_amount} ${ing.pantry_unit} (andere Einheit)`"
+                    />
                     <button
                       v-else-if="ing.is_partial"
                       @click.stop="addToShoppingList(ing)"

@@ -244,6 +244,7 @@ export default async function pantryRoutes(fastify) {
         let covered = 0;
         let pantryId = null;
         let compatible = false;
+        let unitMismatch = false;
 
         if (pool) {
           // Einheitenkompatibilität prüfen
@@ -256,6 +257,11 @@ export default async function pantryRoutes(fastify) {
             if (!pool.is_permanent) {
               pool.remaining = Math.max(0, pool.remaining - neededAmount);
             }
+          } else {
+            // Vorrat vorhanden, aber Einheiten inkompatibel (z.B. g vs Stk)
+            // → als "vorhanden (andere Einheit)" markieren statt "fehlend"
+            unitMismatch = true;
+            pantryId = pool.pantry_id;
           }
         }
 
@@ -267,10 +273,13 @@ export default async function pantryRoutes(fastify) {
           needed_base_unit: neededUnit,
           covered_base_amount: covered,
           pantry_id: pantryId,
-          is_covered: compatible && covered >= neededAmount,
+          is_covered: (compatible && covered >= neededAmount) || unitMismatch,
           is_partial: compatible && covered > 0 && covered < neededAmount,
-          is_missing: !compatible || covered === 0,
+          is_missing: !compatible && !unitMismatch || (compatible && covered === 0),
           is_permanent: pool?.is_permanent || false,
+          unit_mismatch: unitMismatch,
+          pantry_amount: unitMismatch ? pool?.original_amount : undefined,
+          pantry_unit: unitMismatch ? pool?.original_unit : undefined,
         });
       }
 
