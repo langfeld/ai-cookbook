@@ -182,10 +182,24 @@ export default async function pantryRoutes(fastify) {
       ingredientsByRecipe[ing.recipe_id].push(ing);
     }
 
+    // 5b. Alias-Tabelle laden: alias_name → canonical_name
+    const aliasRows = db.prepare(
+      'SELECT alias_name, canonical_name FROM ingredient_aliases WHERE user_id = ?'
+    ).all(userId);
+    const aliasMap = new Map();
+    for (const row of aliasRows) {
+      aliasMap.set(row.alias_name.toLowerCase(), row.canonical_name.toLowerCase());
+    }
+
+    /** Zutatname über Alias-Map auflösen */
+    function resolveAlias(name) {
+      return aliasMap.get(name.toLowerCase()) || name.toLowerCase();
+    }
+
     // 6. Verfügbaren Vorrat als Pool aufbauen (case-insensitive key → { pantry_id, amount, unit, ... })
     const pantryPool = {};
     for (const item of pantryItems) {
-      const key = item.ingredient_name.toLowerCase();
+      const key = resolveAlias(item.ingredient_name);
       // In Basiseinheit konvertieren für den Pool
       const base = convertToBaseUnit(item.amount, item.unit);
       pantryPool[key] = {
@@ -223,8 +237,8 @@ export default async function pantryRoutes(fastify) {
         const neededAmount = base.amount;
         const neededUnit = base.unit;
 
-        // Pantry-Match suchen
-        const key = ing.name.toLowerCase();
+        // Pantry-Match suchen (mit Alias-Auflösung)
+        const key = resolveAlias(ing.name);
         const pool = pantryPool[key];
 
         let covered = 0;
@@ -277,7 +291,7 @@ export default async function pantryRoutes(fastify) {
     // 8. Unassigned: Pantry-Items mit Restmengen
     const unassigned = [];
     for (const item of pantryItems) {
-      const key = item.ingredient_name.toLowerCase();
+      const key = resolveAlias(item.ingredient_name);
       const pool = pantryPool[key];
       if (!pool) continue;
 
