@@ -14,6 +14,11 @@ export const usePantryStore = defineStore('pantry', () => {
   const expiringCount = ref(0);
   const loading = ref(false);
 
+  // Rezept-Ansicht
+  const recipeViewData = ref(null);
+  const recipeViewLoading = ref(false);
+  const selectedWeekStart = ref(null);
+
   const api = useApi();
 
   // Items nach Kategorie gruppiert
@@ -87,8 +92,29 @@ export const usePantryStore = defineStore('pantry', () => {
     return data;
   }
 
+  /** Rezept-Ansicht laden (gruppiert nach Wochenplan-Rezepten) */
+  async function fetchRecipeView(weekStart = null) {
+    recipeViewLoading.value = true;
+    try {
+      const params = new URLSearchParams();
+      if (weekStart) params.set('weekStart', weekStart);
+      const data = await api.get(`/pantry/recipe-view?${params}`);
+      recipeViewData.value = data;
+      selectedWeekStart.value = data.weekStart;
+      return data;
+    } finally {
+      recipeViewLoading.value = false;
+    }
+  }
+
+  // Computed: Rezept-Gruppen
+  const recipeGroups = computed(() => recipeViewData.value?.recipes || []);
+  const unassignedItems = computed(() => recipeViewData.value?.unassigned || []);
+  const availableWeeks = computed(() => recipeViewData.value?.availableWeeks || []);
+
   return {
     items, categories, expiringCount, loading, groupedItems,
-    fetchItems, addItem, updateItem, useAmount, removeItem, deleteItemsBatch, importItems,
+    recipeViewData, recipeViewLoading, selectedWeekStart, recipeGroups, unassignedItems, availableWeeks,
+    fetchItems, addItem, updateItem, useAmount, removeItem, deleteItemsBatch, importItems, fetchRecipeView,
   };
 });

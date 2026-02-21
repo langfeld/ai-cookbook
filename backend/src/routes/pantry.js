@@ -7,6 +7,7 @@
  */
 
 import db from '../config/database.js';
+import { getWeekStart, scaleIngredient, convertToBaseUnit, normalizeUnit, unitsCompatible } from '../utils/helpers.js';
 
 /**
  * CSV- oder JSON-Import-Daten parsen
@@ -82,8 +83,225 @@ function parseCsvLine(line, delimiter = ';') {
   return result;
 }
 
+/**
+ * Meal-Type Sortierungswert (chronologische Reihenfolge)
+ */
+const MEAL_TYPE_ORDER = { fruehstueck: 0, mittag: 1, abendessen: 2, snack: 3 };
+
+/**
+ * Wochentag-Label (Montag = 0)
+ */
+const DAY_LABELS = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag'];
+
+/**
+ * Meal-Type Label
+ */
+const MEAL_TYPE_LABELS = { fruehstueck: 'Frühstück', mittag: 'Mittagessen', abendessen: 'Abendessen', snack: 'Snack' };
+
 export default async function pantryRoutes(fastify) {
   fastify.addHook('onRequest', fastify.authenticate);
+
+  /**
+   * GET /api/pantry/recipe-view
+   * Vorräte nach Rezepten (aktiver Wochenplan) gruppiert
+   */
+  fastify.get('/recipe-view', {
+    schema: {
+      description: 'Vorräte nach Rezepten des Wochenplans gruppiert',
+      tags: ['Vorratsschrank'],
+      security: [{ bearerAuth: [] }],
+      querystring: {
+        type: 'object',
+        properties: {
+          weekStart: { type: 'string', description: 'Montag der gewünschten Woche (YYYY-MM-DD)' },
+        },
+      },
+    },
+  }, async (request) => {
+    const userId = request.user.id;
+    const weekStart = request.query.weekStart || getWeekStart();
+
+    // 1. Wochenplan laden
+    const plan = db.prepare(
+      'SELECT id FROM meal_plans WHERE user_id = ? AND week_start = ?'
+    ).get(userId, weekStart);
+
+    // 2. Alle Pantry-Items laden
+    const pantryItems = db.prepare(
+      'SELECT * FROM pantry WHERE user_id = ? AND (amount > 0 OR is_permanent = 1) ORDER BY category, ingredient_name'
+    ).all(userId);
+
+    // 3. Verfügbare Wochen mit Rezepten laden
+    const availableWeeks = db.prepare(`
+      SELECT mp.week_start,
+             COUNT(mpe.id) as meal_count,
+             mp.is_locked
+      FROM meal_plans mp
+      JOIN meal_plan_entries mpe ON mpe.meal_plan_id = mp.id
+      WHERE mp.user_id = ?
+      GROUP BY mp.id
+      HAVING meal_count > 0
+      ORDER BY mp.week_start DESC
+      LIMIT 20
+    `).all(userId);
+
+    // Kein Plan → nur unassigned zurückgeben
+    if (!plan) {
+      return {
+        recipes: [],
+        unassigned: pantryItems.map(item => ({ ...item, remaining_amount: item.amount })),
+        weekStart,
+        availableWeeks,
+      };
+    }
+
+    // 4. Ungekochte Einträge laden (mit Rezept-Infos)
+    const entries = db.prepare(`
+      SELECT mpe.id as entry_id, mpe.recipe_id, mpe.day_of_week, mpe.meal_type, mpe.servings as planned_servings,
+             r.title as recipe_title, r.image_url as recipe_image_url, r.servings as original_servings
+      FROM meal_plan_entries mpe
+      JOIN recipes r ON r.id = mpe.recipe_id
+      WHERE mpe.meal_plan_id = ? AND mpe.is_cooked = 0
+      ORDER BY mpe.day_of_week, mpe.meal_type
+    `).all(plan.id);
+
+    // 5. Zutaten für alle Rezepte laden
+    const recipeIds = [...new Set(entries.map(e => e.recipe_id))];
+    let allIngredients = [];
+    if (recipeIds.length) {
+      const placeholders = recipeIds.map(() => '?').join(',');
+      allIngredients = db.prepare(
+        `SELECT * FROM ingredients WHERE recipe_id IN (${placeholders}) AND is_optional = 0 ORDER BY recipe_id, sort_order`
+      ).all(...recipeIds);
+    }
+
+    // Index: recipe_id → ingredients[]
+    const ingredientsByRecipe = {};
+    for (const ing of allIngredients) {
+      if (!ingredientsByRecipe[ing.recipe_id]) ingredientsByRecipe[ing.recipe_id] = [];
+      ingredientsByRecipe[ing.recipe_id].push(ing);
+    }
+
+    // 6. Verfügbaren Vorrat als Pool aufbauen (case-insensitive key → { pantry_id, amount, unit, ... })
+    const pantryPool = {};
+    for (const item of pantryItems) {
+      const key = item.ingredient_name.toLowerCase();
+      // In Basiseinheit konvertieren für den Pool
+      const base = convertToBaseUnit(item.amount, item.unit);
+      pantryPool[key] = {
+        pantry_id: item.id,
+        original_amount: item.amount,
+        original_unit: item.unit,
+        base_amount: item.is_permanent ? Infinity : base.amount,
+        base_unit: base.unit,
+        remaining: item.is_permanent ? Infinity : base.amount,
+        is_permanent: item.is_permanent,
+        category: item.category,
+        expiry_date: item.expiry_date,
+        notes: item.notes,
+        ingredient_name: item.ingredient_name,
+      };
+    }
+
+    // 7. Entries chronologisch durchlaufen, Zutaten allozieren
+    const sortedEntries = entries.sort((a, b) => {
+      if (a.day_of_week !== b.day_of_week) return a.day_of_week - b.day_of_week;
+      return (MEAL_TYPE_ORDER[a.meal_type] ?? 99) - (MEAL_TYPE_ORDER[b.meal_type] ?? 99);
+    });
+
+    const recipeResults = [];
+
+    for (const entry of sortedEntries) {
+      const recipeIngredients = ingredientsByRecipe[entry.recipe_id] || [];
+      const ingredientResults = [];
+
+      for (const ing of recipeIngredients) {
+        // Skalieren
+        const scaledAmount = scaleIngredient(ing.amount, entry.original_servings, entry.planned_servings);
+        // In Basiseinheit
+        const base = convertToBaseUnit(scaledAmount || 0, ing.unit);
+        const neededAmount = base.amount;
+        const neededUnit = base.unit;
+
+        // Pantry-Match suchen
+        const key = ing.name.toLowerCase();
+        const pool = pantryPool[key];
+
+        let covered = 0;
+        let pantryId = null;
+        let compatible = false;
+
+        if (pool) {
+          // Einheitenkompatibilität prüfen
+          const compat = unitsCompatible(neededUnit, pool.base_unit);
+          if (compat.compatible) {
+            compatible = true;
+            pantryId = pool.pantry_id;
+            const available = pool.remaining;
+            covered = Math.min(neededAmount, available);
+            if (!pool.is_permanent) {
+              pool.remaining = Math.max(0, pool.remaining - neededAmount);
+            }
+          }
+        }
+
+        ingredientResults.push({
+          name: ing.name,
+          needed_amount: scaledAmount || 0,
+          needed_unit: ing.unit || '',
+          needed_base_amount: neededAmount,
+          needed_base_unit: neededUnit,
+          covered_base_amount: covered,
+          pantry_id: pantryId,
+          is_covered: compatible && covered >= neededAmount,
+          is_partial: compatible && covered > 0 && covered < neededAmount,
+          is_missing: !compatible || covered === 0,
+          is_permanent: pool?.is_permanent || false,
+        });
+      }
+
+      recipeResults.push({
+        entry_id: entry.entry_id,
+        recipe_id: entry.recipe_id,
+        recipe_title: entry.recipe_title,
+        recipe_image_url: entry.recipe_image_url,
+        day_of_week: entry.day_of_week,
+        day_label: DAY_LABELS[entry.day_of_week] || `Tag ${entry.day_of_week}`,
+        meal_type: entry.meal_type,
+        meal_type_label: MEAL_TYPE_LABELS[entry.meal_type] || entry.meal_type,
+        servings: entry.planned_servings,
+        ingredients: ingredientResults,
+      });
+    }
+
+    // 8. Unassigned: Pantry-Items mit Restmengen
+    const unassigned = [];
+    for (const item of pantryItems) {
+      const key = item.ingredient_name.toLowerCase();
+      const pool = pantryPool[key];
+      if (!pool) continue;
+
+      if (pool.is_permanent) {
+        // Permanente Items immer als "unassigned" mit der Original-Menge zeigen
+        unassigned.push({ ...item, remaining_amount: item.amount });
+      } else if (pool.remaining > 0) {
+        // Zurückrechnen von Basiseinheit → Originaleinheit
+        const origBase = convertToBaseUnit(item.amount, item.unit);
+        const ratio = origBase.amount > 0 ? pool.remaining / origBase.amount : 0;
+        const remainingInOriginal = Math.round(item.amount * ratio * 100) / 100;
+        if (remainingInOriginal > 0) {
+          unassigned.push({ ...item, remaining_amount: remainingInOriginal });
+        }
+      }
+    }
+
+    return {
+      recipes: recipeResults,
+      unassigned,
+      weekStart,
+      availableWeeks,
+    };
+  });
 
   /**
    * GET /api/pantry
