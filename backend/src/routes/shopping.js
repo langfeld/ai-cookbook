@@ -8,7 +8,7 @@
 import db from '../config/database.js';
 import { generateShoppingList, saveShoppingList, processPurchase } from '../services/shopping-list.js';
 import { buildReweProductUrl, calculatePackagesNeeded, parsePackageSize } from '../services/rewe-api.js';
-import { convertToBaseUnit, getUnitType, unitsCompatible } from '../utils/helpers.js';
+import { convertToBaseUnit, getUnitType, normalizeUnit, unitsCompatible } from '../utils/helpers.js';
 
 export default async function shoppingRoutes(fastify) {
   fastify.addHook('onRequest', fastify.authenticate);
@@ -500,7 +500,7 @@ export default async function shoppingRoutes(fastify) {
 
     const ingredientName = item.ingredient_name.trim();
     let amount = item.amount || 1;
-    let unit = item.unit || 'Stk.';
+    let unit = item.unit || 'Stk';
 
     // Wenn REWE-Produkt zugeordnet: tatsächlich gekaufte Menge berechnen
     if (item.rewe_package_size) {
@@ -523,6 +523,7 @@ export default async function shoppingRoutes(fastify) {
         amount = totalPurchased;
         unit = purchasedUnit;
       }
+      unit = normalizeUnit(unit);
     }
 
     // Prüfen ob Zutat schon im Vorratsschrank existiert

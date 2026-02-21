@@ -328,6 +328,7 @@ export function processPurchase(userId, listId, purchasedItems) {
           unit = purchasedUnit;
         }
       }
+      unit = normalizeUnit(unit);
 
       if (amount > 0) {
         const ingredientName = item.ingredient_name || item.name;
