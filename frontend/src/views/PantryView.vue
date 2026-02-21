@@ -260,8 +260,9 @@
                 >
                   <!-- Status-Icon -->
                   <div class="shrink-0">
+                    <Minus v-if="ing.is_blocked" class="w-4.5 h-4.5 text-stone-300 dark:text-stone-600" title="Gesperrte Zutat (wird nicht eingekauft)" />
                     <CheckCircle2
-                      v-if="(ing.is_covered && !ing.unit_mismatch) || ing.is_permanent"
+                      v-else-if="(ing.is_covered && !ing.unit_mismatch) || ing.is_permanent"
                       class="w-4.5 h-4.5 text-green-500"
                     />
                     <CheckCircle2
@@ -292,7 +293,7 @@
                   </div>
                   <!-- Name -->
                   <div class="flex-1 min-w-0">
-                    <span class="text-stone-700 dark:text-stone-300 text-sm">{{ ing.name }}</span>
+                    <span :class="['text-sm', ing.is_blocked ? 'line-through text-stone-400 dark:text-stone-600' : 'text-stone-700 dark:text-stone-300']">{{ ing.name }}</span>
                     <span
                       v-if="ing.is_permanent"
                       class="ml-1 text-[10px] text-blue-400"
@@ -300,7 +301,7 @@
                     >∞</span>
                   </div>
                   <!-- Menge -->
-                  <span class="tabular-nums text-stone-500 dark:text-stone-400 text-xs sm:text-sm shrink-0">
+                  <span :class="['tabular-nums text-xs sm:text-sm shrink-0', ing.is_blocked ? 'line-through text-stone-300 dark:text-stone-600' : 'text-stone-500 dark:text-stone-400']">
                     {{ formatIngAmount(ing.needed_amount) }} {{ ing.needed_unit }}
                   </span>
                 </div>
@@ -406,7 +407,7 @@
     </template>
 
     <!-- Leerer Zustand (Kategorie-Ansicht) -->
-    <div v-else-if="viewMode === 'category' && !pantryStore.loading" class="py-16 text-center">
+    <div v-if="viewMode === 'category' && !pantryStore.loading && (!filteredGrouped || !Object.keys(filteredGrouped).length)" class="py-16 text-center">
       <div class="mb-4 text-6xl">🗄️</div>
       <h2 class="mb-2 font-semibold text-stone-700 dark:text-stone-300 text-xl">Vorratsschrank ist leer</h2>
       <p class="mx-auto max-w-md text-stone-500 dark:text-stone-400">
@@ -669,7 +670,7 @@ function formatWeekRange(weekStartStr) {
 
 // ─── Deckungsstatus ───
 function recipeCoverageClass(recipe) {
-  const ings = recipe.ingredients;
+  const ings = recipe.ingredients.filter(i => !i.is_blocked);
   if (!ings.length) return 'bg-stone-100 dark:bg-stone-800 text-stone-500';
   const allCovered = ings.every(i => i.is_covered || i.is_permanent);
   const someMissing = ings.some(i => i.is_missing && !i.is_permanent);
@@ -679,7 +680,7 @@ function recipeCoverageClass(recipe) {
 }
 
 function recipeCoverageLabel(recipe) {
-  const ings = recipe.ingredients;
+  const ings = recipe.ingredients.filter(i => !i.is_blocked);
   if (!ings.length) return 'Keine Zutaten';
   const covered = ings.filter(i => i.is_covered || i.is_permanent).length;
   return `${covered}/${ings.length}`;

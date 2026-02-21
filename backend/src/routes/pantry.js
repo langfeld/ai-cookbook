@@ -196,6 +196,18 @@ export default async function pantryRoutes(fastify) {
       return aliasMap.get(name.toLowerCase()) || name.toLowerCase();
     }
 
+    // 5c. Gesperrte Zutaten laden
+    const blockedRows = db.prepare(
+      'SELECT ingredient_name FROM blocked_ingredients WHERE user_id = ?'
+    ).all(userId);
+    const blockedSet = new Set(blockedRows.map(r => r.ingredient_name.toLowerCase()));
+
+    /** Prüft ob eine Zutat (oder ihr Alias) gesperrt ist */
+    function isBlocked(name) {
+      const resolved = resolveAlias(name);
+      return blockedSet.has(name.toLowerCase()) || blockedSet.has(resolved);
+    }
+
     // 6. Verfügbaren Vorrat als Pool aufbauen (case-insensitive key → { pantry_id, amount, unit, ... })
     const pantryPool = {};
     for (const item of pantryItems) {
@@ -230,6 +242,22 @@ export default async function pantryRoutes(fastify) {
       const ingredientResults = [];
 
       for (const ing of recipeIngredients) {
+        // Gesperrte Zutat?
+        if (isBlocked(ing.name)) {
+          ingredientResults.push({
+            name: ing.name,
+            needed_amount: scaleIngredient(ing.amount, entry.original_servings, entry.planned_servings) || 0,
+            needed_unit: ing.unit || '',
+            is_blocked: true,
+            is_covered: false,
+            is_partial: false,
+            is_missing: false,
+            is_permanent: false,
+            unit_mismatch: false,
+          });
+          continue;
+        }
+
         // Skalieren
         const scaledAmount = scaleIngredient(ing.amount, entry.original_servings, entry.planned_servings);
         // In Basiseinheit
