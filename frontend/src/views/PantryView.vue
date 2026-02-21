@@ -18,21 +18,15 @@
         </p>
       </div>
       <div class="flex flex-wrap items-stretch gap-2 w-full sm:w-auto">
-        <!-- Ansicht-Toggle: Kategorie / Rezept -->
-        <button
-          @click="toggleViewMode"
-          :title="viewMode === 'category' ? 'Rezept-Ansicht' : 'Kategorie-Ansicht'"
-          :class="[
-            'flex items-center gap-2 px-3 py-2 rounded-xl border text-sm font-medium transition-colors',
-            viewMode === 'recipe'
-              ? 'bg-primary-50 dark:bg-primary-900/20 border-primary-300 dark:border-primary-700 text-primary-700 dark:text-primary-300'
-              : 'bg-white dark:bg-stone-800 border-stone-200 dark:border-stone-700 text-stone-700 dark:text-stone-300 hover:bg-stone-50 dark:hover:bg-stone-700'
-          ]"
-        >
-          <UtensilsCrossed v-if="viewMode === 'recipe'" class="w-4 h-4" />
-          <LayoutGrid v-else class="w-4 h-4" />
-          <span class="hidden sm:inline">{{ viewMode === 'recipe' ? 'Rezept-Ansicht' : 'Kategorie-Ansicht' }}</span>
-        </button>
+        <!-- Ansicht-Toggle: Segmented Control -->
+        <div class="flex bg-stone-100 dark:bg-stone-800 rounded-lg overflow-hidden">
+          <button @click="setViewMode('category')" :class="viewToggleClass('category')">
+            <LayoutGrid class="w-4 h-4" /> <span class="hidden sm:inline">Kategorie</span>
+          </button>
+          <button @click="setViewMode('recipe')" :class="viewToggleClass('recipe')">
+            <UtensilsCrossed class="w-4 h-4" /> <span class="hidden sm:inline">Rezept</span>
+          </button>
+        </div>
         <!-- Auswahl-Modus -->
         <button
           @click="toggleSelectMode"
@@ -170,11 +164,11 @@
     <!-- ═══════════════════════════════════════════ -->
     <template v-if="viewMode === 'recipe'">
       <!-- Wochen-Selektor -->
-      <div class="flex items-center gap-2 flex-wrap">
+      <div class="flex flex-wrap items-center gap-2">
         <button
           @click="changeRecipeWeek(-1)"
           :disabled="!prevWeek"
-          class="p-2 rounded-lg border border-stone-200 dark:border-stone-700 hover:bg-stone-50 dark:hover:bg-stone-800 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+          class="hover:bg-stone-50 dark:hover:bg-stone-800 disabled:opacity-30 p-2 border border-stone-200 dark:border-stone-700 rounded-lg transition-colors disabled:cursor-not-allowed"
           title="Vorherige Woche"
         >
           <ChevronLeft class="w-4 h-4 text-stone-600 dark:text-stone-400" />
@@ -182,7 +176,7 @@
         <select
           v-model="pantryStore.selectedWeekStart"
           @change="pantryStore.fetchRecipeView(pantryStore.selectedWeekStart)"
-          class="bg-white dark:bg-stone-800 px-3 py-2 border border-stone-200 dark:border-stone-700 rounded-lg text-sm text-stone-700 dark:text-stone-300 focus:outline-none focus:ring-2 focus:ring-primary-500/30"
+          class="bg-white dark:bg-stone-800 px-3 py-2 border border-stone-200 dark:border-stone-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500/30 text-stone-700 dark:text-stone-300 text-sm"
         >
           <option
             v-for="week in pantryStore.availableWeeks"
@@ -198,7 +192,7 @@
         <button
           @click="changeRecipeWeek(1)"
           :disabled="!nextWeek"
-          class="p-2 rounded-lg border border-stone-200 dark:border-stone-700 hover:bg-stone-50 dark:hover:bg-stone-800 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+          class="hover:bg-stone-50 dark:hover:bg-stone-800 disabled:opacity-30 p-2 border border-stone-200 dark:border-stone-700 rounded-lg transition-colors disabled:cursor-not-allowed"
           title="Nächste Woche"
         >
           <ChevronRight class="w-4 h-4 text-stone-600 dark:text-stone-400" />
@@ -207,71 +201,75 @@
 
       <!-- Loading -->
       <div v-if="pantryStore.recipeViewLoading" class="py-12 text-center">
-        <div class="inline-block w-8 h-8 border-4 border-primary-200 border-t-primary-600 rounded-full animate-spin"></div>
+        <div class="inline-block border-4 border-primary-200 border-t-primary-600 rounded-full w-8 h-8 animate-spin"></div>
         <p class="mt-3 text-stone-500 text-sm">Rezept-Ansicht wird geladen...</p>
       </div>
 
       <!-- Rezept-Gruppen -->
-      <div v-else-if="filteredRecipeGroups.length || filteredUnassigned.length" class="space-y-6">
+      <div v-else-if="filteredRecipeGroups.length || filteredUnassigned.length" class="space-y-4">
         <!-- Pro Rezept -->
         <div
           v-for="recipe in filteredRecipeGroups"
           :key="recipe.entry_id"
-          class="bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-800 rounded-xl overflow-hidden"
+          class="bg-white dark:bg-stone-900 shadow-sm border border-stone-200 dark:border-stone-800 rounded-2xl overflow-hidden"
         >
           <!-- Rezept-Header -->
           <button
             @click="toggleRecipeExpanded(recipe.entry_id)"
-            class="w-full flex items-center gap-3 p-4 hover:bg-stone-50 dark:hover:bg-stone-800/50 transition-colors text-left"
+            class="flex items-center gap-4 hover:bg-stone-50 dark:hover:bg-stone-800/50 px-4 sm:px-5 py-4 w-full text-left transition-colors"
           >
             <img
               v-if="recipe.recipe_image_url"
               :src="recipe.recipe_image_url"
               :alt="recipe.recipe_title"
-              class="w-10 h-10 rounded-lg object-cover shrink-0"
+              class="rounded-xl w-12 sm:w-14 h-12 sm:h-14 object-cover shrink-0"
             />
-            <div v-else class="w-10 h-10 rounded-lg bg-stone-100 dark:bg-stone-800 flex items-center justify-center shrink-0">
-              <UtensilsCrossed class="w-5 h-5 text-stone-400" />
+            <div v-else class="flex justify-center items-center bg-stone-100 dark:bg-stone-800 rounded-xl w-12 sm:w-14 h-12 sm:h-14 shrink-0">
+              <UtensilsCrossed class="w-6 h-6 text-stone-400" />
             </div>
             <div class="flex-1 min-w-0">
-              <h3 class="font-semibold text-stone-800 dark:text-stone-200 text-sm truncate">{{ recipe.recipe_title }}</h3>
-              <p class="text-stone-500 dark:text-stone-400 text-xs">
+              <h3 class="font-semibold text-stone-800 dark:text-stone-200 text-sm sm:text-base truncate">{{ recipe.recipe_title }}</h3>
+              <p class="mt-0.5 text-stone-500 dark:text-stone-400 text-xs sm:text-sm">
                 {{ recipe.day_label }} – {{ recipe.meal_type_label }} · {{ recipe.servings }} Portionen
               </p>
             </div>
             <!-- Deckungsstatus -->
-            <div class="flex items-center gap-2 shrink-0">
+            <div class="flex items-center gap-2.5 shrink-0">
               <span :class="[
-                'text-xs font-medium px-2 py-0.5 rounded-full',
+                'text-xs sm:text-sm font-semibold px-2.5 py-1 rounded-full tabular-nums',
                 recipeCoverageClass(recipe)
               ]">
                 {{ recipeCoverageLabel(recipe) }}
               </span>
-              <ChevronDown :class="['w-4 h-4 text-stone-400 transition-transform', expandedRecipes.has(recipe.entry_id) ? 'rotate-180' : '']" />
+              <ChevronDown :class="['w-5 h-5 text-stone-400 transition-transform duration-200', expandedRecipes.has(recipe.entry_id) ? 'rotate-180' : '']" />
             </div>
           </button>
 
           <!-- Zutaten-Liste (aufklappbar) -->
           <Transition name="expand">
-            <div v-if="expandedRecipes.has(recipe.entry_id)" class="border-t border-stone-100 dark:border-stone-800">
-              <div class="divide-y divide-stone-100 dark:divide-stone-800">
+            <div v-if="expandedRecipes.has(recipe.entry_id)" class="border-stone-100 dark:border-stone-800 border-t">
+              <div class="grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 divide-stone-100 dark:divide-stone-800">
                 <div
-                  v-for="ing in recipe.ingredients"
+                  v-for="(ing, idx) in recipe.ingredients"
                   :key="ing.name"
-                  class="flex items-center gap-3 px-4 py-2.5"
+                  class="flex items-center gap-3 px-4 sm:px-5 py-3"
+                  :class="{
+                    'md:border-r md:border-stone-100 md:dark:border-stone-800': idx % 2 === 0 && idx < recipe.ingredients.length - 1,
+                    'md:border-t md:border-stone-100 md:dark:border-stone-800': idx >= 2,
+                  }"
                 >
                   <!-- Status-Icon -->
                   <div class="shrink-0">
-                    <CheckCircle2 v-if="ing.is_covered || ing.is_permanent" class="w-4 h-4 text-green-500" />
-                    <AlertCircle v-else-if="ing.is_partial" class="w-4 h-4 text-amber-500" />
-                    <XCircle v-else class="w-4 h-4 text-red-400" />
+                    <CheckCircle2 v-if="ing.is_covered || ing.is_permanent" class="w-4.5 h-4.5 text-green-500" />
+                    <AlertCircle v-else-if="ing.is_partial" class="w-4.5 h-4.5 text-amber-500" />
+                    <XCircle v-else class="w-4.5 h-4.5 text-red-400" />
                   </div>
                   <!-- Name & Menge -->
                   <div class="flex-1 min-w-0">
-                    <span class="text-sm text-stone-700 dark:text-stone-300">{{ ing.name }}</span>
+                    <span class="text-stone-700 dark:text-stone-300 text-sm">{{ ing.name }}</span>
                   </div>
                   <div class="text-right shrink-0">
-                    <span class="text-xs text-stone-500 dark:text-stone-400">
+                    <span class="tabular-nums text-stone-500 dark:text-stone-400 text-xs sm:text-sm">
                       {{ formatIngAmount(ing.needed_amount) }} {{ ing.needed_unit }}
                     </span>
                     <span
@@ -287,17 +285,36 @@
         </div>
 
         <!-- Vorräte ohne Rezept -->
-        <div v-if="filteredUnassigned.length" class="mt-8">
-          <h3 class="flex items-center gap-2 mb-3 font-semibold text-stone-500 dark:text-stone-400 text-sm">
+        <div v-if="filteredUnassigned.length" class="mt-6 pt-6 border-stone-200 dark:border-stone-800 border-t">
+          <h3 class="flex items-center gap-2 mb-4 font-semibold text-stone-600 dark:text-stone-400 text-sm">
             📦 Vorräte ohne Rezept
-            <span class="font-normal text-xs">({{ filteredUnassigned.length }})</span>
+            <span class="bg-stone-100 dark:bg-stone-800 px-2 py-0.5 rounded-full font-normal text-stone-500 text-xs">{{ filteredUnassigned.length }}</span>
           </h3>
-          <div class="gap-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+          <div class="gap-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
             <div
               v-for="item in filteredUnassigned"
               :key="item.id"
-              class="relative bg-white dark:bg-stone-900 p-4 border border-stone-200 dark:border-stone-800 rounded-xl hover:border-primary-300 dark:hover:border-primary-700 transition-colors"
+              class="relative bg-white dark:bg-stone-900 p-4 border border-stone-200 dark:border-stone-800 rounded-xl transition-colors"
+              :class="{
+                'cursor-pointer hover:border-red-300 dark:hover:border-red-700': selectMode,
+                'hover:border-primary-300 dark:hover:border-primary-700': !selectMode,
+                'ring-2 ring-red-500 ring-offset-2 dark:ring-offset-stone-950': selectMode && selectedIds.has(item.id),
+              }"
+              @click="selectMode ? toggleSelect(item.id) : null"
             >
+              <!-- Auswahl-Checkbox Overlay -->
+              <div v-if="selectMode" class="top-0 left-0 z-10 absolute -mt-2 -ml-2">
+                <div
+                  :class="[
+                    'w-6 h-6 rounded-md border-2 flex items-center justify-center transition-all shadow-sm',
+                    selectedIds.has(item.id)
+                      ? 'bg-red-500 border-red-500 text-white'
+                      : 'bg-white/90 dark:bg-stone-800/90 border-stone-300 dark:border-stone-600'
+                  ]"
+                >
+                  <Check v-if="selectedIds.has(item.id)" class="w-4 h-4" />
+                </div>
+              </div>
               <div class="flex justify-between items-start">
                 <div>
                   <h4 class="flex items-center gap-1.5 font-medium text-stone-800 dark:text-stone-200 text-sm">
@@ -319,7 +336,7 @@
                     Immer verfügbar
                   </p>
                 </div>
-                <div class="flex gap-1">
+                <div v-if="!selectMode" class="flex gap-1">
                   <button
                     v-if="!item.is_permanent"
                     @click="openUseModal(item)"
@@ -545,12 +562,18 @@ const addForm = reactive({
 const viewMode = ref(localStorage.getItem('pantry_viewMode') || 'category');
 const expandedRecipes = ref(new Set());
 
-function toggleViewMode() {
-  viewMode.value = viewMode.value === 'category' ? 'recipe' : 'category';
-  localStorage.setItem('pantry_viewMode', viewMode.value);
-  if (viewMode.value === 'recipe' && !pantryStore.recipeViewData) {
+function setViewMode(mode) {
+  viewMode.value = mode;
+  localStorage.setItem('pantry_viewMode', mode);
+  if (mode === 'recipe' && !pantryStore.recipeViewData) {
     pantryStore.fetchRecipeView();
   }
+}
+
+function viewToggleClass(mode) {
+  const base = 'flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium transition-colors cursor-pointer';
+  if (viewMode.value === mode) return `${base} bg-white dark:bg-stone-700 text-stone-800 dark:text-stone-100 shadow-sm rounded-lg`;
+  return `${base} text-stone-500 dark:text-stone-400 hover:text-stone-700 dark:hover:text-stone-300`;
 }
 
 // Rezept auf-/zuklappen

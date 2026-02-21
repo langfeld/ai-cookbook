@@ -171,7 +171,7 @@ export default async function pantryRoutes(fastify) {
     if (recipeIds.length) {
       const placeholders = recipeIds.map(() => '?').join(',');
       allIngredients = db.prepare(
-        `SELECT * FROM ingredients WHERE recipe_id IN (${placeholders}) AND is_optional = 0 ORDER BY recipe_id, sort_order`
+        `SELECT * FROM ingredients WHERE recipe_id IN (${placeholders}) AND is_optional = 0 ORDER BY recipe_id, group_name, sort_order`
       ).all(...recipeIds);
     }
 
