@@ -261,23 +261,40 @@
                   <!-- Status-Icon -->
                   <div class="shrink-0">
                     <CheckCircle2 v-if="ing.is_covered || ing.is_permanent" class="w-4.5 h-4.5 text-green-500" />
-                    <AlertCircle v-else-if="ing.is_partial" class="w-4.5 h-4.5 text-amber-500" />
-                    <XCircle v-else class="w-4.5 h-4.5 text-red-400" />
+                    <button
+                      v-else-if="ing.is_partial"
+                      @click.stop="addToShoppingList(ing)"
+                      :disabled="addedToShoppingSet.has(ing.name.toLowerCase())"
+                      class="bg-transparent p-0 border-0 cursor-pointer"
+                      :title="addedToShoppingSet.has(ing.name.toLowerCase()) ? 'Bereits auf der Einkaufsliste' : `${ing.name} auf die Einkaufsliste`"
+                    >
+                      <ShoppingCart v-if="addedToShoppingSet.has(ing.name.toLowerCase())" class="w-4.5 h-4.5 text-green-500" />
+                      <ShoppingCart v-else class="w-4.5 h-4.5 text-amber-500 hover:text-amber-600 transition-colors" />
+                    </button>
+                    <button
+                      v-else
+                      @click.stop="addToShoppingList(ing)"
+                      :disabled="addedToShoppingSet.has(ing.name.toLowerCase())"
+                      class="bg-transparent p-0 border-0 cursor-pointer"
+                      :title="addedToShoppingSet.has(ing.name.toLowerCase()) ? 'Bereits auf der Einkaufsliste' : `${ing.name} auf die Einkaufsliste`"
+                    >
+                      <ShoppingCart v-if="addedToShoppingSet.has(ing.name.toLowerCase())" class="w-4.5 h-4.5 text-green-500" />
+                      <ShoppingCart v-else class="w-4.5 h-4.5 text-red-400 hover:text-red-500 transition-colors" />
+                    </button>
                   </div>
-                  <!-- Name & Menge -->
+                  <!-- Name -->
                   <div class="flex-1 min-w-0">
                     <span class="text-stone-700 dark:text-stone-300 text-sm">{{ ing.name }}</span>
-                  </div>
-                  <div class="text-right shrink-0">
-                    <span class="tabular-nums text-stone-500 dark:text-stone-400 text-xs sm:text-sm">
-                      {{ formatIngAmount(ing.needed_amount) }} {{ ing.needed_unit }}
-                    </span>
                     <span
                       v-if="ing.is_permanent"
-                      class="ml-1 text-[10px] text-blue-500"
+                      class="ml-1 text-[10px] text-blue-400"
                       title="Dauerhaft verfügbar"
                     >∞</span>
                   </div>
+                  <!-- Menge -->
+                  <span class="tabular-nums text-stone-500 dark:text-stone-400 text-xs sm:text-sm shrink-0">
+                    {{ formatIngAmount(ing.needed_amount) }} {{ ing.needed_unit }}
+                  </span>
                 </div>
               </div>
             </div>
@@ -532,11 +549,13 @@
 <script setup>
 import { ref, reactive, computed, onMounted, watch } from 'vue';
 import { usePantryStore } from '@/stores/pantry.js';
+import { useShoppingStore } from '@/stores/shopping.js';
 import { useNotification } from '@/composables/useNotification.js';
-import { Plus, Minus, Trash2, AlertTriangle, Download, Infinity, Check, CheckSquare, Square, UtensilsCrossed, LayoutGrid, ChevronLeft, ChevronRight, ChevronDown, CheckCircle2, AlertCircle, XCircle } from 'lucide-vue-next';
+import { Plus, Minus, Trash2, AlertTriangle, Download, Infinity, Check, CheckSquare, Square, UtensilsCrossed, LayoutGrid, ChevronLeft, ChevronRight, ChevronDown, CheckCircle2, ShoppingCart } from 'lucide-vue-next';
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue';
 
 const pantryStore = usePantryStore();
+const shoppingStore = useShoppingStore();
 const { showSuccess, showError } = useNotification();
 
 const search = ref('');
@@ -565,8 +584,9 @@ const expandedRecipes = ref(new Set());
 function setViewMode(mode) {
   viewMode.value = mode;
   localStorage.setItem('pantry_viewMode', mode);
-  if (mode === 'recipe' && !pantryStore.recipeViewData) {
-    pantryStore.fetchRecipeView();
+  if (mode === 'recipe') {
+    if (!pantryStore.recipeViewData) pantryStore.fetchRecipeView();
+    syncShoppingSet();
   }
 }
 
@@ -661,6 +681,37 @@ function formatIngAmount(amount) {
   if (!amount) return '';
   if (Number.isInteger(amount)) return amount.toString();
   return amount.toFixed(1).replace(/\.0$/, '');
+}
+
+// ─── Zutat auf Einkaufsliste ───
+const addedToShoppingSet = ref(new Set());
+
+async function syncShoppingSet() {
+  try {
+    await shoppingStore.fetchActiveList();
+    const names = new Set(
+      shoppingStore.activeList?.items
+        ?.map(i => i.ingredient_name?.toLowerCase())
+        .filter(Boolean) || []
+    );
+    addedToShoppingSet.value = names;
+  } catch { /* ignore */ }
+}
+
+async function addToShoppingList(ing) {
+  const key = ing.name.toLowerCase();
+  if (addedToShoppingSet.value.has(key)) return;
+  try {
+    await shoppingStore.addItem({
+      ingredient_name: ing.name,
+      amount: ing.needed_amount,
+      unit: ing.needed_unit,
+    });
+    addedToShoppingSet.value = new Set([...addedToShoppingSet.value, key]);
+    showSuccess(`${ing.name} auf die Einkaufsliste gesetzt!`);
+  } catch {
+    showError('Konnte nicht zur Einkaufsliste hinzugefügt werden.');
+  }
 }
 
 const pantryCategories = [
@@ -797,6 +848,7 @@ onMounted(() => {
   pantryStore.fetchItems();
   if (viewMode.value === 'recipe') {
     pantryStore.fetchRecipeView();
+    syncShoppingSet();
   }
 });
 </script>
