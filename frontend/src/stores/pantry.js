@@ -101,6 +101,21 @@ export const usePantryStore = defineStore('pantry', () => {
       const data = await api.get(`/pantry/recipe-view?${params}`);
       recipeViewData.value = data;
       selectedWeekStart.value = data.weekStart;
+
+      // Auto-Jump: Wenn kein expliziter weekStart angefragt wurde,
+      // keine Rezepte vorhanden sind und andere Wochen verfügbar sind,
+      // automatisch zur nächsten verfügbaren Woche springen
+      if (!weekStart && data.recipes.length === 0 && data.availableWeeks?.length > 0) {
+        const today = new Date().toISOString().slice(0, 10);
+        const sorted = [...data.availableWeeks].sort((a, b) => a.week_start.localeCompare(b.week_start));
+        // Bevorzuge nächste zukünftige Woche, sonst letzte vergangene
+        const futureWeek = sorted.find(w => w.week_start >= today);
+        const target = futureWeek || sorted[sorted.length - 1];
+        if (target && target.week_start !== data.weekStart) {
+          return await fetchRecipeView(target.week_start);
+        }
+      }
+
       return data;
     } finally {
       recipeViewLoading.value = false;
