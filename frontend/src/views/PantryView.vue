@@ -480,35 +480,72 @@
       </div>
     </Teleport>
 
-    <!-- Verbrauchen-Modal -->
+    <!-- Verbrauchen / Bestand anpassen Modal -->
     <Teleport to="body">
       <div v-if="useModal.show" class="z-50 fixed inset-0 flex justify-center items-center bg-black/50 p-4" @click.self="useModal.show = false">
         <div class="space-y-4 bg-white dark:bg-stone-900 p-6 rounded-2xl w-full max-w-sm animate-slide-up">
           <h2 class="font-semibold text-stone-800 dark:text-stone-100 text-lg">
-            {{ useModal.item?.ingredient_name }} verbrauchen
+            {{ useModal.item?.ingredient_name }}
           </h2>
-          <p class="text-stone-500 text-sm">
-            Vorrätig: {{ useModal.item?.amount }} {{ useModal.item?.unit }}
-          </p>
-          <div>
-            <label class="block mb-1 text-stone-600 dark:text-stone-400 text-sm">Menge verbrauchen</label>
-            <input v-model.number="useModal.amount" type="number" step="0.01" min="0" class="form-input" />
-          </div>
-          <div class="flex gap-2">
+          <!-- Modus-Toggle -->
+          <div class="flex bg-stone-100 dark:bg-stone-800 p-1 rounded-lg">
             <button
-              @click="useAmount"
-              :disabled="!useModal.amount"
-              class="flex-1 disabled:opacity-50 py-2 rounded-lg font-medium text-white text-sm bg-accent-600 hover:bg-accent-700"
-            >
-              Verbrauchen
-            </button>
+              @click="useModal.mode = 'use'"
+              :class="[
+                'flex-1 py-1.5 text-sm font-medium rounded-md transition-colors',
+                useModal.mode === 'use'
+                  ? 'bg-white dark:bg-stone-700 text-stone-800 dark:text-stone-100 shadow-sm'
+                  : 'text-stone-500 dark:text-stone-400 hover:text-stone-700 dark:hover:text-stone-300'
+              ]"
+            >Verbrauchen</button>
             <button
-              @click="useModal.show = false"
-              class="px-4 py-2 border border-stone-300 dark:border-stone-600 rounded-lg text-sm"
-            >
-              Abbrechen
-            </button>
+              @click="useModal.mode = 'adjust'"
+              :class="[
+                'flex-1 py-1.5 text-sm font-medium rounded-md transition-colors',
+                useModal.mode === 'adjust'
+                  ? 'bg-white dark:bg-stone-700 text-stone-800 dark:text-stone-100 shadow-sm'
+                  : 'text-stone-500 dark:text-stone-400 hover:text-stone-700 dark:hover:text-stone-300'
+              ]"
+            >Bestand anpassen</button>
           </div>
+          <!-- Verbrauchen-Modus -->
+          <template v-if="useModal.mode === 'use'">
+            <p class="text-stone-500 text-sm">
+              Vorrätig: {{ useModal.item?.amount }} {{ useModal.item?.unit }}
+            </p>
+            <div>
+              <label class="block mb-1 text-stone-600 dark:text-stone-400 text-sm">Menge verbrauchen</label>
+              <input v-model.number="useModal.amount" type="number" step="0.01" min="0" class="form-input" />
+            </div>
+            <div class="flex gap-2">
+              <button
+                @click="useAmount"
+                :disabled="!useModal.amount"
+                class="flex-1 disabled:opacity-50 py-2 rounded-lg font-medium text-white text-sm bg-accent-600 hover:bg-accent-700"
+              >Verbrauchen</button>
+              <button @click="useModal.show = false" class="px-4 py-2 border border-stone-300 dark:border-stone-600 rounded-lg text-sm">Abbrechen</button>
+            </div>
+          </template>
+          <!-- Bestand-anpassen-Modus -->
+          <template v-else>
+            <div class="gap-3 grid grid-cols-2">
+              <div>
+                <label class="block mb-1 text-stone-600 dark:text-stone-400 text-sm">Menge</label>
+                <input v-model.number="useModal.newAmount" type="number" step="0.01" min="0" class="form-input" />
+              </div>
+              <div>
+                <label class="block mb-1 text-stone-600 dark:text-stone-400 text-sm">Einheit</label>
+                <input v-model="useModal.newUnit" type="text" class="form-input" placeholder="g, ml, Stk..." />
+              </div>
+            </div>
+            <div class="flex gap-2">
+              <button
+                @click="adjustAmount"
+                class="flex-1 bg-primary-600 hover:bg-primary-700 disabled:opacity-50 py-2 rounded-lg font-medium text-white text-sm"
+              >Speichern</button>
+              <button @click="useModal.show = false" class="px-4 py-2 border border-stone-300 dark:border-stone-600 rounded-lg text-sm">Abbrechen</button>
+            </div>
+          </template>
         </div>
       </div>
     </Teleport>
@@ -569,7 +606,7 @@ const { showSuccess, showError } = useNotification();
 
 const search = ref('');
 const showAddModal = ref(false);
-const useModal = reactive({ show: false, item: null, amount: 0 });
+const useModal = reactive({ show: false, item: null, amount: 0, mode: 'use', newAmount: 0, newUnit: '' });
 
 // Mehrfachauswahl
 const selectMode = ref(false);
@@ -770,6 +807,9 @@ function isExpiringSoon(dateStr) {
 function openUseModal(item) {
   useModal.item = item;
   useModal.amount = item.amount;
+  useModal.mode = 'use';
+  useModal.newAmount = item.amount;
+  useModal.newUnit = item.unit;
   useModal.show = true;
 }
 
@@ -795,6 +835,19 @@ async function useAmount() {
   try {
     await pantryStore.useAmount(useModal.item.id, useModal.amount);
     showSuccess(`${useModal.amount} ${useModal.item.unit} verbraucht`);
+    useModal.show = false;
+  } catch {
+    // Fehler wird von useApi angezeigt
+  }
+}
+
+async function adjustAmount() {
+  try {
+    await pantryStore.updateItem(useModal.item.id, {
+      amount: useModal.newAmount,
+      unit: useModal.newUnit,
+    });
+    showSuccess(`Bestand auf ${useModal.newAmount} ${useModal.newUnit} angepasst`);
     useModal.show = false;
   } catch {
     // Fehler wird von useApi angezeigt
