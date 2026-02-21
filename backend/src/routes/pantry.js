@@ -52,7 +52,7 @@ function parseImportData(text, filename = '') {
     items.push({
       ingredient_name: name,
       amount: parseFloat(cols[amountIdx]) || 1,
-      unit: cols[unitIdx]?.trim() || 'Stk.',
+      unit: cols[unitIdx]?.trim() || 'Stk',
       category: cols[catIdx]?.trim() || 'Sonstiges',
       expiry_date: cols[expiryIdx]?.trim() || null,
       notes: cols[notesIdx]?.trim() || null,
@@ -606,7 +606,7 @@ export default async function pantryRoutes(fastify) {
           const amount = parseFloat(item.amount) || 0;
           if (amount <= 0) { skipped++; errors.push(`Übersprungen: "${name}" (ungültige Menge)`); continue; }
 
-          const unit = String(item.unit || 'Stk.').trim();
+          const unit = String(item.unit || 'Stk').trim();
           const category = String(item.category || 'Sonstiges').trim();
           const expiry_date = item.expiry_date || null;
           const notes = item.notes || null;

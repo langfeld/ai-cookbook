@@ -265,31 +265,30 @@
     <form
       v-if="shoppingStore.activeList || !shoppingStore.loading"
       @submit.prevent="addManualItem"
-      class="flex items-center gap-2"
+      class="flex items-center gap-1.5"
     >
-      <div class="flex flex-1 items-center bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-800 rounded-xl overflow-hidden">
-        <input
-          v-model="newItem.name"
-          type="text"
-          placeholder="Artikel hinzufügen…"
-          required
-          class="flex-1 bg-transparent px-3 py-2 border-0 focus:ring-0 min-w-0 text-stone-800 dark:text-stone-200 placeholder:text-stone-400 text-sm"
-        />
-        <input
-          v-model.number="newItem.amount"
-          type="number"
-          step="any"
-          min="0"
-          placeholder="1"
-          class="bg-transparent px-2 py-2 border-stone-200 dark:border-stone-700 border-l focus:ring-0 w-14 text-stone-800 dark:text-stone-200 placeholder:text-stone-400 text-sm text-center"
-        />
-        <input
-          v-model="newItem.unit"
-          type="text"
-          placeholder="Stk"
-          class="bg-transparent px-2 py-2 border-stone-200 dark:border-stone-700 border-l focus:ring-0 w-14 text-stone-800 dark:text-stone-200 placeholder:text-stone-400 text-sm text-center"
-        />
-      </div>
+      <input
+        v-model="newItem.name"
+        type="text"
+        placeholder="Artikel hinzufügen…"
+        required
+        class="flex-1 bg-white dark:bg-stone-900 px-3 py-2 border border-stone-200 focus:border-primary-400 dark:border-stone-800 rounded-xl outline-none focus:ring-0 min-w-0 text-stone-800 dark:text-stone-200 placeholder:text-stone-400 text-sm"
+      />
+      <input
+        v-model.number="newItem.amount"
+        type="number"
+        step="any"
+        min="0"
+        placeholder="1"
+        class="bg-white dark:bg-stone-900 px-1 py-2 border border-stone-200 focus:border-primary-400 dark:border-stone-800 rounded-xl outline-none focus:ring-0 w-12 text-stone-800 dark:text-stone-200 placeholder:text-stone-400 text-sm text-center shrink-0"
+      />
+      <UnitInput
+        v-model="newItem.unit"
+        placeholder="Stk"
+        input-class="bg-white dark:bg-stone-900 px-1 py-2 border border-stone-200 dark:border-stone-800 rounded-xl focus:border-primary-400 focus:ring-0 w-full text-stone-800 dark:text-stone-200 placeholder:text-stone-400 text-sm text-center outline-none"
+        :compact="true"
+        class="w-12 shrink-0"
+      />
       <button
         type="submit"
         :disabled="!newItem.name.trim()"
@@ -1748,6 +1747,7 @@ import { useNotification } from '@/composables/useNotification.js';
 import { useApi } from '@/composables/useApi.js';
 import { ListPlus, Check, ShoppingBag, Plus, Minus, Package, BookOpen, BookX, ExternalLink, ShoppingCart, X, ArrowRightLeft, Search, Tag, Trash2, Star, Heart, Archive, Send, Link2, Unlink, ClipboardCopy, LogIn, LogOut, ChevronDown, ChevronLeft, ChevronRight, Loader2, Terminal, Download, Settings, RefreshCw, Merge, ArrowRight, History, RotateCcw, Ban, MapPin, PenLine, Upload, AlertTriangle } from 'lucide-vue-next';
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue';
+import UnitInput from '@/components/ui/UnitInput.vue';
 
 const shoppingStore = useShoppingStore();
 const mealPlanStore = useMealPlanStore();

@@ -432,7 +432,7 @@
             </div>
             <div>
               <label class="block mb-1 text-stone-600 dark:text-stone-400 text-sm">Einheit</label>
-              <input v-model="addForm.unit" type="text" class="form-input" placeholder="kg, l, Stk." />
+              <UnitInput v-model="addForm.unit" placeholder="Einheit" />
             </div>
           </div>
           <div>
@@ -535,7 +535,7 @@
               </div>
               <div>
                 <label class="block mb-1 text-stone-600 dark:text-stone-400 text-sm">Einheit</label>
-                <input v-model="useModal.newUnit" type="text" class="form-input" placeholder="g, ml, Stk..." />
+                <UnitInput v-model="useModal.newUnit" placeholder="Einheit" />
               </div>
             </div>
             <div class="flex gap-2">
@@ -599,6 +599,7 @@ import { useShoppingStore } from '@/stores/shopping.js';
 import { useNotification } from '@/composables/useNotification.js';
 import { Plus, Minus, Trash2, AlertTriangle, Download, Infinity, Check, CheckSquare, Square, UtensilsCrossed, LayoutGrid, ChevronLeft, ChevronRight, ChevronDown, CheckCircle2, ShoppingCart } from 'lucide-vue-next';
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue';
+import UnitInput from '@/components/ui/UnitInput.vue';
 
 const pantryStore = usePantryStore();
 const shoppingStore = useShoppingStore();
@@ -617,7 +618,7 @@ const batchDeleting = ref(false);
 const addForm = reactive({
   name: '',
   amount: 1,
-  unit: 'Stk.',
+  unit: 'Stk',
   category: '',
   expires_at: '',
   is_permanent: false,
@@ -825,7 +826,7 @@ async function addItem() {
     });
     showSuccess(`${addForm.name} hinzugefügt!`);
     showAddModal.value = false;
-    Object.assign(addForm, { name: '', amount: 1, unit: 'Stk.', category: '', expires_at: '', is_permanent: false });
+    Object.assign(addForm, { name: '', amount: 1, unit: 'Stk', category: '', expires_at: '', is_permanent: false });
   } catch {
     // Fehler wird von useApi angezeigt
   }

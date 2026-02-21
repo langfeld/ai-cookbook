@@ -130,7 +130,7 @@
                class="items-start gap-2 grid grid-cols-[1fr_1fr] sm:grid-cols-[5rem_6rem_1fr_auto_auto]"
           >
             <input v-model.number="ing.amount" type="number" step="0.01" min="0" class="form-input" placeholder="Menge" />
-            <input v-model="ing.unit" type="text" class="form-input" placeholder="Einheit" />
+            <UnitInput v-model="ing.unit" placeholder="Einheit" />
             <input v-model="ing.name" type="text" class="col-span-2 sm:col-span-1 form-input" placeholder="Zutat (z.B. Kartoffeln)" required />
             <label class="flex items-center gap-1 py-2 text-stone-400 text-xs cursor-pointer">
               <input type="checkbox" v-model="ing.is_optional" class="rounded" />
@@ -225,6 +225,7 @@ import { useNotification } from '@/composables/useNotification.js';
 import { useApi } from '@/composables/useApi.js';
 import { Plus, Trash2, Save, Image as ImageIcon, Crop as CropIcon } from 'lucide-vue-next';
 import ImageCropModal from '@/components/ui/ImageCropModal.vue';
+import UnitInput from '@/components/ui/UnitInput.vue';
 
 const route = useRoute();
 const router = useRouter();

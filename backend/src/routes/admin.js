@@ -909,7 +909,7 @@ export default async function adminRoutes(fastify) {
           const amount = parseFloat(item.amount) || 0;
           if (amount <= 0) { skipped++; continue; }
 
-          const unit = String(item.unit || 'Stk.').trim();
+          const unit = String(item.unit || 'Stk').trim();
           const category = String(item.category || 'Sonstiges').trim();
           const expiry_date = item.expiry_date || null;
           const notes = item.notes || null;
