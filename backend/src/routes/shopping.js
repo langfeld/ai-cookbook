@@ -8,6 +8,7 @@
 import db from '../config/database.js';
 import { generateShoppingList, saveShoppingList, processPurchase } from '../services/shopping-list.js';
 import { buildReweProductUrl, calculatePackagesNeeded, parsePackageSize } from '../services/rewe-api.js';
+import { convertToBaseUnit, getUnitType, unitsCompatible } from '../utils/helpers.js';
 
 export default async function shoppingRoutes(fastify) {
   fastify.addHook('onRequest', fastify.authenticate);
@@ -524,16 +525,36 @@ export default async function shoppingRoutes(fastify) {
       }
     }
 
-    // Prüfen ob Zutat schon im Vorratsschrank existiert → Menge addieren
+    // Prüfen ob Zutat schon im Vorratsschrank existiert
     const existing = db.prepare(
       'SELECT * FROM pantry WHERE user_id = ? AND LOWER(ingredient_name) = LOWER(?)'
     ).get(userId, ingredientName);
 
     let pantryId;
     if (existing) {
-      db.prepare(
-        'UPDATE pantry SET amount = amount + ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
-      ).run(amount, existing.id);
+      // Einheiten auf Kompatibilität prüfen bevor addiert wird
+      const existingConverted = convertToBaseUnit(existing.amount, existing.unit);
+      const newConverted = convertToBaseUnit(amount, unit);
+      const compat = unitsCompatible(existingConverted.unit, newConverted.unit);
+
+      if (compat.compatible) {
+        // Kompatible Einheiten → Mengen addieren (z.B. 500g + 200g)
+        db.prepare(
+          'UPDATE pantry SET amount = amount + ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
+        ).run(amount, existing.id);
+      } else {
+        // Inkompatible Einheiten (z.B. 500g + 2 Stk)
+        const existingType = getUnitType(existing.unit);
+        const newType = getUnitType(unit);
+
+        if ((newType === 'weight' || newType === 'volume') && existingType === 'counting') {
+          // Neue Daten sind präziser → ersetzen
+          db.prepare(
+            'UPDATE pantry SET amount = ?, unit = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
+          ).run(amount, unit, existing.id);
+        }
+        // Sonst: bestehende Gewichts-/Volumendaten behalten
+      }
       pantryId = existing.id;
     } else {
       const result = db.prepare(
