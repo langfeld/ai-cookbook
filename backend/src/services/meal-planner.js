@@ -15,9 +15,97 @@
  */
 
 import db from '../config/database.js';
-import { getWeekStart } from '../utils/helpers.js';
+import { getWeekStart, convertToBaseUnit, scaleIngredient, unitsCompatible } from '../utils/helpers.js';
 
 const DAY_NAMES = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag'];
+
+/**
+ * Berechnet die "ungebundenen" Vorräte eines Benutzers.
+ * Zieht die Zutaten aller ungekochten Rezepte der aktuellen Woche ab
+ * und gibt nur die Restnamen zurück (lowercase Set).
+ */
+function getUnassignedPantryNames(userId) {
+  const pantryItems = db.prepare(
+    'SELECT ingredient_name, amount, unit, is_permanent FROM pantry WHERE user_id = ? AND amount > 0'
+  ).all(userId);
+
+  if (!pantryItems.length) return new Set();
+
+  // Alias-Map laden
+  const aliasRows = db.prepare(
+    'SELECT alias_name, canonical_name FROM ingredient_aliases WHERE user_id = ?'
+  ).all(userId);
+  const aliasMap = new Map();
+  for (const r of aliasRows) aliasMap.set(r.alias_name.toLowerCase(), r.canonical_name.toLowerCase());
+  const resolveAlias = (name) => aliasMap.get(name.toLowerCase()) || name.toLowerCase();
+
+  // Pantry-Pool aufbauen (Basiseinheiten)
+  const pool = {};
+  for (const item of pantryItems) {
+    const key = resolveAlias(item.ingredient_name);
+    const base = convertToBaseUnit(item.amount, item.unit);
+    pool[key] = {
+      remaining: item.is_permanent ? Infinity : base.amount,
+      base_unit: base.unit,
+      is_permanent: !!item.is_permanent,
+    };
+  }
+
+  // Aktuelle Woche: ungekochte Rezepte finden
+  const weekStart = getWeekStart(new Date());
+  const plan = db.prepare(
+    'SELECT id FROM meal_plans WHERE user_id = ? AND week_start = ?'
+  ).get(userId, weekStart);
+
+  if (plan) {
+    const entries = db.prepare(`
+      SELECT mpe.recipe_id, mpe.servings as planned_servings, r.servings as original_servings
+      FROM meal_plan_entries mpe
+      JOIN recipes r ON r.id = mpe.recipe_id
+      WHERE mpe.meal_plan_id = ? AND mpe.is_cooked = 0
+    `).all(plan.id);
+
+    // Alle Zutaten der ungekochten Rezepte laden
+    const recipeIds = [...new Set(entries.map(e => e.recipe_id))];
+    if (recipeIds.length) {
+      const placeholders = recipeIds.map(() => '?').join(',');
+      const allIngredients = db.prepare(
+        `SELECT recipe_id, name, amount, unit FROM ingredients WHERE recipe_id IN (${placeholders}) AND is_optional = 0`
+      ).all(...recipeIds);
+
+      // Index: recipe_id → ingredients[]
+      const ingByRecipe = {};
+      for (const ing of allIngredients) {
+        if (!ingByRecipe[ing.recipe_id]) ingByRecipe[ing.recipe_id] = [];
+        ingByRecipe[ing.recipe_id].push(ing);
+      }
+
+      // Zutaten vom Pool abziehen (chronologisch, wie in recipe-view)
+      for (const entry of entries) {
+        const ings = ingByRecipe[entry.recipe_id] || [];
+        for (const ing of ings) {
+          const key = resolveAlias(ing.name);
+          const p = pool[key];
+          if (!p || p.is_permanent) continue;
+          const base = convertToBaseUnit(
+            scaleIngredient(ing.amount, entry.original_servings, entry.planned_servings) || 0,
+            ing.unit
+          );
+          if (unitsCompatible(base.unit, p.base_unit).compatible) {
+            p.remaining = Math.max(0, p.remaining - base.amount);
+          }
+        }
+      }
+    }
+  }
+
+  // Nur Items mit Restmenge > 0 zurückgeben
+  const result = new Set();
+  for (const [key, p] of Object.entries(pool)) {
+    if (p.remaining > 0) result.add(key);
+  }
+  return result;
+}
 
 // ============================================
 // Mahlzeit-Typ → Kategorie-Mapping
@@ -198,10 +286,7 @@ export function getSuggestions(userId, { dayIdx = 0, mealType = 'mittag', exclud
     GROUP BY r.id
   `).all(userId);
 
-  const pantryItems = db.prepare(
-    'SELECT ingredient_name FROM pantry WHERE user_id = ? AND amount > 0'
-  ).all(userId);
-  const pantrySet = new Set(pantryItems.map(p => p.ingredient_name.toLowerCase()));
+  const pantrySet = getUnassignedPantryNames(userId);
   const excludeSet = new Set(excludeRecipeIds);
 
   // Gesperrte Rezepte laden und ausschließen
@@ -402,11 +487,8 @@ export async function generateWeekPlan(userId, options = {}) {
     };
   });
 
-  // --- 3. Vorräte laden ---
-  const pantryItems = db.prepare(
-    'SELECT ingredient_name FROM pantry WHERE user_id = ? AND amount > 0'
-  ).all(userId);
-  const pantrySet = new Set(pantryItems.map(p => p.ingredient_name.toLowerCase()));
+  // --- 3. Vorräte laden (nur ungebundene, nach Abzug der aktuellen Woche) ---
+  const pantrySet = getUnassignedPantryNames(userId);
 
   // --- 4. Algorithmische Planung ---
   const plan = [];

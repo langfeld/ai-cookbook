@@ -20,11 +20,11 @@
       <div class="flex flex-wrap items-stretch gap-2 w-full sm:w-auto">
         <!-- Ansicht-Toggle: Segmented Control -->
         <div class="flex bg-stone-100 dark:bg-stone-800 rounded-lg overflow-hidden">
-          <button @click="setViewMode('category')" :class="viewToggleClass('category')">
-            <LayoutGrid class="w-4 h-4" /> <span class="hidden sm:inline">Kategorie</span>
-          </button>
           <button @click="setViewMode('recipe')" :class="viewToggleClass('recipe')">
             <UtensilsCrossed class="w-4 h-4" /> <span class="hidden sm:inline">Rezept</span>
+          </button>
+          <button @click="setViewMode('category')" :class="viewToggleClass('category')">
+            <LayoutGrid class="w-4 h-4" /> <span class="hidden sm:inline">Kategorie</span>
           </button>
         </div>
         <!-- Auswahl-Modus -->
@@ -222,10 +222,10 @@
               v-if="recipe.recipe_image_url"
               :src="recipe.recipe_image_url"
               :alt="recipe.recipe_title"
-              class="rounded-xl w-12 sm:w-14 h-12 sm:h-14 object-cover shrink-0"
+              class="rounded-xl w-16 sm:w-20 h-16 sm:h-20 object-cover shrink-0"
             />
-            <div v-else class="flex justify-center items-center bg-stone-100 dark:bg-stone-800 rounded-xl w-12 sm:w-14 h-12 sm:h-14 shrink-0">
-              <UtensilsCrossed class="w-6 h-6 text-stone-400" />
+            <div v-else class="flex justify-center items-center bg-stone-100 dark:bg-stone-800 rounded-xl w-16 sm:w-20 h-16 sm:h-20 shrink-0">
+              <UtensilsCrossed class="w-7 h-7 text-stone-400" />
             </div>
             <div class="flex-1 min-w-0">
               <h3 class="font-semibold text-stone-800 dark:text-stone-200 text-sm sm:text-base truncate">{{ recipe.recipe_title }}</h3>
@@ -625,7 +625,7 @@ const addForm = reactive({
 });
 
 // ─── Ansicht-Modus ───
-const viewMode = ref(localStorage.getItem('pantry_viewMode') || 'category');
+const viewMode = ref(localStorage.getItem('pantry_viewMode') || 'recipe');
 const expandedRecipes = ref(new Set());
 
 function setViewMode(mode) {
