@@ -391,6 +391,24 @@ export function initializeDatabase() {
     CREATE INDEX IF NOT EXISTS idx_blocked_ingredients_user ON blocked_ingredients(user_id);
 
     -- ============================================
+    -- Einheiten-Umrechnungen (zutat-spezifisch)
+    -- z.B. 1 Stk Zwiebel = 80 g, 1 EL Olivenöl = 15 ml
+    -- ============================================
+    CREATE TABLE IF NOT EXISTS ingredient_conversions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      ingredient_name TEXT NOT NULL COLLATE NOCASE,
+      from_unit TEXT NOT NULL COLLATE NOCASE,
+      to_amount REAL NOT NULL,
+      to_unit TEXT NOT NULL COLLATE NOCASE,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      UNIQUE(user_id, ingredient_name, from_unit)
+    );
+    CREATE INDEX IF NOT EXISTS idx_ingredient_conversions_user ON ingredient_conversions(user_id);
+    CREATE INDEX IF NOT EXISTS idx_ingredient_conversions_lookup ON ingredient_conversions(user_id, ingredient_name);
+
+    -- ============================================
     -- Rezept-Sperren (für Wochenplanung)
     -- ============================================
     CREATE TABLE IF NOT EXISTS recipe_blocks (

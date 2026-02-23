@@ -15,7 +15,7 @@
  */
 
 import db from '../config/database.js';
-import { getWeekStart, convertToBaseUnit, scaleIngredient, unitsCompatible } from '../utils/helpers.js';
+import { getWeekStart, convertToBaseUnit, scaleIngredient, unitsCompatible, normalizeUnit } from '../utils/helpers.js';
 
 const DAY_NAMES = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag'];
 
@@ -38,6 +38,21 @@ function getUnassignedPantryNames(userId) {
   const aliasMap = new Map();
   for (const r of aliasRows) aliasMap.set(r.alias_name.toLowerCase(), r.canonical_name.toLowerCase());
   const resolveAlias = (name) => aliasMap.get(name.toLowerCase()) || name.toLowerCase();
+
+  // Zutat-spezifische Einheiten-Konvertierungen laden
+  const convRows = db.prepare(
+    'SELECT ingredient_name, from_unit, to_amount, to_unit FROM ingredient_conversions WHERE user_id = ?'
+  ).all(userId);
+  const conversionMap = {};
+  for (const c of convRows) {
+    const ingKey = resolveAlias(c.ingredient_name);
+    const fromUnit = (normalizeUnit(c.from_unit) || c.from_unit).toLowerCase();
+    if (!conversionMap[ingKey]) conversionMap[ingKey] = {};
+    conversionMap[ingKey][fromUnit] = {
+      to_amount: c.to_amount,
+      to_unit: normalizeUnit(c.to_unit) || c.to_unit,
+    };
+  }
 
   // Pantry-Pool aufbauen (Basiseinheiten)
   const pool = {};
@@ -93,6 +108,32 @@ function getUnassignedPantryNames(userId) {
           );
           if (unitsCompatible(base.unit, p.base_unit).compatible) {
             p.remaining = Math.max(0, p.remaining - base.amount);
+          } else {
+            // Zutat-spezifische Konvertierung versuchen
+            const conv = conversionMap[key];
+            if (conv) {
+              const recipeBaseUnit = base.unit.toLowerCase();
+              const pantryBaseUnit = p.base_unit.toLowerCase();
+              // Fall A: Konvertierung von Rezept-Einheit
+              const cA = conv[recipeBaseUnit];
+              if (cA) {
+                const cb = convertToBaseUnit(base.amount * cA.to_amount, cA.to_unit);
+                if (unitsCompatible(cb.unit, p.base_unit).compatible) {
+                  p.remaining = Math.max(0, p.remaining - cb.amount);
+                }
+              } else {
+                // Fall B: Konvertierung von Vorrats-Einheit (umgekehrt)
+                const cB = conv[pantryBaseUnit];
+                if (cB) {
+                  const cbTarget = convertToBaseUnit(1, cB.to_unit);
+                  if (unitsCompatible(cbTarget.unit, base.unit).compatible) {
+                    const cbBase = convertToBaseUnit(cB.to_amount, cB.to_unit);
+                    const neededInPantryUnit = base.amount / cbBase.amount;
+                    p.remaining = Math.max(0, p.remaining - neededInPantryUnit);
+                  }
+                }
+              }
+            }
           }
         }
       }

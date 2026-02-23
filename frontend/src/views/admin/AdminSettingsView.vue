@@ -131,6 +131,11 @@
               placeholder="https://api.moonshot.ai/v1" @save="saveSetting('kimi_base_url', settingsMap.kimi_base_url)" />
             <SettingsInput label="Modell" v-model="settingsMap.kimi_model"
               placeholder="kimi-k2.5" @save="saveSetting('kimi_model', settingsMap.kimi_model)" />
+            <SettingsInput label="Schnelles Modell" v-model="settingsMap.kimi_simple_model"
+              placeholder="moonshot-v1-32k" @save="saveSetting('kimi_simple_model', settingsMap.kimi_simple_model)" />
+            <p class="text-stone-400 dark:text-stone-500 text-xs">
+              Das schnelle Modell wird für einfache Aufgaben wie Umrechnungs-Generierung verwendet (ohne Reasoning, günstiger & schneller).
+            </p>
           </div>
 
           <!-- OpenAI -->

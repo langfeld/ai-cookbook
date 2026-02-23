@@ -202,6 +202,22 @@ export default async function pantryRoutes(fastify) {
     ).all(userId);
     const blockedSet = new Set(blockedRows.map(r => r.ingredient_name.toLowerCase()));
 
+    // 5d. Zutat-spezifische Einheiten-Konvertierungen laden
+    const convRows = db.prepare(
+      'SELECT ingredient_name, from_unit, to_amount, to_unit FROM ingredient_conversions WHERE user_id = ?'
+    ).all(userId);
+    // Map: resolvedName → normalizedFromUnit → { to_amount, to_unit (normalized) }
+    const conversionMap = {};
+    for (const c of convRows) {
+      const ingKey = resolveAlias(c.ingredient_name);
+      const fromUnit = (normalizeUnit(c.from_unit) || c.from_unit).toLowerCase();
+      if (!conversionMap[ingKey]) conversionMap[ingKey] = {};
+      conversionMap[ingKey][fromUnit] = {
+        to_amount: c.to_amount,
+        to_unit: normalizeUnit(c.to_unit) || c.to_unit,
+      };
+    }
+
     /** Prüft ob eine Zutat (oder ihr Alias) gesperrt ist */
     function isBlocked(name) {
       const resolved = resolveAlias(name);
@@ -262,7 +278,7 @@ export default async function pantryRoutes(fastify) {
         const scaledAmount = scaleIngredient(ing.amount, entry.original_servings, entry.planned_servings);
         // In Basiseinheit
         const base = convertToBaseUnit(scaledAmount || 0, ing.unit);
-        const neededAmount = base.amount;
+        let neededAmount = base.amount;
         const neededUnit = base.unit;
 
         // Pantry-Match suchen (mit Alias-Auflösung)
@@ -286,10 +302,64 @@ export default async function pantryRoutes(fastify) {
               pool.remaining = Math.max(0, pool.remaining - neededAmount);
             }
           } else {
-            // Vorrat vorhanden, aber Einheiten inkompatibel (z.B. g vs Stk)
-            // → als "vorhanden (andere Einheit)" markieren statt "fehlend"
-            unitMismatch = true;
-            pantryId = pool.pantry_id;
+            // Einheiten inkompatibel – Zutat-spezifische Konvertierung versuchen
+            const conv = conversionMap[key];
+            let converted = false;
+
+            if (conv) {
+              const recipeBaseUnit = neededUnit.toLowerCase();
+              const pantryBaseUnit = pool.base_unit.toLowerCase();
+
+              // Fall A: Konvertierung VON Rezept-Einheit existiert
+              // z.B. Rezept=Stk, Vorrat=g, Konvertierung: 1 Stk = 80g
+              const convA = conv[recipeBaseUnit];
+              if (convA) {
+                const convertedBase = convertToBaseUnit(neededAmount * convA.to_amount, convA.to_unit);
+                if (unitsCompatible(convertedBase.unit, pool.base_unit).compatible) {
+                  compatible = true;
+                  converted = true;
+                  pantryId = pool.pantry_id;
+                  const available = pool.remaining;
+                  covered = Math.min(convertedBase.amount, available);
+                  if (!pool.is_permanent) {
+                    pool.remaining = Math.max(0, pool.remaining - convertedBase.amount);
+                  }
+                  // Für korrekte is_covered-Berechnung: neededAmount auf konvertierte Menge setzen
+                  neededAmount = convertedBase.amount;
+                }
+              }
+
+              // Fall B: Konvertierung VON Vorrats-Einheit existiert (umgekehrt)
+              // z.B. Rezept=g, Vorrat=Stk, Konvertierung: 1 Stk = 80g
+              // → Rezept-Bedarf in Vorrats-Einheit umrechnen: 200g / 80 = 2.5 Stk
+              if (!converted) {
+                const convB = conv[pantryBaseUnit];
+                if (convB) {
+                  const convBTarget = convertToBaseUnit(1, convB.to_unit);
+                  if (unitsCompatible(convBTarget.unit, neededUnit).compatible) {
+                    // Konvertierung der to_unit passt zur Rezept-Einheit
+                    // Rezept-Bedarf als Vorrats-Einheit ausdrücken
+                    const convBBase = convertToBaseUnit(convB.to_amount, convB.to_unit);
+                    const neededInPantryUnit = neededAmount / convBBase.amount;
+                    compatible = true;
+                    converted = true;
+                    pantryId = pool.pantry_id;
+                    const available = pool.remaining;
+                    covered = Math.min(neededInPantryUnit, available);
+                    if (!pool.is_permanent) {
+                      pool.remaining = Math.max(0, pool.remaining - neededInPantryUnit);
+                    }
+                    neededAmount = neededInPantryUnit;
+                  }
+                }
+              }
+            }
+
+            if (!converted) {
+              // Keine Konvertierung möglich → als Unit-Mismatch markieren
+              unitMismatch = true;
+              pantryId = pool.pantry_id;
+            }
           }
         }
 

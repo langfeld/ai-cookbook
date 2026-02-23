@@ -35,18 +35,46 @@ const providerMap = {
   ollama:    (ai) => new OllamaProvider(ai.ollama),
 };
 
-// Singleton-Instanz des aktiven Providers
+// Singleton-Instanzen der aktiven Provider
 let activeProvider = null;
 let activeProviderName = null;
+let simpleProvider = null;
+let simpleProviderName = null;
 
 /**
  * Gibt die aktive AI-Provider-Instanz zurück.
- * Erstellt sie beim ersten Aufruf oder wenn sich der Provider geändert hat.
+ * @param {object} [options]
+ * @param {boolean} [options.simple=false] – Wenn true, wird ein schnelleres/einfacheres
+ *   Modell verwendet (z.B. moonshot-v1-32k statt kimi-k2.5).
+ *   Ideal für strukturierte Aufgaben wie JSON-Generierung.
  */
-export function getAIProvider() {
+export function getAIProvider(options = {}) {
   const aiConfig = getAiConfig();
   const providerName = aiConfig.provider;
 
+  // ── Simple-Variante (schnelleres Modell ohne Reasoning) ──
+  if (options.simple) {
+    if (!simpleProvider || simpleProviderName !== providerName) {
+      // Config kopieren und Modell durch das einfache ersetzen
+      const simpleConfig = { ...aiConfig };
+      if (providerName === 'kimi' && simpleConfig.kimi?.simpleModel) {
+        simpleConfig.kimi = { ...simpleConfig.kimi, model: simpleConfig.kimi.simpleModel };
+      }
+      const factory = providerMap[providerName];
+      if (!factory) {
+        throw new Error(
+          `Unbekannter AI-Provider: "${providerName}". ` +
+          `Verfügbare Provider: ${Object.keys(providerMap).join(', ')}`
+        );
+      }
+      simpleProvider = factory(simpleConfig);
+      simpleProviderName = providerName;
+      console.log(`🤖 AI-Provider (simple) geladen: ${simpleProvider.name} [${simpleConfig[providerName]?.model || '?'}]`);
+    }
+    return simpleProvider;
+  }
+
+  // ── Standard-Provider ──
   // Provider neu erstellen, wenn sich die Auswahl geändert hat
   if (!activeProvider || activeProviderName !== providerName) {
     const factory = providerMap[providerName];
@@ -71,4 +99,5 @@ export function getAIProvider() {
  */
 export function resetProvider() {
   activeProvider = null;
+  simpleProvider = null;
 }

@@ -29,6 +29,7 @@ const ALLOWED_SETTINGS = new Set([
   'kimi_api_key',
   'kimi_base_url',
   'kimi_model',
+  'kimi_simple_model',
   'openai_api_key',
   'openai_model',
   'anthropic_api_key',

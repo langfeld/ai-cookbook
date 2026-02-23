@@ -61,6 +61,7 @@ export function getAiConfig() {
       apiKey:  getSetting('kimi_api_key',  env.KIMI_API_KEY || ''),
       baseUrl: getSetting('kimi_base_url', env.KIMI_BASE_URL || 'https://api.moonshot.ai/v1'),
       model:   getSetting('kimi_model',    env.KIMI_MODEL || 'kimi-k2.5'),
+      simpleModel: getSetting('kimi_simple_model', env.KIMI_SIMPLE_MODEL || 'moonshot-v1-32k'),
     },
     openai: {
       apiKey: getSetting('openai_api_key', env.OPENAI_API_KEY || ''),

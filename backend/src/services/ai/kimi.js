@@ -1,10 +1,13 @@
 /**
  * ============================================
- * Kimi 2.5 (Moonshot AI) Provider
+ * Kimi / Moonshot AI Provider
  * ============================================
- * Implementiert die KI-Anbindung an Kimi 2.5 von Moonshot AI.
- * Kimi verwendet eine OpenAI-kompatible API.
+ * Implementiert die KI-Anbindung an Moonshot AI.
+ * Unterstützt zwei Modell-Typen:
+ *   - Reasoning: kimi-k2.5 (erzwingt temperature=1, liefert reasoning_content)
+ *   - Standard:  moonshot-v1-8k/32k/128k (freie temperature, schneller, günstiger)
  *
+ * Alle Modelle nutzen die OpenAI-kompatible API.
  * Dokumentation: https://platform.moonshot.cn/docs
  */
 
@@ -12,14 +15,24 @@ import { BaseAIProvider } from './base.js';
 
 export class KimiProvider extends BaseAIProvider {
   constructor(config) {
-    super('Kimi 2.5 (Moonshot AI)');
+    super('Kimi / Moonshot AI');
     this.apiKey = config.apiKey;
     this.baseUrl = config.baseUrl || 'https://api.moonshot.cn/v1';
-    this.model = config.model || 'kimi-2.5';
+    this.model = config.model || 'kimi-k2.5';
 
     if (!this.apiKey) {
       console.warn('⚠️  KIMI_API_KEY nicht gesetzt! KI-Funktionen werden nicht verfügbar sein.');
     }
+  }
+
+  /**
+   * Prüft ob das aktuelle Modell ein Reasoning-Modell ist.
+   * Reasoning-Modelle (kimi-k2.5, kimi-k2) erzwingen temperature=1
+   * und liefern `reasoning_content` statt/neben `content`.
+   * Standard-Modelle (moonshot-v1-*) erlauben freie temperature.
+   */
+  get isReasoningModel() {
+    return /^kimi-k/i.test(this.model);
   }
 
   /**
@@ -42,7 +55,11 @@ export class KimiProvider extends BaseAIProvider {
       max_tokens: options.maxTokens ?? 4096,
     };
 
-    // Kimi K2.5 erlaubt nur temperature=1, daher nicht setzen
+    // Reasoning-Modelle (kimi-k2.5) erzwingen temperature=1
+    // Standard-Modelle (moonshot-v1-*) erlauben freie temperature
+    if (!this.isReasoningModel && options.temperature != null) {
+      body.temperature = options.temperature;
+    }
     if (options.json) body.response_format = { type: 'json_object' };
 
     const response = await fetch(`${this.baseUrl}/chat/completions`, {
@@ -61,11 +78,14 @@ export class KimiProvider extends BaseAIProvider {
 
     const data = await response.json();
     const message = data.choices[0].message;
-    // Kimi K2.5 ist ein Reasoning-Modell: Die Antwort steht in `content`,
-    // das interne Denken in `reasoning_content`. Falls `content` leer ist
-    // (z.B. weil max_tokens für das Reasoning aufgebraucht wurden),
-    // verwenden wir `reasoning_content` als Fallback.
-    return message.content || message.reasoning_content || '';
+    // Reasoning-Modelle liefern `content` + `reasoning_content`.
+    // Standard-Modelle liefern nur `content`.
+    if (message.content) return message.content;
+    if (this.isReasoningModel) {
+      if (!options.json && message.reasoning_content) return message.reasoning_content;
+      throw new Error('Kimi hat keine verwertbare Antwort zurückgegeben (Reasoning-Modell). Bitte max_tokens erhöhen.');
+    }
+    throw new Error('Kimi hat keine Antwort zurückgegeben.');
   }
 
   /**
@@ -98,7 +118,9 @@ export class KimiProvider extends BaseAIProvider {
       max_tokens: options.maxTokens ?? 4096,
     };
 
-    // Kimi K2.5 erlaubt nur temperature=1, daher nicht setzen
+    if (!this.isReasoningModel && options.temperature != null) {
+      body.temperature = options.temperature;
+    }
     if (options.json) body.response_format = { type: 'json_object' };
 
     const response = await fetch(`${this.baseUrl}/chat/completions`, {
@@ -117,6 +139,11 @@ export class KimiProvider extends BaseAIProvider {
 
     const data = await response.json();
     const message = data.choices[0].message;
-    return message.content || message.reasoning_content || '';
+    if (message.content) return message.content;
+    if (this.isReasoningModel) {
+      if (!options.json && message.reasoning_content) return message.reasoning_content;
+      throw new Error('Kimi hat keine verwertbare Antwort zurückgegeben (Reasoning-Modell). Bitte max_tokens erhöhen.');
+    }
+    throw new Error('Kimi hat keine Antwort zurückgegeben.');
   }
 }
