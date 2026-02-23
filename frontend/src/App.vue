@@ -42,7 +42,7 @@
             <AppHeader @toggle-sidebar="toggleSidebar" />
 
             <!-- Seiteninhalt -->
-            <main class="flex-1 p-4 lg:p-6 overflow-y-auto">
+            <main ref="mainContent" class="flex-1 p-4 lg:p-6 overflow-y-auto">
               <RouterView v-slot="{ Component }">
                 <Transition name="page" mode="out-in">
                   <component :is="Component" />
@@ -65,8 +65,8 @@
  * - Prüft Auth-Status beim Start
  * - Verwaltet Sidebar und Theme
  */
-import { ref, onMounted } from 'vue';
-import { RouterView } from 'vue-router';
+import { ref, onMounted, watch } from 'vue';
+import { RouterView, useRouter } from 'vue-router';
 import { useAuthStore } from '@/stores/auth.js';
 import { useTheme } from '@/composables/useTheme.js';
 import AppSidebar from '@/components/layout/AppSidebar.vue';
@@ -77,6 +77,13 @@ const authStore = useAuthStore();
 const { isDark } = useTheme();
 const sidebarCollapsed = ref(false);
 const mobileMenuOpen = ref(false);
+const mainContent = ref(null);
+const router = useRouter();
+
+// Bei Seitenwechsel zum Anfang scrollen
+watch(() => router.currentRoute.value.fullPath, () => {
+  mainContent.value?.scrollTo({ top: 0 });
+});
 
 // Sidebar-Toggle: Auf Mobile → Overlay, auf Desktop → Collapse
 function toggleSidebar() {
