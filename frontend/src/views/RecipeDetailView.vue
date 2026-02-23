@@ -184,6 +184,11 @@
             </span>
             <span class="flex-1 text-stone-700 dark:text-stone-300 text-sm">
               {{ ing.name }}
+              <span v-if="getConversion(ing)"
+                    class="ml-1.5 text-stone-400 dark:text-stone-500 text-xs"
+                    :title="getConversion(ing).rule">
+                ≈ {{ getConversion(ing).amount }}&nbsp;{{ getConversion(ing).unit }}
+              </span>
               <span v-if="ing.is_optional" class="ml-1 text-stone-400 text-xs">(optional)</span>
               <span v-if="ing.notes" class="ml-1 text-stone-400 text-xs">– {{ ing.notes }}</span>
             </span>
@@ -208,6 +213,11 @@
                 </span>
                 <span class="flex-1 text-stone-700 dark:text-stone-300 text-sm">
                   {{ ing.name }}
+                  <span v-if="getConversion(ing)"
+                        class="ml-1.5 text-stone-400 dark:text-stone-500 text-xs"
+                        :title="getConversion(ing).rule">
+                    ≈ {{ getConversion(ing).amount }}&nbsp;{{ getConversion(ing).unit }}
+                  </span>
                   <span v-if="ing.is_optional" class="ml-1 text-stone-400 text-xs">(optional)</span>
                   <span v-if="ing.notes" class="ml-1 text-stone-400 text-xs">– {{ ing.notes }}</span>
                 </span>
@@ -371,6 +381,7 @@
       v-model="showCookingMode"
       :recipe="recipe"
       :adjusted-servings="adjustedServings"
+      :conversion-map="conversionMap"
       @finished="handleCookingFinished"
     />
 
@@ -399,6 +410,8 @@ import ConfirmDialog from '@/components/ui/ConfirmDialog.vue';
 import AddToCollection from '@/components/collections/AddToCollection.vue';
 import CookingMode from '@/components/recipes/CookingMode.vue';
 import { useIngredientIcons } from '@/composables/useIngredientIcons.js';
+import { apiRaw } from '@/composables/useApi.js';
+import { formatAmount } from '@/utils/formatAmount.js';
 
 const route = useRoute();
 const router = useRouter();
@@ -413,6 +426,7 @@ const showDeleteDialog = ref(false);
 const deleting = ref(false);
 const ingredientView = ref('all');
 const showCookingMode = ref(false);
+const conversionMap = ref(new Map());
 
 // ─── Wochenplaner-Modal ───
 const showPlannerModal = ref(false);
@@ -528,11 +542,31 @@ const flatIngredients = computed(() => {
   return [...merged.values()];
 });
 
-// Portionsrechner: Menge umrechnen
+// Portionsrechner: Menge umrechnen (Rohwert für Berechnungen)
+function scaleAmountRaw(amount) {
+  if (!amount || !recipe.value?.servings) return 0;
+  return (amount / recipe.value.servings) * adjustedServings.value;
+}
+
+// Formatierte Anzeige mit Unicode-Brüchen (½, ¼, ¾ …)
 function scaleAmount(amount) {
-  if (!amount || !recipe.value?.servings) return '';
-  const scaled = (amount / recipe.value.servings) * adjustedServings.value;
-  return Math.round(scaled * 100) / 100;
+  const raw = scaleAmountRaw(amount);
+  return raw ? formatAmount(raw) : '';
+}
+
+// Umgerechnete Menge für eine Zutat (z. B. 2 Stk → ≈ 160 g)
+function getConversion(ing) {
+  if (!ing.unit || !ing.amount) return null;
+  const key = `${ing.name.toLowerCase()}|${ing.unit.toLowerCase()}`;
+  const conv = conversionMap.value.get(key);
+  if (!conv) return null;
+  const scaled = scaleAmountRaw(ing.amount);
+  if (!scaled) return null;
+  return {
+    amount: formatAmount(scaled * conv.to_amount),
+    unit: conv.to_unit,
+    rule: `1 ${ing.unit} ≈ ${formatAmount(conv.to_amount)} ${conv.to_unit}`,
+  };
 }
 
 // Zutat-Farbe bestimmen (anhand des Namens) – nur Fallback für "•"
@@ -604,9 +638,26 @@ async function deleteRecipe() {
   }
 }
 
+async function loadConversions() {
+  try {
+    const data = await apiRaw('/ingredient-conversions');
+    const map = new Map();
+    for (const c of data.conversions || []) {
+      map.set(`${c.ingredient_name.toLowerCase()}|${c.from_unit.toLowerCase()}`, {
+        to_amount: c.to_amount,
+        to_unit: c.to_unit,
+      });
+    }
+    conversionMap.value = map;
+  } catch { /* Umrechnungen sind optional */ }
+}
+
 onMounted(async () => {
   await loadIcons();
-  await recipesStore.fetchRecipe(route.params.id);
+  await Promise.all([
+    recipesStore.fetchRecipe(route.params.id),
+    loadConversions(),
+  ]);
   if (recipe.value) {
     adjustedServings.value = recipe.value.servings;
   }

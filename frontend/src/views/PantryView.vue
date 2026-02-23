@@ -303,6 +303,7 @@
                   <!-- Menge -->
                   <span :class="['tabular-nums text-xs sm:text-sm shrink-0', ing.is_blocked ? 'line-through text-stone-300 dark:text-stone-600' : 'text-stone-500 dark:text-stone-400']">
                     {{ formatIngAmount(ing.needed_amount) }} {{ ing.needed_unit }}
+                    <span v-if="getIngConversion(ing)" class="ml-1 font-normal text-[11px] text-stone-400 dark:text-stone-500" :title="getIngConversion(ing).rule">≈&nbsp;{{ getIngConversion(ing).amount }}&nbsp;{{ getIngConversion(ing).unit }}</span>
                   </span>
                 </div>
               </div>
@@ -597,6 +598,8 @@ import { ref, reactive, computed, onMounted, watch } from 'vue';
 import { usePantryStore } from '@/stores/pantry.js';
 import { useShoppingStore } from '@/stores/shopping.js';
 import { useNotification } from '@/composables/useNotification.js';
+import { apiRaw } from '@/composables/useApi.js';
+import { formatAmount } from '@/utils/formatAmount.js';
 import { Plus, Minus, Trash2, AlertTriangle, Download, Infinity, Check, CheckSquare, Square, UtensilsCrossed, LayoutGrid, ChevronLeft, ChevronRight, ChevronDown, CheckCircle2, ShoppingCart } from 'lucide-vue-next';
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue';
 import UnitInput from '@/components/ui/UnitInput.vue';
@@ -614,6 +617,7 @@ const selectMode = ref(false);
 const selectedIds = ref(new Set());
 const showBatchDeleteConfirm = ref(false);
 const batchDeleting = ref(false);
+const conversionMap = ref(new Map());
 
 const addForm = reactive({
   name: '',
@@ -726,8 +730,34 @@ function recipeCoverageLabel(recipe) {
 
 function formatIngAmount(amount) {
   if (!amount) return '';
-  if (Number.isInteger(amount)) return amount.toString();
-  return amount.toFixed(1).replace(/\.0$/, '');
+  return formatAmount(amount);
+}
+
+// ─── Einheiten-Umrechnungen ───
+async function loadConversions() {
+  try {
+    const data = await apiRaw('/ingredient-conversions');
+    const map = new Map();
+    for (const c of data.conversions || []) {
+      map.set(`${c.ingredient_name.toLowerCase()}|${c.from_unit.toLowerCase()}`, {
+        to_amount: c.to_amount,
+        to_unit: c.to_unit,
+      });
+    }
+    conversionMap.value = map;
+  } catch { /* Umrechnungen sind optional */ }
+}
+
+function getIngConversion(ing) {
+  if (!ing.needed_unit || !ing.needed_amount) return null;
+  const key = `${ing.name.toLowerCase()}|${ing.needed_unit.toLowerCase()}`;
+  const conv = conversionMap.value.get(key);
+  if (!conv) return null;
+  return {
+    amount: formatAmount(ing.needed_amount * conv.to_amount),
+    unit: conv.to_unit,
+    rule: `1 ${ing.needed_unit} ≈ ${formatAmount(conv.to_amount)} ${conv.to_unit}`,
+  };
 }
 
 // ─── Zutat auf Einkaufsliste ───
@@ -909,6 +939,7 @@ async function executeBatchDelete() {
 
 onMounted(() => {
   pantryStore.fetchItems();
+  loadConversions();
   if (viewMode.value === 'recipe') {
     pantryStore.fetchRecipeView();
     syncShoppingSet();

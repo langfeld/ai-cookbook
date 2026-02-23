@@ -126,6 +126,11 @@
                       <span>
                         <span v-if="getEmoji(ing.name)" class="mr-1">{{ getEmoji(ing.name) }}</span>
                         {{ ing.name }}
+                        <span v-if="getConversion(ing)"
+                              class="ml-1 font-normal text-stone-400 dark:text-stone-500 text-sm"
+                              :title="getConversion(ing).rule">
+                          ≈ {{ getConversion(ing).amount }}&nbsp;{{ getConversion(ing).unit }}
+                        </span>
                       </span>
                     </li>
                   </ul>
@@ -154,6 +159,11 @@
                       <span>
                         <span v-if="getEmoji(ing.name)" class="mr-1">{{ getEmoji(ing.name) }}</span>
                         {{ ing.name }}
+                        <span v-if="getConversion(ing)"
+                              class="ml-1 font-normal text-stone-400 dark:text-stone-500 text-sm"
+                              :title="getConversion(ing).rule">
+                          ≈ {{ getConversion(ing).amount }}&nbsp;{{ getConversion(ing).unit }}
+                        </span>
                       </span>
                     </li>
                   </ul>
@@ -298,6 +308,7 @@ import {
   Sun, Moon, UtensilsCrossed, ChefHat,
 } from 'lucide-vue-next';
 import { useIngredientIcons } from '@/composables/useIngredientIcons';
+import { formatAmount } from '@/utils/formatAmount.js';
 
 const TIMER_STORAGE_KEY = 'cooking-mode-timer-enabled';
 
@@ -307,6 +318,7 @@ const props = defineProps({
   modelValue: { type: Boolean, default: false },
   recipe: { type: Object, required: true },
   adjustedServings: { type: Number, default: 4 },
+  conversionMap: { type: Map, default: () => new Map() },
 });
 
 const emit = defineEmits(['update:modelValue', 'finished']);
@@ -435,10 +447,28 @@ function finish() {
 }
 
 // ─── Portionsrechner ───
+function scaleAmountRaw(amount) {
+  if (!amount || !props.recipe?.servings) return 0;
+  return (amount / props.recipe.servings) * props.adjustedServings;
+}
+
 function scaleAmount(amount) {
-  if (!amount || !props.recipe?.servings) return '';
-  const scaled = (amount / props.recipe.servings) * props.adjustedServings;
-  return Math.round(scaled * 100) / 100;
+  const raw = scaleAmountRaw(amount);
+  return raw ? formatAmount(raw) : '';
+}
+
+function getConversion(ing) {
+  if (!ing.unit || !ing.amount) return null;
+  const key = `${ing.name.toLowerCase()}|${ing.unit.toLowerCase()}`;
+  const conv = props.conversionMap.get(key);
+  if (!conv) return null;
+  const scaled = scaleAmountRaw(ing.amount);
+  if (!scaled) return null;
+  return {
+    amount: formatAmount(scaled * conv.to_amount),
+    unit: conv.to_unit,
+    rule: `1 ${ing.unit} ≈ ${formatAmount(conv.to_amount)} ${conv.to_unit}`,
+  };
 }
 
 // ─── Zutaten-Checkbox ───

@@ -91,6 +91,15 @@ Eine KI-gestützte Rezeptverwaltung mit intelligentem Wochenplaner (Score-Algori
 - **Export** — Vorräte als CSV oder JSON exportieren
 - **Import** — Vorräte aus CSV oder JSON importieren (mit Dateivorschau, Zusammenführung bestehender Einträge)
 
+### ⚖️ Einheiten-Umrechnungen
+- **Zutat-spezifische Konvertierung** — Definiert, wie viel Gramm/Milliliter einer Einheit entspricht (z. B. „1 Stk Zwiebel = 80 g", „1 EL Olivenöl = 15 ml")
+- **Löst Unit-Mismatch auf** — Wenn Vorrat in g/kg geführt wird, aber Rezepte in Stk/EL/TL rechnen, werden die Einheiten automatisch umgerechnet
+- **3 Wirkstellen** — Umrechnungen greifen im Vorratsschrank (Rezept-Ansicht), im Wochenplaner (Vorrats-Score) und in der Einkaufsliste (Vorratsabgleich)
+- **KI-Generierung** — Alle Zutaten mit problematischen Einheiten (Stk, EL, TL, Bund, Zehe, Scheibe, Dose, Becher, Pkg, Prise) werden automatisch erkannt und per KI mit realistischen Werten befüllt
+- **Schnelles KI-Modell** — Für die Generierung wird automatisch ein schnelleres Modell verwendet (z. B. `moonshot-v1-32k` statt `kimi-k2.5`), da kein Reasoning nötig ist — 10× schneller und günstiger
+- **Batch-Verarbeitung** — Große Zutatenlisten werden in 15er-Batches aufgeteilt, mit robuster Extraktion verschiedener AI-Antwortformate
+- **Verwaltung** — Eigene Seite zum Einsehen, Hinzufügen, Bearbeiten und Löschen aller Umrechnungen
+
 ### 🎨 Design & UX
 - **Dark Mode / Light Mode** — Umschaltbar, klassenbasiert
 - **Voll Responsiv** — Mobile-Sidebar als Overlay-Drawer, horizontaler Scroll für Wochenplaner, adaptive Grids
@@ -101,7 +110,7 @@ Eine KI-gestützte Rezeptverwaltung mit intelligentem Wochenplaner (Score-Algori
 ### 🛡️ Admin-Bereich
 - **Dashboard** — Systemstatistiken (Benutzer, Rezepte, KI-Imports, Speicherverbrauch), beliebteste Rezepte, Admin-Aktivitätslog
 - **Benutzerverwaltung** — Alle Benutzer anzeigen/suchen, Rollen ändern (Admin/User), Konten sperren/entsperren, Passwort zurücksetzen, Benutzer löschen
-- **Systemeinstellungen** — Registrierung aktivieren/deaktivieren, Wartungsmodus, KI-Anbieter wählen, Upload-Größe konfigurieren, REWE-Integration ein-/ausschalten
+- **Systemeinstellungen** — Registrierung aktivieren/deaktivieren, Wartungsmodus, KI-Anbieter wählen (inkl. schnelles Modell für einfache Aufgaben), Upload-Größe konfigurieren, REWE-Integration ein-/ausschalten
 - **Zutaten-Icons** — Keyword→Emoji-Mappings verwalten (Hinzufügen, Bearbeiten, Löschen), integrierter Emoji-Picker, Tabs für Mappings/verwendete/fehlende Zutaten
 - **Datei-Bereinigung** — Verwaiste Upload-Dateien automatisch erkennen und entfernen
 - **Datenverwaltung** — Zentrale Seite für alle Export/Import-Funktionen und Backups:
@@ -126,7 +135,7 @@ Eine KI-gestützte Rezeptverwaltung mit intelligentem Wochenplaner (Score-Algori
 | **Backend** | Fastify + Node.js 22 | 5.2 / 22.x |
 | **Datenbank** | SQLite (better-sqlite3, WAL-Modus) | 11.7 |
 | **Bildverarbeitung** | Sharp (Resize, WebP-Konvertierung) | 0.33 |
-| **KI-Provider** | Kimi K2.5 / OpenAI / Anthropic / Ollama — austauschbar | — |
+| **KI-Provider** | Kimi K2.5 + moonshot-v1 / OpenAI / Anthropic / Ollama — austauschbar | — |
 | **Auth** | JWT (@fastify/jwt + bcryptjs) | — |
 | **Bring!** | bring-shopping (npm) | 1.x |
 | **Container** | Docker (Single-Container) + ghcr.io | — |
@@ -285,15 +294,16 @@ zauberjournal/
 │       │   ├── bring.js        # Bring!: Account-Verbindung, Listen, Senden, Trennen
 │       │   ├── ingredient-icons.js # Zutaten-Emoji-Mappings (CRUD)
 │       │   ├── ingredient-aliases.js # Zutaten-Aliase, Blockierungen, Export/Import
+│       │   ├── ingredient-conversions.js # Einheiten-Umrechnungen (CRUD + KI-Generierung)
 │       │   └── admin.js        # Admin: Stats, Benutzer, Settings, Logs, Export/Import (Rezepte + Pantry)
 │       ├── services/
 │       │   ├── ai/
 │       │   │   ├── base.js     # BaseAIProvider (Chat, JSON-Parse, Bildanalyse)
-│       │   │   ├── kimi.js     # Kimi K2.5 Provider (api.moonshot.ai)
+│       │   │   ├── kimi.js     # Kimi / Moonshot AI Provider (Reasoning + Standard-Modelle)
 │       │   │   ├── openai.js   # OpenAI Provider (GPT-4o etc.)
 │       │   │   ├── anthropic.js # Anthropic Provider (Claude)
 │       │   │   ├── ollama.js   # Ollama Provider (lokal)
-│       │   │   └── provider.js # Provider-Factory
+│       │   │   └── provider.js # Provider-Factory (Standard + Simple-Modus)
 │       │   ├── meal-planner.js # Wochenplan-Algorithmus (Score-basiert + opt. KI-Reasoning)
 │       │   ├── recipe-parser.js # Multi-Bild-Rezeptanalyse
 │       │   ├── rewe-api.js     # REWE API-Client (Produktsuche, Marktsuche, URL-Builder)
@@ -323,6 +333,7 @@ zauberjournal/
         │   ├── DashboardView.vue
         │   ├── RecipesView.vue / RecipeDetailView.vue / RecipeFormView.vue
         │   ├── MealPlanView.vue / ShoppingView.vue / PantryView.vue
+        │   ├── IngredientConversionsView.vue  # Einheiten-Umrechnungen
         │   ├── UserDataManagementView.vue  # Meine Daten (Export/Import)
         │   └── admin/          # AdminDashboard, AdminUsers, AdminSettings, AdminIngredientIcons
         ├── stores/             # Pinia (auth, recipes, mealplan, shopping, pantry, collections, ingredient-aliases)
@@ -443,7 +454,15 @@ zauberjournal/
 | `POST` | `/` | Neues Mapping erstellen 🔒 |
 | `PUT` | `/:id` | Mapping bearbeiten 🔒 |
 | `DELETE` | `/:id` | Mapping löschen 🔒 |
-
+### Einheiten-Umrechnungen (`/api/ingredient-conversions`)
+| Methode | Pfad | Beschreibung |
+|---------|------|-------------|
+| `GET` | `/` | Alle Umrechnungen des Benutzers |
+| `POST` | `/` | Neue Umrechnung erstellen |
+| `POST` | `/bulk` | Mehrere Umrechnungen auf einmal speichern (Upsert) |
+| `PUT` | `/:id` | Umrechnung bearbeiten |
+| `DELETE` | `/:id` | Umrechnung löschen |
+| `POST` | `/generate` | KI-generierte Umrechnungen für alle Zutaten mit problematischen Einheiten |
 ### Zutaten-Einstellungen (`/api/ingredient-aliases`)
 | Methode | Pfad | Beschreibung |
 |---------|------|-------------|
@@ -557,14 +576,21 @@ Milch;1;l;Milchprodukte;2026-02-25;
 
 Die KI-Anbindung ist über ein Provider-Pattern abstrahiert (`backend/src/services/ai/`).
 
-### Kimi K2.5 (Standard)
+### Kimi / Moonshot AI (Standard)
 ```env
 AI_PROVIDER=kimi
 KIMI_API_KEY=sk-dein-key
 KIMI_BASE_URL=https://api.moonshot.ai/v1
 KIMI_MODEL=kimi-k2.5
+KIMI_SIMPLE_MODEL=moonshot-v1-32k
 ```
-> **Wichtig:** `api.moonshot.ai` (International), nicht `api.moonshot.cn`. Kimi K2.5 unterstützt keinen `temperature`-Parameter.
+> **Wichtig:** `api.moonshot.ai` (International), nicht `api.moonshot.cn`.
+
+Moonshot bietet zwei Modell-Typen:
+- **Reasoning-Modelle** (`kimi-k2.5`, `kimi-k2`) — Für komplexe Aufgaben (Rezept-Import, Wochenplan-Reasoning). Erzwingen `temperature=1`, liefern `reasoning_content`.
+- **Standard-Modelle** (`moonshot-v1-8k/32k/128k`) — Für einfache strukturierte Aufgaben (Umrechnungs-Generierung, JSON-Erzeugung). Erlauben freie `temperature`, schneller und günstiger.
+
+Das „Schnelle Modell" (`KIMI_SIMPLE_MODEL`) wird automatisch für Aufgaben verwendet, die kein Reasoning benötigen. Konfigurierbar im Admin-Panel unter *KI-Konfiguration → Schnelles Modell*.
 
 ### OpenAI
 ```env
