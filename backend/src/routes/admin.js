@@ -80,6 +80,7 @@ export default async function adminRoutes(fastify) {
     const aliasCount = db.prepare('SELECT COUNT(*) as count FROM ingredient_aliases').get().count;
     const recipeBlockCount = db.prepare('SELECT COUNT(*) as count FROM recipe_blocks').get().count;
     const blockedIngredientCount = db.prepare('SELECT COUNT(*) as count FROM blocked_ingredients').get().count;
+    const conversionCount = db.prepare('SELECT COUNT(*) as count FROM ingredient_conversions').get().count;
 
     // Top 10 beliebteste Rezepte
     const popularRecipes = db.prepare(`
@@ -140,6 +141,7 @@ export default async function adminRoutes(fastify) {
       rewe_preferences: rewePrefsCount,
       ingredient_aliases: aliasCount,
       blocked_ingredients: blockedIngredientCount,
+      ingredient_conversions: conversionCount,
       recipe_blocks: recipeBlockCount,
       storage_size: storageSize,
       db_size: dbSize?.size || 0,
@@ -1493,6 +1495,164 @@ export default async function adminRoutes(fastify) {
       skipped,
       blocked_imported: blockedImported,
       blocked_skipped: blockedSkipped,
+      target_user: targetUser.username,
+      errors: errorsArr.length ? errorsArr : undefined,
+    };
+  });
+
+  // ============================================
+  // Einheiten-Umrechnungen Export/Import (Admin)
+  // ============================================
+
+  /**
+   * GET /api/admin/export/ingredient-conversions
+   * Alle Einheiten-Umrechnungen als JSON exportieren
+   */
+  fastify.get('/export/ingredient-conversions', {
+    schema: {
+      description: 'Einheiten-Umrechnungen exportieren (Admin)',
+      tags: ['Admin'],
+      security: [{ bearerAuth: [] }],
+      querystring: {
+        type: 'object',
+        properties: {
+          user_id: { type: 'integer' },
+        },
+      },
+    },
+  }, async (request, reply) => {
+    const filterUserId = request.query.user_id;
+
+    let conversions;
+    if (filterUserId) {
+      conversions = db.prepare(`
+        SELECT ic.*, u.username as owner
+        FROM ingredient_conversions ic JOIN users u ON ic.user_id = u.id
+        WHERE ic.user_id = ?
+        ORDER BY u.username, ic.ingredient_name, ic.from_unit
+      `).all(filterUserId);
+    } else {
+      conversions = db.prepare(`
+        SELECT ic.*, u.username as owner
+        FROM ingredient_conversions ic JOIN users u ON ic.user_id = u.id
+        ORDER BY u.username, ic.ingredient_name, ic.from_unit
+      `).all();
+    }
+
+    const exportData = {
+      version: '1.0',
+      exported_at: new Date().toISOString(),
+      source: 'Zauberjournal (Admin-Export)',
+      type: 'ingredient-conversions',
+      conversion_count: conversions.length,
+      conversions: conversions.map(c => ({
+        ingredient_name: c.ingredient_name,
+        from_unit: c.from_unit,
+        to_amount: c.to_amount,
+        to_unit: c.to_unit,
+        owner: c.owner,
+      })),
+    };
+
+    const suffix = filterUserId ? `-user-${filterUserId}` : '-alle';
+    reply.header('Content-Type', 'application/json');
+    reply.header('Content-Disposition', `attachment; filename="admin-umrechnungen-export${suffix}-${new Date().toISOString().split('T')[0]}.json"`);
+    return exportData;
+  });
+
+  /**
+   * POST /api/admin/import/ingredient-conversions
+   * Einheiten-Umrechnungen aus JSON importieren (Admin)
+   */
+  fastify.post('/import/ingredient-conversions', {
+    schema: {
+      description: 'Einheiten-Umrechnungen importieren (Admin)',
+      tags: ['Admin'],
+      security: [{ bearerAuth: [] }],
+    },
+  }, async (request, reply) => {
+    let importData;
+    let targetUserId;
+
+    const contentType = request.headers['content-type'] || '';
+
+    if (contentType.includes('multipart')) {
+      const parts = request.parts();
+      for await (const part of parts) {
+        if (part.type === 'file') {
+          const buffer = await part.toBuffer();
+          try {
+            importData = JSON.parse(buffer.toString('utf-8'));
+          } catch {
+            return reply.status(400).send({ error: 'Ungültiges JSON-Format in der Datei.' });
+          }
+        } else if (part.fieldname === 'user_id') {
+          targetUserId = parseInt(part.value, 10);
+        }
+      }
+    } else {
+      importData = request.body?.data || request.body;
+      targetUserId = request.body?.user_id;
+    }
+
+    if (!importData || !Array.isArray(importData.conversions) || importData.conversions.length === 0) {
+      return reply.status(400).send({ error: 'Ungültiges Export-Format. Erwartet: { conversions: [...] }' });
+    }
+
+    if (importData.conversions.length > 5000) {
+      return reply.status(400).send({ error: 'Maximal 5000 Umrechnungen pro Import erlaubt.' });
+    }
+
+    const userId = targetUserId || request.user.id;
+    const targetUser = db.prepare('SELECT id, username FROM users WHERE id = ?').get(userId);
+    if (!targetUser) {
+      return reply.status(404).send({ error: 'Ziel-Benutzer nicht gefunden.' });
+    }
+
+    let imported = 0, updated = 0, skipped = 0;
+    const errorsArr = [];
+
+    const upsert = db.prepare(`
+      INSERT INTO ingredient_conversions (user_id, ingredient_name, from_unit, to_amount, to_unit)
+      VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT(user_id, ingredient_name, from_unit) DO UPDATE SET
+        to_amount = excluded.to_amount,
+        to_unit = excluded.to_unit
+    `);
+
+    const findExisting = db.prepare(
+      'SELECT id FROM ingredient_conversions WHERE user_id = ? AND LOWER(ingredient_name) = LOWER(?) AND LOWER(from_unit) = LOWER(?)'
+    );
+
+    const transaction = db.transaction(() => {
+      for (const c of importData.conversions) {
+        try {
+          const name = String(c.ingredient_name || '').trim();
+          const fromUnit = String(c.from_unit || '').trim();
+          const toAmount = Number(c.to_amount);
+          const toUnit = String(c.to_unit || '').trim();
+
+          if (!name || !fromUnit || !toAmount || toAmount <= 0 || !toUnit) { skipped++; continue; }
+
+          const existing = findExisting.get(userId, name, fromUnit);
+          upsert.run(userId, name, fromUnit, toAmount, toUnit);
+          if (existing) { updated++; } else { imported++; }
+        } catch (err) {
+          skipped++;
+          errorsArr.push(`Fehler bei "${c.ingredient_name || '?'}": ${err.message}`);
+        }
+      }
+    });
+
+    transaction();
+
+    logAdminAction(request.user.id, 'Umrechnungen importiert', `${imported} neu, ${updated} aktualisiert für ${targetUser.username}`);
+
+    return {
+      message: `${imported} neu, ${updated} aktualisiert, ${skipped} übersprungen. Benutzer: "${targetUser.username}".`,
+      imported,
+      updated,
+      skipped,
       target_user: targetUser.username,
       errors: errorsArr.length ? errorsArr : undefined,
     };

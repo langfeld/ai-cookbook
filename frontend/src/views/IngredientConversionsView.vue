@@ -43,7 +43,7 @@
         v-model="searchQuery"
         type="text"
         placeholder="Zutat suchen..."
-        class="py-2.5 pr-4 pl-10 w-full form-input"
+        class="bg-white dark:bg-stone-800 py-2.5 pr-4 pl-10 border border-stone-200 focus:border-primary-400 dark:border-stone-700 dark:focus:border-primary-500 rounded-lg outline-none w-full text-sm transition-colors"
       />
     </div>
 

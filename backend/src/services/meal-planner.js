@@ -617,7 +617,7 @@ export async function generateReasoning(plan) {
   // Zuerst KI versuchen
   try {
     const { getAIProvider } = await import('./ai/provider.js');
-    const ai = getAIProvider();
+    const ai = getAIProvider({ simple: true });
     if (ai?.apiKey) {
       const titles = plan.flatMap(d =>
         (d.meals || d.entries?.filter(e => e.day_of_week === d.day) || [])

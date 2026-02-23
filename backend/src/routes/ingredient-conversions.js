@@ -169,6 +169,117 @@ export default async function ingredientConversionRoutes(fastify) {
   });
 
   // ─────────────────────────────────────────────
+  // GET /export – Eigene Umrechnungen exportieren
+  // ─────────────────────────────────────────────
+  fastify.get('/export', {
+    schema: {
+      description: 'Einheiten-Umrechnungen exportieren',
+      tags: ['Umrechnungen'],
+      security: [{ bearerAuth: [] }],
+    },
+  }, async (request, reply) => {
+    const userId = request.user.id;
+
+    const conversions = db.prepare(
+      'SELECT ingredient_name, from_unit, to_amount, to_unit FROM ingredient_conversions WHERE user_id = ? ORDER BY ingredient_name, from_unit'
+    ).all(userId);
+
+    const exportData = {
+      version: '1.0',
+      exported_at: new Date().toISOString(),
+      source: 'Zauberjournal',
+      type: 'ingredient-conversions',
+      conversion_count: conversions.length,
+      conversions,
+    };
+
+    reply.header('Content-Type', 'application/json');
+    reply.header('Content-Disposition', `attachment; filename="umrechnungen-${new Date().toISOString().split('T')[0]}.json"`);
+    return exportData;
+  });
+
+  // ─────────────────────────────────────────────
+  // POST /import – Umrechnungen importieren
+  // ─────────────────────────────────────────────
+  fastify.post('/import', {
+    schema: {
+      description: 'Einheiten-Umrechnungen importieren',
+      tags: ['Umrechnungen'],
+      security: [{ bearerAuth: [] }],
+    },
+  }, async (request, reply) => {
+    const userId = request.user.id;
+    let importData;
+
+    const contentType = request.headers['content-type'] || '';
+    if (contentType.includes('multipart')) {
+      const parts = request.parts();
+      for await (const part of parts) {
+        if (part.type === 'file') {
+          const buffer = await part.toBuffer();
+          try {
+            importData = JSON.parse(buffer.toString('utf-8'));
+          } catch {
+            return reply.status(400).send({ error: 'Ungültiges JSON-Format in der Datei.' });
+          }
+        }
+      }
+    } else {
+      importData = request.body;
+    }
+
+    if (!importData || !Array.isArray(importData.conversions) || importData.conversions.length === 0) {
+      return reply.status(400).send({ error: 'Ungültiges Export-Format. Erwartet: { conversions: [...] }' });
+    }
+
+    if (importData.conversions.length > 5000) {
+      return reply.status(400).send({ error: 'Maximal 5000 Umrechnungen pro Import erlaubt.' });
+    }
+
+    let imported = 0, updated = 0, skipped = 0;
+
+    const upsert = db.prepare(`
+      INSERT INTO ingredient_conversions (user_id, ingredient_name, from_unit, to_amount, to_unit)
+      VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT(user_id, ingredient_name, from_unit) DO UPDATE SET
+        to_amount = excluded.to_amount,
+        to_unit = excluded.to_unit
+    `);
+
+    const findExisting = db.prepare(
+      'SELECT id FROM ingredient_conversions WHERE user_id = ? AND LOWER(ingredient_name) = LOWER(?) AND LOWER(from_unit) = LOWER(?)'
+    );
+
+    const transaction = db.transaction(() => {
+      for (const c of importData.conversions) {
+        try {
+          const name = String(c.ingredient_name || '').trim();
+          const fromUnit = String(c.from_unit || '').trim();
+          const toAmount = Number(c.to_amount);
+          const toUnit = String(c.to_unit || '').trim();
+
+          if (!name || !fromUnit || !toAmount || toAmount <= 0 || !toUnit) { skipped++; continue; }
+
+          const existing = findExisting.get(userId, name, fromUnit);
+          upsert.run(userId, name, fromUnit, toAmount, toUnit);
+          if (existing) { updated++; } else { imported++; }
+        } catch {
+          skipped++;
+        }
+      }
+    });
+
+    transaction();
+
+    return {
+      message: `${imported} neu, ${updated} aktualisiert, ${skipped} übersprungen.`,
+      imported,
+      updated,
+      skipped,
+    };
+  });
+
+  // ─────────────────────────────────────────────
   // DELETE /:id – Umrechnung löschen
   // ─────────────────────────────────────────────
   fastify.delete('/:id', async (request, reply) => {
@@ -342,4 +453,137 @@ Beispiel: [{"ingredient_name":"Zwiebel","from_unit":"Stk","to_amount":80,"to_uni
       });
     }
   });
+}
+
+/**
+ * Prüft nach Rezept-Erstellung, ob Zutaten mit problematischen
+ * Einheiten vorhanden sind, die noch keine Umrechnung haben.
+ * Generiert fehlende Umrechnungen per KI und speichert sie automatisch.
+ * Läuft asynchron im Hintergrund (fire & forget).
+ */
+export async function autoGenerateConversions(userId, ingredients) {
+  try {
+    if (!ingredients?.length) return;
+
+    const problematicUnits = ['stk', 'el', 'tl', 'bund', 'zehe', 'scheibe', 'dose', 'becher', 'pkg', 'prise'];
+
+    // Nur Zutaten mit problematischen Einheiten
+    const candidates = ingredients.filter(
+      i => i.unit && problematicUnits.includes(i.unit.toLowerCase())
+    );
+
+    if (candidates.length === 0) return;
+
+    // Bereits vorhandene Umrechnungen laden
+    const existing = db.prepare(
+      'SELECT ingredient_name, from_unit FROM ingredient_conversions WHERE user_id = ?'
+    ).all(userId);
+    const existingSet = new Set(existing.map(e => `${e.ingredient_name.toLowerCase()}|${e.from_unit.toLowerCase()}`));
+
+    // Nur fehlende Umrechnungen
+    const uniqueMap = new Map();
+    for (const i of candidates) {
+      const key = `${i.name.toLowerCase()}|${i.unit.toLowerCase()}`;
+      if (!existingSet.has(key) && !uniqueMap.has(key)) {
+        uniqueMap.set(key, { name: i.name, unit: i.unit });
+      }
+    }
+
+    const missing = [...uniqueMap.values()];
+    if (missing.length === 0) return;
+
+    console.log(`⚖️ Auto-Umrechnung: ${missing.length} fehlende Umrechnungen werden generiert...`);
+
+    const { getAIProvider } = await import('../services/ai/provider.js');
+    const ai = getAIProvider({ simple: true });
+
+    if (!ai?.apiKey) {
+      console.warn('⚖️ Auto-Umrechnung übersprungen: Kein KI-Provider konfiguriert.');
+      return;
+    }
+
+    const ingredientList = missing
+      .map(i => `- ${i.name}: 1 ${i.unit}`)
+      .join('\n');
+
+    const prompt = `Gib für jede Zutat an, wie viel Gramm (g) oder Milliliter (ml) EINE Einheit entspricht.
+
+Regeln:
+- Feste Zutaten (Gemüse, Obst, Fleisch, Käse, etc.) → Umrechnung in Gramm (g)
+- Flüssige Zutaten (Öl, Milch, Sauce, etc.) → Umrechnung in Milliliter (ml)
+- Pulver/Gewürze (TL, EL) → Umrechnung in Gramm (g)
+- "Stk" = 1 Stück der Zutat (mittlere Größe)
+- "Bund" = 1 Bund der Zutat
+- "Zehe" = 1 Knoblauchzehe
+- "Scheibe" = 1 Scheibe (Brot, Käse, etc.)
+- "Dose" = 1 Standarddose (400g/400ml)
+- "Becher" = 1 Standardbecher (150g Joghurt, 200ml Sahne)
+- "Pkg" = 1 Standardpackung
+- "Prise" = eine Prise (ca. 0.3-0.5g)
+- "EL" = 1 Esslöffel
+- "TL" = 1 Teelöffel
+- Schätze realistische Durchschnittswerte
+
+Zutaten:
+${ingredientList}
+
+WICHTIG: Antworte AUSSCHLIESSLICH mit einem JSON-Array.
+Jedes Element hat genau diese 4 Felder: ingredient_name, from_unit, to_amount, to_unit.
+Beispiel: [{"ingredient_name":"Zwiebel","from_unit":"Stk","to_amount":80,"to_unit":"g"}]`;
+
+    const result = await ai.chatJSON(prompt, { temperature: 0.3, maxTokens: 4096 });
+
+    // Ergebnis normalisieren
+    let items = [];
+    if (Array.isArray(result)) {
+      items = result;
+    } else if (result && typeof result === 'object') {
+      if (result.ingredient_name && result.to_amount) {
+        items = [result];
+      } else {
+        const arrayVal = Object.values(result).find(v => Array.isArray(v));
+        if (arrayVal) {
+          items = arrayVal;
+        } else {
+          for (const [key, val] of Object.entries(result)) {
+            if (val && typeof val === 'object' && val.to_amount) {
+              items.push({
+                ingredient_name: val.ingredient_name || key,
+                from_unit: val.from_unit || missing.find(m => m.name.toLowerCase() === key.toLowerCase())?.unit || '?',
+                to_amount: val.to_amount,
+                to_unit: val.to_unit || 'g',
+              });
+            }
+          }
+        }
+      }
+    }
+
+    // Validieren und speichern
+    const valid = items.filter(r =>
+      r.ingredient_name && r.from_unit && r.to_amount > 0 && r.to_unit
+    );
+
+    if (valid.length === 0) return;
+
+    const upsert = db.prepare(`
+      INSERT INTO ingredient_conversions (user_id, ingredient_name, from_unit, to_amount, to_unit)
+      VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT(user_id, ingredient_name, from_unit) DO UPDATE SET
+        to_amount = excluded.to_amount,
+        to_unit = excluded.to_unit
+    `);
+
+    const transaction = db.transaction(() => {
+      for (const c of valid) {
+        upsert.run(userId, c.ingredient_name.trim(), c.from_unit.trim(), c.to_amount, c.to_unit.trim());
+      }
+    });
+
+    transaction();
+    console.log(`✅ Auto-Umrechnung: ${valid.length} Umrechnungen gespeichert.`);
+  } catch (err) {
+    console.warn(`⚠️ Auto-Umrechnung fehlgeschlagen: ${err.message}`);
+    // Stille Fehlerbehandlung — blockiert nicht den Rezept-Erstellungsprozess
+  }
 }

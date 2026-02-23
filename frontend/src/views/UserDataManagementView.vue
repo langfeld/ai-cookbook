@@ -116,6 +116,12 @@
       @close="activeModal = null"
       @imported="handleImported"
     />
+
+    <IngredientConversionsImportExportModal
+      v-if="activeModal === 'conversions'"
+      @close="activeModal = null"
+      @imported="handleImported"
+    />
   </div>
 </template>
 
@@ -130,6 +136,7 @@ import MealPlanImportExportModal from '@/components/mealplan/MealPlanImportExpor
 import ShoppingListImportExportModal from '@/components/shopping/ShoppingListImportExportModal.vue';
 import RecipeBlocksImportExportModal from '@/components/recipes/RecipeBlocksImportExportModal.vue';
 import IngredientSettingsImportExportModal from '@/components/shopping/IngredientSettingsImportExportModal.vue';
+import IngredientConversionsImportExportModal from '@/components/recipes/IngredientConversionsImportExportModal.vue';
 
 import {
   BookOpen,
@@ -140,6 +147,7 @@ import {
   ArrowDownUp,
   Info,
   Link2,
+  Scale,
 } from 'lucide-vue-next';
 
 const api = useApi();
@@ -155,6 +163,7 @@ const counts = ref({
   shoppingLists: 0,
   recipeBlocks: 0,
   ingredientSettings: 0,
+  conversions: 0,
 });
 
 const dataCategories = computed(() => [
@@ -224,6 +233,17 @@ const dataCategories = computed(() => [
     count: counts.value.ingredientSettings,
     action: () => { activeModal.value = 'ingredient-settings'; },
   },
+  {
+    key: 'conversions',
+    emoji: '⚖️',
+    label: 'Umrechnungen',
+    description: 'Deine Einheiten-Umrechnungen (z.B. 1 Stk Zwiebel = 80 g) exportieren/importieren.',
+    icon: Scale,
+    bgClass: 'bg-amber-50 dark:bg-amber-900/30',
+    iconClass: 'text-amber-600 dark:text-amber-400',
+    count: counts.value.conversions,
+    action: () => { activeModal.value = 'conversions'; },
+  },
 ]);
 
 function handleImported() {
@@ -233,13 +253,14 @@ function handleImported() {
 
 async function fetchCounts() {
   try {
-    const [pantryData, mealPlanData, shoppingData, blocksData, aliasData, blockedData] = await Promise.all([
+    const [pantryData, mealPlanData, shoppingData, blocksData, aliasData, blockedData, conversionsData] = await Promise.all([
       api.get('/pantry').catch(() => ({ items: [] })),
       api.get('/mealplan/history').catch(() => ({ plans: [] })),
       api.get('/shopping/lists').catch(() => ({ lists: [] })),
       api.get('/recipe-blocks?includeExpired=true').catch(() => ({ blocks: [] })),
       api.get('/ingredient-aliases').catch(() => ({ aliases: [] })),
       api.get('/ingredient-aliases/blocked').catch(() => ({ blocked: [] })),
+      api.get('/ingredient-conversions').catch(() => ({ conversions: [] })),
     ]);
 
     counts.value = {
@@ -249,6 +270,7 @@ async function fetchCounts() {
       shoppingLists: shoppingData.lists?.length || 0,
       recipeBlocks: blocksData.blocks?.length || 0,
       ingredientSettings: (aliasData.aliases?.length || 0) + (blockedData.blocked?.length || 0),
+      conversions: conversionsData.conversions?.length || 0,
     };
   } catch {
     // Ignorieren
