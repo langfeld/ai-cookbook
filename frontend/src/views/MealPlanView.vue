@@ -194,7 +194,7 @@
       </button>
     </div>
 
-    <div v-if="currentPlan && viewMode === 'week'" class="-mx-4 lg:mx-0 px-4 lg:px-0 overflow-x-auto">
+    <div v-if="currentPlan && viewMode === 'week'" class="hidden lg:block -mx-4 lg:mx-0 px-4 lg:px-0 overflow-x-auto">
       <div class="gap-x-2 gap-y-1.5 grid grid-cols-7 lg:min-w-0 min-w-4xl">
 
         <!-- ── Zeile 1: Tag-Header ── -->
@@ -278,6 +278,98 @@
           </div>
         </template>
       </div>
+    </div>
+
+    <!-- ═══════════════════ MOBILE WOCHEN-ANSICHT ═══════════════════ -->
+    <div v-if="currentPlan && viewMode === 'week'" class="lg:hidden space-y-3">
+      <!-- Vergangene Tage Toggle -->
+      <button v-if="pastDaysCount > 0 && pastDaysCount < 7" @click="showPastDays = !showPastDays"
+        class="flex items-center gap-2 bg-stone-100 hover:bg-stone-200 dark:bg-stone-800 dark:hover:bg-stone-700 px-3 py-2 rounded-xl w-full text-stone-500 dark:text-stone-400 text-sm transition-colors">
+        <ChevronDown class="w-4 h-4 transition-transform duration-200" :class="{ 'rotate-180': showPastDays }" />
+        {{ showPastDays ? 'Vergangene Tage ausblenden' : `${pastDaysCount} vergangene${pastDaysCount === 1 ? 'r Tag' : ' Tage'} anzeigen` }}
+      </button>
+
+      <template v-for="(day, dayIdx) in weekDays" :key="'mob-'+dayIdx">
+        <div v-if="showPastDays || !isDayPast(dayIdx) || pastDaysCount === 7" class="space-y-2">
+          <!-- Tag-Header -->
+          <div :class="[
+            'flex items-center justify-between px-3 py-2 rounded-xl cursor-pointer',
+            isToday(dayIdx)
+              ? 'bg-primary-100 dark:bg-primary-900/40 text-primary-700 dark:text-primary-300'
+              : isDayPast(dayIdx)
+                ? 'bg-stone-50 dark:bg-stone-900 text-stone-400 dark:text-stone-500'
+                : dayHasMeals(dayIdx)
+                  ? 'bg-stone-100 dark:bg-stone-800 text-stone-700 dark:text-stone-300'
+                  : 'bg-stone-100 dark:bg-stone-800 text-stone-400 dark:text-stone-500'
+          ]" @click="openDayView(dayIdx)">
+            <div class="flex items-center gap-2">
+              <span class="font-semibold text-sm">{{ day.short }}</span>
+              <span class="opacity-75 text-xs">{{ day.date }}</span>
+            </div>
+            <span v-if="isToday(dayIdx)" class="bg-primary-600 px-2 py-0.5 rounded-full font-medium text-[0.65rem] text-white">Heute</span>
+          </div>
+
+          <!-- Mahlzeiten -->
+          <template v-for="mt in mealTypes" :key="mt.key+'-mob-'+dayIdx">
+            <!-- Gefüllte Mahlzeit -->
+            <div v-if="getMeal(dayIdx, mt.key)"
+              class="mobile-meal-card"
+              :class="{ 'opacity-55': getMeal(dayIdx, mt.key).is_cooked }"
+              @click="selectMeal(getMeal(dayIdx, mt.key))">
+              <!-- Bild -->
+              <div class="relative aspect-[5/3] overflow-hidden">
+                <img v-if="getMeal(dayIdx, mt.key).image_url"
+                  :src="getMeal(dayIdx, mt.key).image_url"
+                  :alt="getMeal(dayIdx, mt.key).recipe_title"
+                  class="w-full h-full object-cover"
+                  loading="lazy" />
+                <div v-else class="flex justify-center items-center bg-stone-100 dark:bg-stone-800 w-full h-full">
+                  <UtensilsCrossed class="w-10 h-10 text-stone-300 dark:text-stone-600" />
+                </div>
+                <!-- Gradient Overlay -->
+                <div class="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent pointer-events-none" />
+                <!-- Mahlzeit-Badge -->
+                <div class="top-2.5 left-2.5 absolute bg-black/50 backdrop-blur-sm px-2 py-0.5 rounded-lg font-medium text-white text-xs">
+                  {{ mt.icon }} {{ mt.label }}
+                </div>
+                <!-- Gekocht-Badge -->
+                <div v-if="getMeal(dayIdx, mt.key).is_cooked"
+                  class="top-2.5 right-2.5 absolute place-items-center grid rounded-full w-7 h-7 bg-accent-500">
+                  <Check class="w-4 h-4 text-white" />
+                </div>
+                <!-- Info-Badges unten -->
+                <div class="right-2.5 bottom-2.5 left-2.5 absolute flex items-center gap-2">
+                  <span class="flex items-center gap-1 bg-black/50 backdrop-blur-sm px-2 py-1 rounded-lg text-white text-xs"
+                    @click.stop="!isLocked && openServingsPopup(getMeal(dayIdx, mt.key), $event)">
+                    <Users class="w-3.5 h-3.5" /> {{ getMeal(dayIdx, mt.key).servings }}
+                  </span>
+                  <span v-if="getMeal(dayIdx, mt.key).total_time"
+                    class="flex items-center gap-1 bg-black/50 backdrop-blur-sm px-2 py-1 rounded-lg text-white text-xs">
+                    <Clock class="w-3.5 h-3.5" /> {{ getMeal(dayIdx, mt.key).total_time }} min
+                  </span>
+                  <span v-if="getMeal(dayIdx, mt.key).difficulty"
+                    class="bg-black/50 backdrop-blur-sm ml-auto px-2 py-1 rounded-lg text-white text-xs">
+                    {{ getMeal(dayIdx, mt.key).difficulty }}
+                  </span>
+                </div>
+              </div>
+              <!-- Titel -->
+              <div class="px-3.5 py-2.5">
+                <h4 class="font-semibold text-stone-800 dark:text-stone-100 text-base leading-snug">
+                  {{ getMeal(dayIdx, mt.key).recipe_title }}
+                </h4>
+              </div>
+            </div>
+
+            <!-- Leerer Slot (mobile) -->
+            <button v-else-if="!isLocked"
+              class="flex justify-center items-center gap-1.5 py-3.5 border-2 border-stone-200 hover:border-primary-300 dark:border-stone-800 dark:hover:border-primary-700 border-dashed rounded-xl w-full text-stone-400 hover:text-primary-500 dark:text-stone-600 text-sm transition-colors"
+              @click="openSwapModal({ day_of_week: dayIdx, meal_type: mt.key, _isNew: true })">
+              <Plus class="w-4 h-4" /> {{ mt.icon }} {{ mt.label }}
+            </button>
+          </template>
+        </div>
+      </template>
     </div>
 
     <!-- ═══════════════════ TAGES-ANSICHT ═══════════════════ -->
@@ -788,7 +880,7 @@ import {
   Sparkles, ChevronLeft, ChevronRight, Check, Eye, RefreshCw,
   X, Clock, ChefHat, UtensilsCrossed, Plus, Minus, Star, Trash2,
   LayoutGrid, CalendarDays, Settings, Settings2, FolderOpen, Info,
-  Ban, ShieldOff, Lock, Unlock, Users,
+  Ban, ShieldOff, Lock, Unlock, Users, ChevronDown,
 } from 'lucide-vue-next';
 
 const store = useMealPlanStore();
@@ -819,6 +911,7 @@ const genDeduplicate = ref(savedPrefs.deduplicate ?? true);
 const genAiReasoning = ref(savedPrefs.aiReasoning ?? false);
 const genActiveDays = ref(savedPrefs.activeDays ?? [0, 1, 2, 3, 4, 5, 6]);
 const showSlotSettings = ref(false);
+const showPastDays = ref(false);
 
 // Bei Änderung automatisch in localStorage speichern
 watch([genMealTypes, genPersons, visibleSlots, genSourceMode, genCollectionIds, genDeduplicate, genAiReasoning, genActiveDays], () => {
@@ -886,6 +979,7 @@ const weekLabel = computed(() => {
 
 // ─── Wochen-Navigation: Plan laden bei Wechsel ───
 watch(currentWeekStart, async (ws) => {
+  showPastDays.value = false;
   await store.fetchCurrentPlan(ws);
 }, { immediate: false });
 
@@ -901,6 +995,18 @@ function goToToday() {
 function isToday(dayIdx) {
   return weekDays.value[dayIdx]?.dateObj.toDateString() === new Date().toDateString();
 }
+
+function isDayPast(dayIdx) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const dayDate = weekDays.value[dayIdx]?.dateObj;
+  if (!dayDate) return false;
+  const d = new Date(dayDate);
+  d.setHours(0, 0, 0, 0);
+  return d < today;
+}
+
+const pastDaysCount = computed(() => weekDays.value.filter((_, idx) => isDayPast(idx)).length);
 
 function getMeal(dayIdx, mealType) {
   if (!currentPlan.value?.entries) return null;
@@ -1171,6 +1277,28 @@ onMounted(async () => {
 /* Tage ohne Rezepte  */
 .meal-slot--inactive {
   opacity: 0.4;
+}
+
+/* ─── Mobile Meal Card ─── */
+.mobile-meal-card {
+  background: white;
+  border: 1px solid var(--color-stone-200);
+  border-radius: var(--radius-xl);
+  overflow: hidden;
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.mobile-meal-card:active {
+  border-color: var(--color-primary-400);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-primary-400) 25%, transparent);
+}
+:is(.dark .mobile-meal-card) {
+  background: var(--color-stone-900);
+  border-color: var(--color-stone-800);
+}
+:is(.dark .mobile-meal-card:active) {
+  border-color: var(--color-primary-600);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-primary-600) 25%, transparent);
 }
 
 /* ─── Servings Popup ─── */
