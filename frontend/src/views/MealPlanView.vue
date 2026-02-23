@@ -394,46 +394,117 @@
       <!-- Mahlzeiten des Tages -->
       <div class="space-y-4">
         <div v-for="mt in mealTypes" :key="mt.key">
-          <h3 class="mb-2 font-semibold text-stone-600 dark:text-stone-400 text-sm">{{ mt.icon }} {{ mt.label }}</h3>
 
-          <div v-if="getMeal(selectedDayIdx, mt.key)" class="group day-meal-card"
-            :class="{ 'day-meal-card--cooked': getMeal(selectedDayIdx, mt.key).is_cooked }">
-            <div class="flex gap-4">
-              <!-- Bild -->
-              <div class="relative rounded-xl w-28 sm:w-36 h-20 sm:h-24 overflow-hidden shrink-0">
-                <img v-if="getMeal(selectedDayIdx, mt.key).image_url"
-                  :src="getMeal(selectedDayIdx, mt.key).image_url"
-                  class="w-full h-full object-cover" loading="lazy" />
-                <div v-else class="flex justify-center items-center bg-stone-100 dark:bg-stone-800 w-full h-full">
-                  <UtensilsCrossed class="w-8 h-8 text-stone-300 dark:text-stone-600" />
+          <!-- ── Desktop: horizontales Layout (wie bisher) ── -->
+          <div v-if="getMeal(selectedDayIdx, mt.key)" class="hidden lg:block">
+            <h3 class="mb-2 font-semibold text-stone-600 dark:text-stone-400 text-sm">{{ mt.icon }} {{ mt.label }}</h3>
+            <div class="group day-meal-card"
+              :class="{ 'day-meal-card--cooked': getMeal(selectedDayIdx, mt.key).is_cooked }">
+              <div class="flex gap-4">
+                <div class="relative rounded-xl w-28 sm:w-36 h-20 sm:h-24 overflow-hidden shrink-0">
+                  <img v-if="getMeal(selectedDayIdx, mt.key).image_url"
+                    :src="getMeal(selectedDayIdx, mt.key).image_url"
+                    class="w-full h-full object-cover" loading="lazy" />
+                  <div v-else class="flex justify-center items-center bg-stone-100 dark:bg-stone-800 w-full h-full">
+                    <UtensilsCrossed class="w-8 h-8 text-stone-300 dark:text-stone-600" />
+                  </div>
+                </div>
+                <div class="flex-1 min-w-0">
+                  <h4 class="font-semibold text-stone-800 dark:text-stone-100 text-base truncate">
+                    {{ getMeal(selectedDayIdx, mt.key).recipe_title }}
+                  </h4>
+                  <div class="flex flex-wrap items-center gap-3 mt-1 text-stone-500 dark:text-stone-400 text-xs">
+                    <span class="flex items-center gap-1"
+                      :class="{ 'cursor-pointer hover:text-stone-700 dark:hover:text-stone-200': !isLocked }"
+                      @click.stop="!isLocked && openServingsPopup(getMeal(selectedDayIdx, mt.key), $event)">
+                      <Users class="w-3.5 h-3.5" /> {{ getMeal(selectedDayIdx, mt.key).servings }} Pers.
+                    </span>
+                    <span v-if="getMeal(selectedDayIdx, mt.key).total_time" class="flex items-center gap-1">
+                      <Clock class="w-3.5 h-3.5" /> {{ getMeal(selectedDayIdx, mt.key).total_time }} min
+                    </span>
+                    <span v-if="getMeal(selectedDayIdx, mt.key).difficulty" class="flex items-center gap-1">
+                      <ChefHat class="w-3.5 h-3.5" /> {{ getMeal(selectedDayIdx, mt.key).difficulty }}
+                    </span>
+                    <span v-if="getMeal(selectedDayIdx, mt.key).is_cooked"
+                      class="flex items-center gap-1 font-medium text-accent-600">
+                      <Check class="w-3.5 h-3.5" /> Gekocht
+                    </span>
+                  </div>
+                  <div class="flex flex-wrap gap-2 mt-3">
+                    <button @click="toggleCooked(getMeal(selectedDayIdx, mt.key))"
+                      class="day-action-btn" :class="getMeal(selectedDayIdx, mt.key).is_cooked ? 'day-action-btn--active' : ''">
+                      <Check class="w-3.5 h-3.5" />
+                      {{ getMeal(selectedDayIdx, mt.key).is_cooked ? 'Rückgängig' : 'Gekocht' }}
+                    </button>
+                    <template v-if="!isLocked">
+                      <button @click="openSwapModal(getMeal(selectedDayIdx, mt.key))" class="day-action-btn">
+                        <RefreshCw class="w-3.5 h-3.5" /> Tauschen
+                      </button>
+                      <router-link :to="`/recipes/${getMeal(selectedDayIdx, mt.key).recipe_id}`" class="day-action-btn">
+                        <Eye class="w-3.5 h-3.5" /> Rezept
+                      </router-link>
+                      <button @click="removeEntry(getMeal(selectedDayIdx, mt.key))" class="day-action-btn day-action-btn--danger">
+                        <X class="w-3.5 h-3.5" /> Entfernen
+                      </button>
+                      <button @click="openBlockDialog(getMeal(selectedDayIdx, mt.key))" class="day-action-btn day-action-btn--danger">
+                        <Ban class="w-3.5 h-3.5" /> Sperren
+                      </button>
+                    </template>
+                    <router-link v-else :to="`/recipes/${getMeal(selectedDayIdx, mt.key).recipe_id}`" class="day-action-btn">
+                      <Eye class="w-3.5 h-3.5" /> Rezept
+                    </router-link>
+                  </div>
                 </div>
               </div>
+            </div>
+          </div>
 
-              <!-- Info -->
-              <div class="flex-1 min-w-0">
-                <h4 class="font-semibold text-stone-800 dark:text-stone-100 text-base truncate">
-                  {{ getMeal(selectedDayIdx, mt.key).recipe_title }}
-                </h4>
-                <div class="flex flex-wrap items-center gap-3 mt-1 text-stone-500 dark:text-stone-400 text-xs">
-                  <span class="flex items-center gap-1"
-                    :class="{ 'cursor-pointer hover:text-stone-700 dark:hover:text-stone-200': !isLocked }"
+          <!-- ── Mobile: großes Karten-Layout mit Aktions-Buttons ── -->
+          <div v-if="getMeal(selectedDayIdx, mt.key)" class="lg:hidden">
+            <div class="mobile-meal-card"
+              :class="{ 'opacity-55': getMeal(selectedDayIdx, mt.key).is_cooked }">
+              <!-- Bild -->
+              <div class="relative aspect-[5/3] overflow-hidden">
+                <img v-if="getMeal(selectedDayIdx, mt.key).image_url"
+                  :src="getMeal(selectedDayIdx, mt.key).image_url"
+                  :alt="getMeal(selectedDayIdx, mt.key).recipe_title"
+                  class="w-full h-full object-cover"
+                  loading="lazy" />
+                <div v-else class="flex justify-center items-center bg-stone-100 dark:bg-stone-800 w-full h-full">
+                  <UtensilsCrossed class="w-10 h-10 text-stone-300 dark:text-stone-600" />
+                </div>
+                <div class="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent pointer-events-none" />
+                <!-- Mahlzeit-Badge -->
+                <div class="top-2.5 left-2.5 absolute bg-black/50 backdrop-blur-sm px-2 py-0.5 rounded-lg font-medium text-white text-xs">
+                  {{ mt.icon }} {{ mt.label }}
+                </div>
+                <!-- Gekocht-Badge -->
+                <div v-if="getMeal(selectedDayIdx, mt.key).is_cooked"
+                  class="top-2.5 right-2.5 absolute place-items-center grid rounded-full w-7 h-7 bg-accent-500">
+                  <Check class="w-4 h-4 text-white" />
+                </div>
+                <!-- Info-Badges unten -->
+                <div class="right-2.5 bottom-2.5 left-2.5 absolute flex items-center gap-2">
+                  <span class="flex items-center gap-1 bg-black/50 backdrop-blur-sm px-2 py-1 rounded-lg text-white text-xs"
                     @click.stop="!isLocked && openServingsPopup(getMeal(selectedDayIdx, mt.key), $event)">
-                    <Users class="w-3.5 h-3.5" /> {{ getMeal(selectedDayIdx, mt.key).servings }} Pers.
+                    <Users class="w-3.5 h-3.5" /> {{ getMeal(selectedDayIdx, mt.key).servings }}
                   </span>
-                  <span v-if="getMeal(selectedDayIdx, mt.key).total_time" class="flex items-center gap-1">
+                  <span v-if="getMeal(selectedDayIdx, mt.key).total_time"
+                    class="flex items-center gap-1 bg-black/50 backdrop-blur-sm px-2 py-1 rounded-lg text-white text-xs">
                     <Clock class="w-3.5 h-3.5" /> {{ getMeal(selectedDayIdx, mt.key).total_time }} min
                   </span>
-                  <span v-if="getMeal(selectedDayIdx, mt.key).difficulty" class="flex items-center gap-1">
-                    <ChefHat class="w-3.5 h-3.5" /> {{ getMeal(selectedDayIdx, mt.key).difficulty }}
-                  </span>
-                  <span v-if="getMeal(selectedDayIdx, mt.key).is_cooked"
-                    class="flex items-center gap-1 font-medium text-accent-600">
-                    <Check class="w-3.5 h-3.5" /> Gekocht
+                  <span v-if="getMeal(selectedDayIdx, mt.key).difficulty"
+                    class="bg-black/50 backdrop-blur-sm ml-auto px-2 py-1 rounded-lg text-white text-xs">
+                    {{ getMeal(selectedDayIdx, mt.key).difficulty }}
                   </span>
                 </div>
-
-                <!-- Aktionen -->
-                <div class="flex flex-wrap gap-2 mt-3">
+              </div>
+              <!-- Titel + Aktionen -->
+              <div class="px-3.5 py-3">
+                <h4 class="font-semibold text-stone-800 dark:text-stone-100 text-base leading-snug">
+                  {{ getMeal(selectedDayIdx, mt.key).recipe_title }}
+                </h4>
+                <div class="flex flex-wrap gap-2 mt-2.5">
                   <button @click="toggleCooked(getMeal(selectedDayIdx, mt.key))"
                     class="day-action-btn" :class="getMeal(selectedDayIdx, mt.key).is_cooked ? 'day-action-btn--active' : ''">
                     <Check class="w-3.5 h-3.5" />
@@ -461,10 +532,23 @@
             </div>
           </div>
 
-          <!-- Leerer Slot -->
-          <div v-else class="day-meal-empty">
-            <span class="text-stone-400 text-sm">Keine Mahlzeit geplant</span>
-          </div>
+          <!-- Leerer Slot (beide Varianten) -->
+          <template v-if="!getMeal(selectedDayIdx, mt.key)">
+            <h3 class="hidden lg:block mb-2 font-semibold text-stone-600 dark:text-stone-400 text-sm">{{ mt.icon }} {{ mt.label }}</h3>
+            <!-- Desktop -->
+            <div class="hidden lg:flex day-meal-empty">
+              <span class="text-stone-400 text-sm">Keine Mahlzeit geplant</span>
+            </div>
+            <!-- Mobile -->
+            <button v-if="!isLocked"
+              class="lg:hidden flex justify-center items-center gap-1.5 py-3.5 border-2 border-stone-200 hover:border-primary-300 dark:border-stone-800 dark:hover:border-primary-700 border-dashed rounded-xl w-full text-stone-400 hover:text-primary-500 dark:text-stone-600 text-sm transition-colors"
+              @click="openSwapModal({ day_of_week: selectedDayIdx, meal_type: mt.key, _isNew: true })">
+              <Plus class="w-4 h-4" /> {{ mt.icon }} {{ mt.label }}
+            </button>
+            <div v-else class="lg:hidden flex day-meal-empty">
+              <span class="text-stone-400 text-sm">Keine Mahlzeit geplant</span>
+            </div>
+          </template>
         </div>
       </div>
     </div>
