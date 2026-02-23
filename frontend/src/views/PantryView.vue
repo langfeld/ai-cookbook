@@ -299,11 +299,11 @@
                       class="ml-1 text-[10px] text-blue-400"
                       title="Dauerhaft verfügbar"
                     >∞</span>
+                    <span v-if="getIngConversion(ing)" class="ml-1.5 text-stone-400 dark:text-stone-500 text-xs" :title="getIngConversion(ing).rule">≈ {{ getIngConversion(ing).amount }}&nbsp;{{ getIngConversion(ing).unit }}</span>
                   </div>
                   <!-- Menge -->
                   <span :class="['tabular-nums text-xs sm:text-sm shrink-0', ing.is_blocked ? 'line-through text-stone-300 dark:text-stone-600' : 'text-stone-500 dark:text-stone-400']">
                     {{ formatIngAmount(ing.needed_amount) }} {{ ing.needed_unit }}
-                    <span v-if="getIngConversion(ing)" class="ml-1 font-normal text-[11px] text-stone-400 dark:text-stone-500" :title="getIngConversion(ing).rule">≈&nbsp;{{ getIngConversion(ing).amount }}&nbsp;{{ getIngConversion(ing).unit }}</span>
                   </span>
                 </div>
               </div>
