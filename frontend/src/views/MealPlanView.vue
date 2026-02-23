@@ -127,22 +127,31 @@
           <div class="flex justify-center items-center bg-primary-100 dark:bg-primary-900 rounded-lg w-8 h-8 shrink-0">
             <div class="border-2 border-primary-200 border-t-primary-600 rounded-full w-4 h-4 animate-spin" />
           </div>
-          <div class="flex-1 min-w-0">
+          <!-- Desktop: volles Loading -->
+          <div class="hidden lg:block flex-1 min-w-0">
             <p class="mb-0.5 font-medium text-primary-800 dark:text-primary-200 text-xs uppercase tracking-wide">KI-Begründung</p>
             <div class="space-y-1.5">
               <div class="bg-primary-100 dark:bg-primary-900/50 rounded w-4/5 h-3 animate-pulse" />
               <div class="bg-primary-100 dark:bg-primary-900/50 rounded w-3/5 h-3 animate-pulse" />
             </div>
           </div>
+          <!-- Mobile: kompaktes Loading -->
+          <div class="lg:hidden flex-1 min-w-0">
+            <p class="font-medium text-primary-800 dark:text-primary-200 text-xs uppercase tracking-wide">KI-Begründung wird geladen…</p>
+          </div>
         </div>
       </div>
 
       <!-- Fertiges Reasoning -->
-      <div v-else-if="store.reasoning && currentPlan" key="reasoning-ready" class="relative px-4 py-3 border rounded-xl"
-           :class="store.reasoningSource === 'ai'
-             ? 'bg-linear-to-r from-primary-50 dark:from-primary-950/50 to-transparent border-primary-200 dark:border-primary-800'
-             : 'bg-linear-to-r from-stone-50 dark:from-stone-900/50 to-transparent border-stone-200 dark:border-stone-700'">
-        <div class="flex items-start gap-3">
+      <div v-else-if="store.reasoning && currentPlan" key="reasoning-ready" class="relative border rounded-xl"
+           :class="[
+             store.reasoningSource === 'ai'
+               ? 'bg-linear-to-r from-primary-50 dark:from-primary-950/50 to-transparent border-primary-200 dark:border-primary-800'
+               : 'bg-linear-to-r from-stone-50 dark:from-stone-900/50 to-transparent border-stone-200 dark:border-stone-700',
+             reasoningCollapsed ? 'lg:px-4 lg:py-3' : 'px-4 py-3'
+           ]">
+        <!-- Desktop: immer voll sichtbar -->
+        <div class="hidden lg:flex items-start gap-3">
           <div class="flex justify-center items-center rounded-lg w-8 h-8 shrink-0"
                :class="store.reasoningSource === 'ai' ? 'bg-primary-100 dark:bg-primary-900' : 'bg-stone-100 dark:bg-stone-800'">
             <Sparkles v-if="store.reasoningSource === 'ai'" class="w-4 h-4 text-primary-600 dark:text-primary-400" />
@@ -159,6 +168,29 @@
           <button @click="store.reasoning = null" class="hover:bg-stone-100 dark:hover:bg-stone-800 p-1 rounded-lg transition-colors shrink-0" title="Schließen">
             <X class="w-4 h-4 text-stone-400" />
           </button>
+        </div>
+        <!-- Mobile: einklappbar -->
+        <div class="lg:hidden">
+          <button @click="reasoningCollapsed = !reasoningCollapsed" class="flex items-center gap-2.5 px-3.5 py-2.5 w-full text-left">
+            <div class="flex justify-center items-center rounded-lg w-7 h-7 shrink-0"
+                 :class="store.reasoningSource === 'ai' ? 'bg-primary-100 dark:bg-primary-900' : 'bg-stone-100 dark:bg-stone-800'">
+              <Sparkles v-if="store.reasoningSource === 'ai'" class="w-3.5 h-3.5 text-primary-600 dark:text-primary-400" />
+              <Info v-else class="w-3.5 h-3.5 text-stone-500 dark:text-stone-400" />
+            </div>
+            <span class="flex-1 font-medium text-xs uppercase tracking-wide"
+                  :class="store.reasoningSource === 'ai' ? 'text-primary-800 dark:text-primary-200' : 'text-stone-600 dark:text-stone-400'">
+              {{ store.reasoningSource === 'ai' ? 'KI-Begründung' : 'Plan-Zusammenfassung' }}
+            </span>
+            <ChevronDown class="w-4 h-4 text-stone-400 transition-transform duration-200" :class="{ 'rotate-180': !reasoningCollapsed }" />
+          </button>
+          <Transition name="fade">
+            <div v-if="!reasoningCollapsed" class="px-3.5 pb-3">
+              <p class="text-stone-700 dark:text-stone-300 text-sm leading-relaxed">{{ store.reasoning }}</p>
+              <button @click="store.reasoning = null" class="mt-2 text-stone-400 hover:text-stone-600 dark:hover:text-stone-300 text-xs underline hover:no-underline">
+                Ausblenden
+              </button>
+            </div>
+          </Transition>
         </div>
       </div>
     </Transition>
@@ -183,13 +215,21 @@
     </div>
 
     <!-- ═══════════════════ WOCHEN-ANSICHT ═══════════════════ -->
-    <!-- Fixiert-Banner -->
-    <div v-if="isLocked && currentPlan" class="flex items-center gap-2 bg-amber-50 dark:bg-amber-950/50 px-4 py-2.5 border border-amber-200 dark:border-amber-800 rounded-xl">
+    <!-- Fixiert-Banner: Desktop -->
+    <div v-if="isLocked && currentPlan" class="hidden lg:flex items-center gap-2 bg-amber-50 dark:bg-amber-950/50 px-4 py-2.5 border border-amber-200 dark:border-amber-800 rounded-xl">
       <Lock class="w-4 h-4 text-amber-500 shrink-0" />
       <p class="text-amber-700 dark:text-amber-300 text-sm">
         <span class="font-medium">Woche fixiert</span> – Bereits eingekauft. Änderungen sind gesperrt.
       </p>
       <button @click="toggleLockPlan" class="ml-auto text-amber-600 hover:text-amber-800 dark:hover:text-amber-200 dark:text-amber-400 text-xs underline hover:no-underline shrink-0">
+        Aufheben
+      </button>
+    </div>
+    <!-- Fixiert-Banner: Mobile (kompakt) -->
+    <div v-if="isLocked && currentPlan" class="lg:hidden flex items-center gap-2 bg-amber-50 dark:bg-amber-950/50 px-3 py-2 border border-amber-200 dark:border-amber-800 rounded-xl">
+      <Lock class="w-4 h-4 text-amber-500 shrink-0" />
+      <span class="flex-1 font-medium text-amber-700 dark:text-amber-300 text-xs">Woche fixiert</span>
+      <button @click="toggleLockPlan" class="text-amber-600 hover:text-amber-800 dark:hover:text-amber-200 dark:text-amber-400 text-xs underline hover:no-underline shrink-0">
         Aufheben
       </button>
     </div>
@@ -315,7 +355,10 @@
             <div v-if="getMeal(dayIdx, mt.key)"
               class="mobile-meal-card"
               :class="{ 'opacity-55': getMeal(dayIdx, mt.key).is_cooked }"
-              @click="selectMeal(getMeal(dayIdx, mt.key))">
+              @touchstart.passive="onMobileTouchStart(getMeal(dayIdx, mt.key))"
+              @touchend="onMobileTouchEnd(getMeal(dayIdx, mt.key), $event)"
+              @touchmove.passive="onMobileTouchMove()"
+              @contextmenu.prevent>
               <!-- Bild -->
               <div class="relative aspect-[5/3] overflow-hidden">
                 <img v-if="getMeal(dayIdx, mt.key).image_url"
@@ -370,6 +413,14 @@
           </template>
         </div>
       </template>
+
+      <!-- Long-Press Hinweis -->
+      <div class="flex items-center gap-2.5 bg-stone-50 dark:bg-stone-900/60 mt-2 px-4 py-2.5 border border-stone-200/60 dark:border-stone-800/60 rounded-xl">
+        <Hand class="w-4 h-4 text-stone-400 dark:text-stone-500 shrink-0" />
+        <p class="text-stone-400 dark:text-stone-500 text-xs leading-relaxed">
+          <span class="font-medium text-stone-500 dark:text-stone-400">Tipp:</span> Tippe auf ein Rezept, um es zu öffnen. Halte es gedrückt für weitere Optionen.
+        </p>
+      </div>
     </div>
 
     <!-- ═══════════════════ TAGES-ANSICHT ═══════════════════ -->
@@ -459,10 +510,14 @@
             </div>
           </div>
 
-          <!-- ── Mobile: großes Karten-Layout mit Aktions-Buttons ── -->
+          <!-- ── Mobile: gleiches Karten-Layout wie Wochenansicht (Tap → Rezept, Long-Press → Popup) ── -->
           <div v-if="getMeal(selectedDayIdx, mt.key)" class="lg:hidden">
             <div class="mobile-meal-card"
-              :class="{ 'opacity-55': getMeal(selectedDayIdx, mt.key).is_cooked }">
+              :class="{ 'opacity-55': getMeal(selectedDayIdx, mt.key).is_cooked }"
+              @touchstart.passive="onMobileTouchStart(getMeal(selectedDayIdx, mt.key))"
+              @touchend="onMobileTouchEnd(getMeal(selectedDayIdx, mt.key), $event)"
+              @touchmove.passive="onMobileTouchMove()"
+              @contextmenu.prevent>
               <!-- Bild -->
               <div class="relative aspect-[5/3] overflow-hidden">
                 <img v-if="getMeal(selectedDayIdx, mt.key).image_url"
@@ -499,35 +554,11 @@
                   </span>
                 </div>
               </div>
-              <!-- Titel + Aktionen -->
-              <div class="px-3.5 py-3">
+              <!-- Titel -->
+              <div class="px-3.5 py-2.5">
                 <h4 class="font-semibold text-stone-800 dark:text-stone-100 text-base leading-snug">
                   {{ getMeal(selectedDayIdx, mt.key).recipe_title }}
                 </h4>
-                <div class="flex flex-wrap gap-2 mt-2.5">
-                  <button @click="toggleCooked(getMeal(selectedDayIdx, mt.key))"
-                    class="day-action-btn" :class="getMeal(selectedDayIdx, mt.key).is_cooked ? 'day-action-btn--active' : ''">
-                    <Check class="w-3.5 h-3.5" />
-                    {{ getMeal(selectedDayIdx, mt.key).is_cooked ? 'Rückgängig' : 'Gekocht' }}
-                  </button>
-                  <template v-if="!isLocked">
-                    <button @click="openSwapModal(getMeal(selectedDayIdx, mt.key))" class="day-action-btn">
-                      <RefreshCw class="w-3.5 h-3.5" /> Tauschen
-                    </button>
-                    <router-link :to="`/recipes/${getMeal(selectedDayIdx, mt.key).recipe_id}`" class="day-action-btn">
-                      <Eye class="w-3.5 h-3.5" /> Rezept
-                    </router-link>
-                    <button @click="removeEntry(getMeal(selectedDayIdx, mt.key))" class="day-action-btn day-action-btn--danger">
-                      <X class="w-3.5 h-3.5" /> Entfernen
-                    </button>
-                    <button @click="openBlockDialog(getMeal(selectedDayIdx, mt.key))" class="day-action-btn day-action-btn--danger">
-                      <Ban class="w-3.5 h-3.5" /> Sperren
-                    </button>
-                  </template>
-                  <router-link v-else :to="`/recipes/${getMeal(selectedDayIdx, mt.key).recipe_id}`" class="day-action-btn">
-                    <Eye class="w-3.5 h-3.5" /> Rezept
-                  </router-link>
-                </div>
               </div>
             </div>
           </div>
@@ -550,6 +581,14 @@
             </div>
           </template>
         </div>
+      </div>
+
+      <!-- Long-Press Hinweis (mobile Tagesansicht) -->
+      <div class="lg:hidden flex items-center gap-2.5 bg-stone-50 dark:bg-stone-900/60 px-4 py-2.5 border border-stone-200/60 dark:border-stone-800/60 rounded-xl">
+        <Hand class="w-4 h-4 text-stone-400 dark:text-stone-500 shrink-0" />
+        <p class="text-stone-400 dark:text-stone-500 text-xs leading-relaxed">
+          <span class="font-medium text-stone-500 dark:text-stone-400">Tipp:</span> Tippe auf ein Rezept, um es zu öffnen. Halte es gedrückt für weitere Optionen.
+        </p>
       </div>
     </div>
 
@@ -955,7 +994,8 @@
 </template>
 
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
+import { useRouter } from 'vue-router';
 import { useMealPlanStore } from '@/stores/mealplan.js';
 import { useCollectionsStore } from '@/stores/collections.js';
 import { useRecipeBlocksStore } from '@/stores/recipe-blocks.js';
@@ -964,9 +1004,10 @@ import {
   Sparkles, ChevronLeft, ChevronRight, Check, Eye, RefreshCw,
   X, Clock, ChefHat, UtensilsCrossed, Plus, Minus, Star, Trash2,
   LayoutGrid, CalendarDays, Settings, Settings2, FolderOpen, Info,
-  Ban, ShieldOff, Lock, Unlock, Users, ChevronDown,
+  Ban, ShieldOff, Lock, Unlock, Users, ChevronDown, Hand,
 } from 'lucide-vue-next';
 
+const router = useRouter();
 const store = useMealPlanStore();
 const collectionsStore = useCollectionsStore();
 const blocksStore = useRecipeBlocksStore();
@@ -996,6 +1037,35 @@ const genAiReasoning = ref(savedPrefs.aiReasoning ?? false);
 const genActiveDays = ref(savedPrefs.activeDays ?? [0, 1, 2, 3, 4, 5, 6]);
 const showSlotSettings = ref(false);
 const showPastDays = ref(false);
+const reasoningCollapsed = ref(true);
+
+// ─── Long-Press-Handling für Mobile ───
+const longPressTimer = ref(null);
+const longPressTriggered = ref(false);
+const LONG_PRESS_MS = 500;
+
+function onMobileTouchStart(meal) {
+  longPressTriggered.value = false;
+  longPressTimer.value = setTimeout(() => {
+    longPressTriggered.value = true;
+    selectMeal(meal);
+    if (navigator.vibrate) navigator.vibrate(30);
+  }, LONG_PRESS_MS);
+}
+
+function onMobileTouchEnd(meal, e) {
+  clearTimeout(longPressTimer.value);
+  if (!longPressTriggered.value) {
+    e.preventDefault();
+    router.push(`/recipes/${meal.recipe_id}`);
+  }
+}
+
+function onMobileTouchMove() {
+  clearTimeout(longPressTimer.value);
+}
+
+onUnmounted(() => clearTimeout(longPressTimer.value));
 
 // Bei Änderung automatisch in localStorage speichern
 watch([genMealTypes, genPersons, visibleSlots, genSourceMode, genCollectionIds, genDeduplicate, genAiReasoning, genActiveDays], () => {
