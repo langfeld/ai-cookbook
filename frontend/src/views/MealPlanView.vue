@@ -355,9 +355,9 @@
             <div v-if="getMeal(dayIdx, mt.key)"
               class="mobile-meal-card"
               :class="{ 'opacity-55': getMeal(dayIdx, mt.key).is_cooked }"
-              @touchstart.passive="onMobileTouchStart(getMeal(dayIdx, mt.key))"
+              @touchstart.passive="onMobileTouchStart(getMeal(dayIdx, mt.key), $event)"
               @touchend="onMobileTouchEnd(getMeal(dayIdx, mt.key), $event)"
-              @touchmove.passive="onMobileTouchMove()"
+              @touchmove.passive="onMobileTouchMove($event)"
               @contextmenu.prevent>
               <!-- Bild -->
               <div class="relative aspect-[5/3] overflow-hidden">
@@ -514,9 +514,9 @@
           <div v-if="getMeal(selectedDayIdx, mt.key)" class="lg:hidden">
             <div class="mobile-meal-card"
               :class="{ 'opacity-55': getMeal(selectedDayIdx, mt.key).is_cooked }"
-              @touchstart.passive="onMobileTouchStart(getMeal(selectedDayIdx, mt.key))"
+              @touchstart.passive="onMobileTouchStart(getMeal(selectedDayIdx, mt.key), $event)"
               @touchend="onMobileTouchEnd(getMeal(selectedDayIdx, mt.key), $event)"
-              @touchmove.passive="onMobileTouchMove()"
+              @touchmove.passive="onMobileTouchMove($event)"
               @contextmenu.prevent>
               <!-- Bild -->
               <div class="relative aspect-[5/3] overflow-hidden">
@@ -1043,11 +1043,15 @@ const reasoningCollapsed = ref(true);
 const longPressTimer = ref(null);
 const longPressTriggered = ref(false);
 const touchMoved = ref(false);
+const touchStartPos = ref({ x: 0, y: 0 });
 const LONG_PRESS_MS = 500;
+const MOVE_THRESHOLD = 10; // px – Fingerbewegung unter diesem Wert gilt als Tap
 
-function onMobileTouchStart(meal) {
+function onMobileTouchStart(meal, e) {
   longPressTriggered.value = false;
   touchMoved.value = false;
+  const touch = e.touches[0];
+  touchStartPos.value = { x: touch.clientX, y: touch.clientY };
   longPressTimer.value = setTimeout(() => {
     longPressTriggered.value = true;
     selectMeal(meal);
@@ -1063,9 +1067,15 @@ function onMobileTouchEnd(meal, e) {
   }
 }
 
-function onMobileTouchMove() {
-  touchMoved.value = true;
-  clearTimeout(longPressTimer.value);
+function onMobileTouchMove(e) {
+  if (touchMoved.value) return;
+  const touch = e.touches[0];
+  const dx = touch.clientX - touchStartPos.value.x;
+  const dy = touch.clientY - touchStartPos.value.y;
+  if (dx * dx + dy * dy > MOVE_THRESHOLD * MOVE_THRESHOLD) {
+    touchMoved.value = true;
+    clearTimeout(longPressTimer.value);
+  }
 }
 
 onUnmounted(() => clearTimeout(longPressTimer.value));
