@@ -1042,10 +1042,12 @@ const reasoningCollapsed = ref(true);
 // ─── Long-Press-Handling für Mobile ───
 const longPressTimer = ref(null);
 const longPressTriggered = ref(false);
+const touchMoved = ref(false);
 const LONG_PRESS_MS = 500;
 
 function onMobileTouchStart(meal) {
   longPressTriggered.value = false;
+  touchMoved.value = false;
   longPressTimer.value = setTimeout(() => {
     longPressTriggered.value = true;
     selectMeal(meal);
@@ -1055,13 +1057,14 @@ function onMobileTouchStart(meal) {
 
 function onMobileTouchEnd(meal, e) {
   clearTimeout(longPressTimer.value);
-  if (!longPressTriggered.value) {
+  if (!longPressTriggered.value && !touchMoved.value) {
     e.preventDefault();
     router.push(`/recipes/${meal.recipe_id}`);
   }
 }
 
 function onMobileTouchMove() {
+  touchMoved.value = true;
   clearTimeout(longPressTimer.value);
 }
 
