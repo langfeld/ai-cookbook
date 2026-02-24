@@ -377,19 +377,21 @@ export default async function ingredientConversionRoutes(fastify) {
       const allResults = [];
 
       for (const batch of batches) {
+        // Jede Zutat+Einheit als nummerierte Zeile — damit die KI pro Zeile genau 1 Ergebnis liefert
         const ingredientList = batch
-          .map(i => `- ${i.name}: 1 ${i.unit}`)
+          .map((i, idx) => `${idx + 1}. "${i.name}" – 1 ${i.unit} = ? g/ml`)
           .join('\n');
 
-        const prompt = `Gib für jede Zutat an, wie viel Gramm (g) oder Milliliter (ml) EINE Einheit entspricht.
+        const prompt = `Gib für JEDE der folgenden ${batch.length} Zeilen an, wie viel Gramm (g) oder Milliliter (ml) die angegebene Einheit entspricht.
+WICHTIG: Eine Zutat kann mit VERSCHIEDENEN Einheiten aufgelistet sein (z.B. Salz mit TL und Salz mit Prise). Jede Zeile braucht eine EIGENE Umrechnung im Ergebnis – liefere genau ${batch.length} Ergebnis-Elemente!
 
 ${systemRules}
 
-Zutaten:
 ${ingredientList}
 
-WICHTIG: Antworte AUSSCHLIESSLICH mit einem JSON-Array (beginnt mit [ und endet mit ]).
+Antworte AUSSCHLIESSLICH mit einem JSON-Array mit genau ${batch.length} Elementen (beginnt mit [ und endet mit ]).
 Jedes Element hat genau diese 4 Felder: ingredient_name, from_unit, to_amount, to_unit.
+Die Reihenfolge muss der Eingabe entsprechen.
 Beispiel: [{"ingredient_name":"Zwiebel","from_unit":"Stk","to_amount":80,"to_unit":"g"},{"ingredient_name":"Olivenöl","from_unit":"EL","to_amount":15,"to_unit":"ml"}]`;
 
         try {
@@ -503,10 +505,11 @@ export async function autoGenerateConversions(userId, ingredients) {
     }
 
     const ingredientList = missing
-      .map(i => `- ${i.name}: 1 ${i.unit}`)
+      .map((i, idx) => `${idx + 1}. "${i.name}" – 1 ${i.unit} = ? g/ml`)
       .join('\n');
 
-    const prompt = `Gib für jede Zutat an, wie viel Gramm (g) oder Milliliter (ml) EINE Einheit entspricht.
+    const prompt = `Gib für JEDE der folgenden ${missing.length} Zeilen an, wie viel Gramm (g) oder Milliliter (ml) die angegebene Einheit entspricht.
+WICHTIG: Eine Zutat kann mit VERSCHIEDENEN Einheiten aufgelistet sein (z.B. Salz mit TL und Salz mit Prise). Jede Zeile braucht eine EIGENE Umrechnung im Ergebnis – liefere genau ${missing.length} Ergebnis-Elemente!
 
 Regeln:
 - Feste Zutaten (Gemüse, Obst, Fleisch, Käse, etc.) → Umrechnung in Gramm (g)
@@ -524,11 +527,11 @@ Regeln:
 - "TL" = 1 Teelöffel
 - Schätze realistische Durchschnittswerte
 
-Zutaten:
 ${ingredientList}
 
-WICHTIG: Antworte AUSSCHLIESSLICH mit einem JSON-Array.
+Antworte AUSSCHLIESSLICH mit einem JSON-Array mit genau ${missing.length} Elementen (beginnt mit [ und endet mit ]).
 Jedes Element hat genau diese 4 Felder: ingredient_name, from_unit, to_amount, to_unit.
+Die Reihenfolge muss der Eingabe entsprechen.
 Beispiel: [{"ingredient_name":"Zwiebel","from_unit":"Stk","to_amount":80,"to_unit":"g"}]`;
 
     const result = await ai.chatJSON(prompt, { temperature: 0.3, maxTokens: 4096 });

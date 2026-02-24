@@ -179,12 +179,18 @@
             class="flex items-center gap-3 hover:bg-stone-50 dark:hover:bg-stone-800/50 px-3 py-1.5 rounded-lg transition-colors"
           >
             <span class="w-5 text-base text-center shrink-0" :title="ing.name">{{ getEmoji(ing.name) || '•' }}</span>
-            <span class="w-20 font-medium text-stone-800 dark:text-stone-200 text-sm text-right">
-              {{ scaleAmount(ing.amount) }} {{ ing.unit }}
+            <span
+              class="font-medium text-stone-800 dark:text-stone-200 text-sm text-right shrink-0"
+              :class="ing.amounts.length > 1 ? 'min-w-20' : 'w-20'"
+            >
+              <template v-for="(a, i) in ing.amounts" :key="i">
+                <template v-if="i > 0">, </template>
+                {{ scaleAmount(a.amount) }}&nbsp;{{ a.unit }}
+              </template>
             </span>
             <span class="flex-1 text-stone-700 dark:text-stone-300 text-sm">
               {{ ing.name }}
-              <span v-if="getConversion(ing)"
+              <span v-if="ing.amounts.length === 1 && getConversion(ing)"
                     class="ml-1.5 text-stone-400 dark:text-stone-500 text-xs"
                     :title="getConversion(ing).rule">
                 ≈ {{ getConversion(ing).amount }}&nbsp;{{ getConversion(ing).unit }}
@@ -522,24 +528,100 @@ const hasGroups = computed(() => {
   return keys.length > 1 || (keys.length === 1 && keys[0] !== 'default');
 });
 
-// Flache Zutatenliste — gleiche Zutat+Einheit zusammenführen
+// ── Einheiten-Konvertierung (analog zu backend/utils/helpers.js) ──
+
+function normalizeUnitLocal(unit) {
+  if (!unit) return '';
+  const cleaned = unit.trim().replace(/\.$/, '');
+  const map = {
+    gramm: 'g', gram: 'g', gr: 'g',
+    kilogramm: 'kg', kilogram: 'kg',
+    milliliter: 'ml',
+    liter: 'l',
+    teelöffel: 'TL', tl: 'TL',
+    esslöffel: 'EL', el: 'EL',
+  };
+  return map[cleaned.toLowerCase()] || unit;
+}
+
+/** Konvertiert Menge in Basiseinheit (g / ml) – Standard + zutat-spezifische Umrechnungen */
+function toBaseUnit(amount, unit, ingredientName) {
+  if (!amount) return { amount: 0, unit: unit || '' };
+  const stdConv = {
+    kg:  { base: 'g',  factor: 1000 },
+    l:   { base: 'ml', factor: 1000 },
+    EL:  { base: 'g',  factor: 15 },
+    TL:  { base: 'g',  factor: 5 },
+  };
+  const norm = normalizeUnitLocal(unit);
+
+  // Bereits in Basiseinheit
+  if (norm === 'g' || norm === 'ml') return { amount, unit: norm };
+
+  // Standard-Konvertierung (kg→g, l→ml, EL→g, TL→g)
+  if (stdConv[norm]) {
+    return { amount: amount * stdConv[norm].factor, unit: stdConv[norm].base };
+  }
+
+  // Zutat-spezifische Konvertierung aus Umrechnungstabelle (z.B. 1 Stk Ei → 50 g)
+  if (ingredientName) {
+    const key = `${ingredientName.toLowerCase().trim()}|${(unit || '').toLowerCase().trim()}`;
+    const conv = conversionMap.value.get(key);
+    if (conv) return { amount: amount * conv.to_amount, unit: conv.to_unit };
+  }
+
+  return { amount, unit: norm };
+}
+
+// Flache Zutatenliste — gleiche Zutat zusammenführen, Einheiten in Basis konvertieren
 const flatIngredients = computed(() => {
   const ingredients = recipe.value?.ingredients || [];
   const merged = new Map();
+
   for (const ing of ingredients) {
-    const key = `${ing.name.toLowerCase()}::${(ing.unit || '').toLowerCase()}`;
+    const key = ing.name.toLowerCase().trim();
+
     if (merged.has(key)) {
       const existing = merged.get(key);
-      existing.amount = (existing.amount || 0) + (ing.amount || 0);
-      // Optional/Notes zusammenführen
+      if (ing.amount) {
+        // In Basiseinheit konvertieren (g/ml) soweit möglich
+        const base = toBaseUnit(ing.amount, ing.unit, ing.name);
+        const compat = existing.amounts.find(
+          a => a.unit.toLowerCase() === base.unit.toLowerCase()
+        );
+        if (compat) {
+          compat.amount += base.amount;
+        } else {
+          existing.amounts.push({ amount: base.amount, unit: base.unit });
+        }
+      }
+      // Nur optional wenn ALLE Einträge optional sind
+      if (!ing.is_optional) existing.is_optional = false;
+      // Notes zusammenführen
       if (ing.notes && !existing.notes?.includes(ing.notes)) {
         existing.notes = [existing.notes, ing.notes].filter(Boolean).join(', ');
       }
     } else {
-      merged.set(key, { ...ing });
+      const base = ing.amount ? toBaseUnit(ing.amount, ing.unit, ing.name) : null;
+      merged.set(key, {
+        ...ing,
+        amounts: base ? [{ amount: base.amount, unit: base.unit }] : [],
+      });
     }
   }
-  return [...merged.values()];
+
+  // Top-Level amount/unit für Einzel-Einheit beibehalten (Kompatibilität mit getConversion)
+  const result = [...merged.values()];
+  for (const ing of result) {
+    if (ing.amounts.length === 1) {
+      ing.amount = ing.amounts[0].amount;
+      ing.unit = ing.amounts[0].unit;
+    } else if (ing.amounts.length > 1) {
+      ing.amount = null;
+      ing.unit = null;
+    }
+  }
+  return result;
 });
 
 // Portionsrechner: Menge umrechnen (Rohwert für Berechnungen)
