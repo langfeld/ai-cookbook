@@ -228,7 +228,8 @@ export function initializeDatabase() {
     CREATE TABLE IF NOT EXISTS cooking_history (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       user_id INTEGER NOT NULL,
-      recipe_id INTEGER NOT NULL,
+      recipe_id INTEGER NOT NULL,          -- HINWEIS: NOT NULL kollidiert mit ON DELETE SET NULL,
+                                           -- daher wird cooking_history vor Rezept-Löschung explizit bereinigt
       cooked_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       servings INTEGER,
       rating INTEGER,                      -- 1-5 Sterne Bewertung

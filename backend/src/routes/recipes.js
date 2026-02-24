@@ -688,7 +688,10 @@ export default async function recipesRoutes(fastify) {
       }
     }
 
-    // Rezept löschen (CASCADE löscht Zutaten, Schritte, Kategorien, Historie)
+    // Kochhistorie löschen (recipe_id ist NOT NULL, ON DELETE SET NULL würde fehlschlagen)
+    db.prepare('DELETE FROM cooking_history WHERE recipe_id = ?').run(recipeId);
+
+    // Rezept löschen (CASCADE löscht Zutaten, Schritte, Kategorien, Wochenplan-Einträge)
     db.prepare('DELETE FROM recipes WHERE id = ?').run(recipeId);
 
     return { message: 'Rezept gelöscht' };
@@ -737,11 +740,13 @@ export default async function recipesRoutes(fastify) {
       }
     }
 
-    // Alle Rezepte löschen (CASCADE löscht Zutaten, Schritte, etc.)
+    // Alle Rezepte löschen (cooking_history vorab löschen: recipe_id ist NOT NULL, ON DELETE SET NULL würde fehlschlagen)
+    const deleteHistoryStmt = db.prepare('DELETE FROM cooking_history WHERE recipe_id = ?');
     const deleteStmt = db.prepare('DELETE FROM recipes WHERE id = ?');
     const deleteAll = db.transaction((recipeIds) => {
       let deleted = 0;
       for (const id of recipeIds) {
+        deleteHistoryStmt.run(id);
         const result = deleteStmt.run(id);
         deleted += result.changes;
       }
