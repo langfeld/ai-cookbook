@@ -635,6 +635,8 @@ const flatIngredients = computed(() => {
       ing.unit = null;
     }
   }
+  // Alphabetisch nach Name sortieren
+  result.sort((a, b) => a.name.localeCompare(b.name, 'de'));
   return result;
 });
 
