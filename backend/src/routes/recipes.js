@@ -963,6 +963,16 @@ export default async function recipesRoutes(fastify) {
             continue;
           }
 
+          // Duplikat-Check: gleiches Rezept (Titel) beim selben User?
+          const existing = db.prepare(
+            'SELECT id FROM recipes WHERE user_id = ? AND title = ? COLLATE NOCASE'
+          ).get(userId, recipe.title.trim());
+          if (existing) {
+            skipped++;
+            errors.push(`Übersprungen (Duplikat): „${recipe.title}"`);
+            continue;
+          }
+
           // Rezept einfügen
           const recipeResult = db.prepare(`
             INSERT INTO recipes (user_id, title, description, servings, prep_time, cook_time, total_time, difficulty, source_url, is_favorite, notes, ai_generated)
