@@ -1248,7 +1248,8 @@ async function toggleCooked(meal) {
     const data = await store.markCooked(meal.meal_plan_id, meal.id);
     if (data.is_cooked) {
       const pantryMsg = data.pantryUpdated ? ` (${data.pantryUpdated} Vorräte angepasst)` : '';
-      showSuccess(`Als gekocht markiert ✅${pantryMsg}`);
+      const swapMsg = data.swapped ? ' und auf heute verschoben' : '';
+      showSuccess(`Als gekocht markiert${swapMsg} ✅${pantryMsg}`);
     } else {
       const pantryMsg = data.pantryUpdated ? ` (${data.pantryUpdated} Vorräte wiederhergestellt)` : '';
       showSuccess(`Markierung entfernt${pantryMsg}`);

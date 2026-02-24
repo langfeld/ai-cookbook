@@ -105,8 +105,10 @@ export const useMealPlanStore = defineStore('mealplan', () => {
   /** Eintrag als gekocht togglen */
   async function markCooked(planId, entryId) {
     const data = await api.post(`/mealplan/${planId}/entry/${entryId}/cooked`);
-    // Lokalen State aktualisieren
-    if (currentPlan.value?.entries) {
+    // Bei Tausch: kompletten Plan übernehmen (Positionen haben sich geändert)
+    if (data.swapped && data.plan && currentPlan.value) {
+      currentPlan.value = data.plan;
+    } else if (currentPlan.value?.entries) {
       const entry = currentPlan.value.entries.find(e => e.id === entryId);
       if (entry) entry.is_cooked = data.is_cooked;
     }

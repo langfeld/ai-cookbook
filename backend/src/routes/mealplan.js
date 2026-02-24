@@ -380,7 +380,7 @@ export default async function mealplanRoutes(fastify) {
   }, async (request) => {
     const userId = request.user.id;
     const entry = db.prepare(`
-      SELECT mpe.*, r.servings as original_servings FROM meal_plan_entries mpe
+      SELECT mpe.*, mp.week_start, r.servings as original_servings FROM meal_plan_entries mpe
       JOIN meal_plans mp ON mpe.meal_plan_id = mp.id
       JOIN recipes r ON mpe.recipe_id = r.id
       WHERE mpe.id = ? AND mp.user_id = ?
@@ -389,6 +389,36 @@ export default async function mealplanRoutes(fastify) {
     if (!entry) return { error: 'Eintrag nicht gefunden' };
 
     const newState = entry.is_cooked ? 0 : 1;
+
+    // ── Tausch-Logik: Rezept von anderem Tag auf heute verschieben ──
+    let swapped = false;
+    if (newState === 1) {
+      const currentWeekStart = getWeekStart();
+      // Nur tauschen wenn der Plan zur aktuellen Woche gehört
+      if (entry.week_start === currentWeekStart) {
+        const now = new Date();
+        const jsDay = now.getDay(); // 0=So, 1=Mo, ..., 6=Sa
+        const todayDayOfWeek = jsDay === 0 ? 6 : jsDay - 1; // 0=Mo, ..., 6=So
+
+        if (entry.day_of_week !== todayDayOfWeek) {
+          // Prüfen ob heute im gleichen Slot (meal_type) ein Rezept liegt
+          const todayEntry = db.prepare(
+            'SELECT id, day_of_week FROM meal_plan_entries WHERE meal_plan_id = ? AND day_of_week = ? AND meal_type = ? AND id != ?'
+          ).get(entry.meal_plan_id, todayDayOfWeek, entry.meal_type, entry.id);
+
+          if (todayEntry) {
+            // Beide Einträge tauschen: heutiger → Ursprungstag, markierter → heute
+            db.prepare('UPDATE meal_plan_entries SET day_of_week = ? WHERE id = ?')
+              .run(entry.day_of_week, todayEntry.id);
+          }
+          // Markierten Eintrag auf heute verschieben
+          db.prepare('UPDATE meal_plan_entries SET day_of_week = ? WHERE id = ?')
+            .run(todayDayOfWeek, entry.id);
+          swapped = true;
+        }
+      }
+    }
+
     db.prepare('UPDATE meal_plan_entries SET is_cooked = ? WHERE id = ?').run(newState, entry.id);
 
     // Kochhistorie + Rezept-Statistiken
@@ -450,10 +480,23 @@ export default async function mealplanRoutes(fastify) {
       }
     }
 
+    // Bei Tausch: kompletten Plan zurückgeben, damit Frontend Positionen aktualisieren kann
+    if (swapped) {
+      const updatedPlan = getMealPlan(userId, entry.week_start);
+      return {
+        message: 'Als gekocht markiert und auf heute verschoben!',
+        is_cooked: newState,
+        pantryUpdated,
+        swapped: true,
+        plan: updatedPlan,
+      };
+    }
+
     return {
       message: newState ? 'Als gekocht markiert!' : 'Markierung entfernt',
       is_cooked: newState,
       pantryUpdated,
+      swapped: false,
     };
   });
 
