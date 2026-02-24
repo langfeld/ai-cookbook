@@ -402,6 +402,18 @@
       :loading="deleting"
       @confirm="deleteRecipe"
     />
+
+    <!-- Wochenplan-Swap-Dialog -->
+    <ConfirmDialog
+      v-model="showMealPlanSwapDialog"
+      title="Im Wochenplan verschieben?"
+      :message="pendingSwapData ? `Dieses Rezept steht für ${dayNames[pendingSwapData.dayOfWeek]} (${mealTypeLabels[pendingSwapData.mealType] || pendingSwapData.mealType}) auf dem Wochenplan. Auf heute verschieben und als erledigt markieren?` : ''"
+      confirm-text="Verschieben & erledigen"
+      cancel-text="Nein, nur gekocht"
+      variant="info"
+      @confirm="confirmMealPlanSwap"
+      @cancel="pendingSwapData = null"
+    />
   </div>
 </template>
 
@@ -430,6 +442,8 @@ const recipe = computed(() => recipesStore.currentRecipe);
 const adjustedServings = ref(4);
 const showDeleteDialog = ref(false);
 const deleting = ref(false);
+const showMealPlanSwapDialog = ref(false);
+const pendingSwapData = ref(null);
 const ingredientView = ref('all');
 const showCookingMode = ref(false);
 const conversionMap = ref(new Map());
@@ -696,10 +710,34 @@ function formatDate(dateStr) {
   return new Date(dateStr).toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
 }
 
+const dayNames = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag'];
+const mealTypeLabels = { mittag: 'Mittagessen', abendessen: 'Abendessen' };
+
 async function markCooked() {
-  await recipesStore.markAsCooked(recipe.value.id, { servings: adjustedServings.value });
-  showSuccess('Als gekocht markiert! 👨‍🍳');
+  const data = await recipesStore.markAsCooked(recipe.value.id, { servings: adjustedServings.value });
+  let msg = 'Als gekocht markiert! 👨‍🍳';
+  if (data?.mealPlanUpdated) {
+    const pantryMsg = data.pantryUpdated ? ` (${data.pantryUpdated} Vorräte angepasst)` : '';
+    msg = `Als gekocht markiert & im Wochenplan erledigt! 👨‍🍳${pantryMsg}`;
+  }
+  showSuccess(msg);
   await recipesStore.fetchRecipe(recipe.value.id);
+
+  // Rezept steht an einem anderen Tag auf dem Wochenplan → Swap anbieten
+  if (data?.pendingMealPlanSync) {
+    pendingSwapData.value = data.pendingMealPlanSync;
+    showMealPlanSwapDialog.value = true;
+  }
+}
+
+async function confirmMealPlanSwap() {
+  if (!pendingSwapData.value) return;
+  const { planId, entryId } = pendingSwapData.value;
+  const data = await mealPlanStore.markCooked(planId, entryId);
+  showMealPlanSwapDialog.value = false;
+  pendingSwapData.value = null;
+  const pantryMsg = data?.pantryUpdated ? ` (${data.pantryUpdated} Vorräte angepasst)` : '';
+  showSuccess(`Im Wochenplan auf heute verschoben & erledigt! ✅${pantryMsg}`);
 }
 
 async function handleCookingFinished() {

@@ -22,7 +22,7 @@ import { config } from '../config/env.js';
 import { writeFileSync, readFileSync, existsSync } from 'fs';
 import { resolve, join } from 'path';
 import sharp from 'sharp';
-import { generateId, safePath } from '../utils/helpers.js';
+import { generateId, safePath, getWeekStart, scaleIngredient, convertToBaseUnit, unitsCompatible } from '../utils/helpers.js';
 
 const ALLOWED_MIMES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/heic', 'image/heif']);
 
@@ -806,7 +806,93 @@ export default async function recipesRoutes(fastify) {
       'UPDATE recipes SET times_cooked = times_cooked + 1, last_cooked_at = CURRENT_TIMESTAMP WHERE id = ?'
     ).run(recipeId);
 
-    return { message: 'Als gekocht markiert!' };
+    // ── Wochenplan-Sync: Wenn das Rezept heute im Plan steht → auch dort als gekocht markieren ──
+    let mealPlanUpdated = false;
+    let pantryUpdated = 0;
+
+    const currentWeekStart = getWeekStart();
+    const now = new Date();
+    const jsDay = now.getDay(); // 0=So, 1=Mo, ..., 6=Sa
+    const todayDayOfWeek = jsDay === 0 ? 6 : jsDay - 1; // 0=Mo, ..., 6=So
+
+    // Heutigen, ungekochten Wochenplan-Eintrag für dieses Rezept suchen
+    const mealPlanEntry = db.prepare(`
+      SELECT mpe.*, r.servings as original_servings
+      FROM meal_plan_entries mpe
+      JOIN meal_plans mp ON mpe.meal_plan_id = mp.id
+      JOIN recipes r ON mpe.recipe_id = r.id
+      WHERE mp.user_id = ? AND mp.week_start = ? AND mpe.day_of_week = ?
+        AND mpe.recipe_id = ? AND mpe.is_cooked = 0
+      LIMIT 1
+    `).get(userId, currentWeekStart, todayDayOfWeek, recipeId);
+
+    if (mealPlanEntry) {
+      // Eintrag als gekocht markieren
+      db.prepare('UPDATE meal_plan_entries SET is_cooked = 1 WHERE id = ?').run(mealPlanEntry.id);
+      mealPlanUpdated = true;
+
+      // Vorräte abziehen (gleiche Logik wie im Mealplan-Endpoint)
+      const mealServings = mealPlanEntry.servings || mealPlanEntry.original_servings;
+      const ingredients = db.prepare('SELECT * FROM ingredients WHERE recipe_id = ?').all(recipeId);
+
+      for (const ing of ingredients) {
+        if (ing.is_optional) continue;
+
+        const scaledAmount = ing.amount
+          ? scaleIngredient(ing.amount, mealPlanEntry.original_servings, mealServings)
+          : null;
+
+        if (!scaledAmount || scaledAmount <= 0) continue;
+
+        const normalized = convertToBaseUnit(scaledAmount, ing.unit);
+
+        const pantryItem = db.prepare(
+          'SELECT * FROM pantry WHERE user_id = ? AND LOWER(ingredient_name) = LOWER(?)'
+        ).get(userId, ing.name);
+
+        if (!pantryItem) continue;
+        if (pantryItem.is_permanent) continue;
+
+        const pantryNormalized = convertToBaseUnit(pantryItem.amount, pantryItem.unit);
+        const compat = unitsCompatible(pantryNormalized.unit, normalized.unit);
+        if (!compat.compatible) continue;
+
+        const adjustedAmount = normalized.amount * compat.factor;
+        const newAmount = Math.max(0, pantryNormalized.amount - adjustedAmount);
+        db.prepare('UPDATE pantry SET amount = ?, unit = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
+          .run(newAmount, pantryNormalized.unit, pantryItem.id);
+        pantryUpdated++;
+      }
+    }
+
+    // ── Wenn nicht heute, aber an einem anderen Tag dieser Woche → Info zurückgeben ──
+    let pendingMealPlanSync = null;
+    if (!mealPlanUpdated) {
+      const otherDayEntry = db.prepare(`
+        SELECT mpe.id as entry_id, mpe.day_of_week, mpe.meal_type, mpe.meal_plan_id as plan_id
+        FROM meal_plan_entries mpe
+        JOIN meal_plans mp ON mpe.meal_plan_id = mp.id
+        WHERE mp.user_id = ? AND mp.week_start = ?
+          AND mpe.recipe_id = ? AND mpe.is_cooked = 0
+        LIMIT 1
+      `).get(userId, currentWeekStart, recipeId);
+
+      if (otherDayEntry) {
+        pendingMealPlanSync = {
+          entryId: otherDayEntry.entry_id,
+          planId: otherDayEntry.plan_id,
+          dayOfWeek: otherDayEntry.day_of_week,
+          mealType: otherDayEntry.meal_type,
+        };
+      }
+    }
+
+    return {
+      message: 'Als gekocht markiert!',
+      mealPlanUpdated,
+      pantryUpdated,
+      pendingMealPlanSync,
+    };
   });
 
   // ============================================
