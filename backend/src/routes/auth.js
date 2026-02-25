@@ -254,6 +254,9 @@ export default async function authRoutes(fastify) {
    */
   fastify.post('/api-key', {
     onRequest: [fastify.authenticate],
+    config: {
+      rateLimit: { max: 5, timeWindow: '1 hour' },
+    },
     schema: {
       description: 'Neuen API-Key generieren',
       tags: ['Auth'],
@@ -272,6 +275,9 @@ export default async function authRoutes(fastify) {
    */
   fastify.delete('/api-key', {
     onRequest: [fastify.authenticate],
+    config: {
+      rateLimit: { max: 5, timeWindow: '1 hour' },
+    },
     schema: {
       description: 'API-Key widerrufen',
       tags: ['Auth'],

@@ -599,6 +599,11 @@ function migrateDatabase() {
     console.log('  ↳ Migration: users.api_key hinzugefügt');
   }
 
+  // UNIQUE Index auf api_key (Performance + Schutz gegen Duplikate)
+  try {
+    db.exec("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_api_key ON users(api_key) WHERE api_key IS NOT NULL");
+  } catch { /* Index existiert bereits */ }
+
   // ingredient_conversions Tabelle entfernen (nicht mehr benötigt – KI-Aggregation ersetzt zutat-spezifische Umrechnungen)
   try {
     db.exec("DROP TABLE IF EXISTS ingredient_conversions");

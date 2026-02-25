@@ -74,10 +74,14 @@ export default async function reweUserscriptRoute(fastify) {
  * - Einmal installieren, immer aktuell (holt Daten live vom Server)
  */
 function generateReweUserscript(apiBaseUrl, apiKey) {
+  // Hostname aus der API-URL extrahieren für @connect
+  let apiHost;
+  try { apiHost = new URL(apiBaseUrl).hostname; } catch { apiHost = '*'; }
+
   return `// ==UserScript==
 // @name         Zauberjournal → REWE Warenkorb
 // @namespace    zauberjournal-rewe
-// @version      1.1
+// @version      1.2
 // @description  Einkaufsliste aus dem Zauberjournal automatisch in den REWE-Warenkorb legen
 // @author       Zauberjournal
 // @match        https://shop.rewe.de/*
@@ -87,7 +91,7 @@ function generateReweUserscript(apiBaseUrl, apiKey) {
 // @grant        GM_addStyle
 // @grant        GM_setValue
 // @grant        GM_getValue
-// @connect      *
+// @connect      ${apiHost}
 // @run-at       document-idle
 // ==/UserScript==
 
@@ -274,7 +278,7 @@ function generateReweUserscript(apiBaseUrl, apiKey) {
   let products = [];
   let panelOpen = false;
   let isAdding = false;
-  let autoCheckout = localStorage.getItem('ac_auto_checkout') !== 'false'; // default: true
+  let autoCheckout = GM_getValue('ac_auto_checkout', true); // default: true
 
   /* ─── DOM ─── */
 
@@ -390,7 +394,7 @@ function generateReweUserscript(apiBaseUrl, apiKey) {
       const data = await apiGet('/rewe/cart-script');
 
       if (data.error) {
-        setStatus('<div class="ac-error-box">' + data.error + '</div>');
+        setStatus('<div class="ac-error-box">' + escapeHtml(data.error) + '</div>');
         footer.innerHTML = '<button class="ac-btn ac-btn-secondary" onclick="document.getElementById(\\'ac-btn-load\\').click()">🔄 Erneut versuchen</button>';
         return;
       }
@@ -413,7 +417,7 @@ function generateReweUserscript(apiBaseUrl, apiKey) {
           ? 'Kein API-Key hinterlegt.'
           : 'API-Key ungültig oder widerrufen.');
       } else {
-        setStatus('<div class="ac-error-box">❌ ' + err.message + '<br><br>Ist der Zauberjournal Server erreichbar?</div>');
+        setStatus('<div class="ac-error-box">❌ ' + escapeHtml(err.message) + '<br><br>Ist der Zauberjournal Server erreichbar?</div>');
       }
       footer.innerHTML = \`<button class="ac-btn ac-btn-secondary" id="ac-btn-load">🔄 Erneut versuchen</button>\`;
       document.getElementById('ac-btn-load').onclick = loadProducts;
@@ -476,7 +480,7 @@ function generateReweUserscript(apiBaseUrl, apiKey) {
     document.getElementById('ac-btn-reload').onclick = loadProducts;
     document.getElementById('ac-auto-checkout').onchange = (e) => {
       autoCheckout = e.target.checked;
-      localStorage.setItem('ac_auto_checkout', autoCheckout);
+      GM_setValue('ac_auto_checkout', autoCheckout);
     };
   }
 

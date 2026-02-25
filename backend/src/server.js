@@ -55,6 +55,18 @@ const app = Fastify({
     transport: config.isDev
       ? { target: 'pino-pretty', options: { colorize: true } }
       : undefined,
+    // Sicherheit: Token aus URLs in Logs redaktieren
+    serializers: {
+      req(request) {
+        return {
+          method: request.method,
+          url: request.url.replace(/token=[^&]+/g, 'token=***'),
+          host: request.hostname,
+          remoteAddress: request.ip,
+          remotePort: request.socket?.remotePort,
+        };
+      },
+    },
   },
   // Maximale Body-Größe für Foto-Uploads
   bodyLimit: config.upload.maxSize,
@@ -177,15 +189,12 @@ app.decorate('authenticate', async function (request, reply) {
   }
 });
 
-// Admin-Decorator: Authentifizierung + Admin-Rolle prüfen
+// Admin-Decorator: Authentifizierung (JWT oder API-Key) + Admin-Rolle prüfen
 app.decorate('requireAdmin', async function (request, reply) {
-  try {
-    await request.jwtVerify();
-    if (request.user.role !== 'admin') {
-      return reply.status(403).send({ error: 'Nur Administratoren haben Zugriff.' });
-    }
-  } catch (err) {
-    reply.status(401).send({ error: 'Nicht autorisiert. Bitte anmelden.' });
+  await app.authenticate(request, reply);
+  if (reply.sent) return; // authenticate hat bereits 401 gesendet
+  if (request.user.role !== 'admin') {
+    return reply.status(403).send({ error: 'Nur Administratoren haben Zugriff.' });
   }
 });
 

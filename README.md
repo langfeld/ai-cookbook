@@ -65,14 +65,15 @@ Eine KI-gestützte Rezeptverwaltung mit intelligentem Wochenplaner (Score-Algori
 ### 🏪 REWE-Integration
 - **Automatisches Produkt-Matching** — Alle Zutaten werden per SSE-Stream mit Live-Fortschrittsanzeige REWE-Produkten zugeordnet
 - **Relevanz-Scoring** — Intelligenter Algorithmus mit Compound-Wort-Erkennung (z. B. „Knoblauch" in „Knoblauchzehe"), Flavor-Filter (Saft, Bonbon, Duschgel etc.) und Grundpreis-Sortierung
-- **Grundpreis-Optimierung** — Sortierung nach €/kg bzw. €/Stück statt Paketpreis. Bevorzugt größere, preiswertere Packungen automatisch
+- **Grundpreis-Optimierung** — Grammage-Parsing aus REWE-API (€/kg, €/l, €/Stück) mit Fallback auf Packungsgrößen-Berechnung. KI-gestützte Produktauswahl: 12 Kandidaten aus 15 Suchergebnissen, mit Suchbegriff-Tracking für den Produkt-Picker
 - **Intelligente Mengenberechnung** — Packungsgrößen-Parsing (g, kg, ml, l, Stück), Stückzahl-Erkennung aus Produktnamen (Duo, Trio, 6er-Pack, Beutel, Becher, Schale etc.), automatische Einheiten-Konvertierung
 - **Produkt-Picker** — Alternatives REWE-Produkt suchen und auswählen (mit Suchfeld, Relevanz-Badge, Preis)
 - **Produkt-Präferenzen** — Manuell gewählte Produkte werden gespeichert und beim nächsten Matching automatisch bevorzugt (mit Preisaktualität)
 - **Preisübersicht** — Geschätzte Gesamtkosten, Einzelpreise pro Artikel
 - **REWE-Bestell-Panel** — Alle zugeordneten Produkte auf einen Blick, mit Link zum REWE-Onlineshop
 - **Warenkorb-Script** — Generiert ein Browser-Konsolenscript, das alle gematchten Produkte automatisch in den REWE-Warenkorb legt (Listing-ID-basiert, mit Fortschrittsanzeige)
-- **Tampermonkey-Userscript** — Installiert sich als Browser-Extension auf rewe.de: Floating Action Button (🍳), Panel mit Produktliste, automatisches Einfügen in den Warenkorb, Live-Status pro Artikel (✅/❌/⚠️). Kommuniziert per `GM_xmlhttpRequest` CORS-frei mit der API
+- **Tampermonkey-Userscript** — Installiert sich als Browser-Extension auf rewe.de: Floating Action Button (🍳), Panel mit Produktliste, automatisches Einfügen in den Warenkorb, Live-Status pro Artikel (✅/❌/⚠️). Kommuniziert per `GM_xmlhttpRequest` CORS-frei mit der API. **Dauerhafter API-Key** (kein Token-Ablauf) — Key wird beim Installieren automatisch eingebettet und kann jederzeit ohne Neuinstallation über einen Eingabe-Dialog im Userscript aktualisiert werden
+- **API-Key-Management** — Im Frontend API-Key generieren, anzeigen, kopieren und widerrufen. Das Userscript-Panel auf rewe.de zeigt bei ungültigem Key automatisch einen Eingabe-Dialog
 - **Marktsuche** — REWE-Markt per PLZ finden. Jeder Benutzer wählt seinen eigenen Markt in den REWE-Einstellungen der Einkaufsliste
 - **Admin-Toggle** — REWE-Integration zentral aktivieren/deaktivieren (Admin-Einstellungen)
 
@@ -136,7 +137,7 @@ Eine KI-gestützte Rezeptverwaltung mit intelligentem Wochenplaner (Score-Algori
 | **Datenbank** | SQLite (better-sqlite3, WAL-Modus) | 11.7 |
 | **Bildverarbeitung** | Sharp (Resize, WebP-Konvertierung) | 0.33 |
 | **KI-Provider** | Kimi K2.5 + moonshot-v1 / OpenAI / Anthropic / Ollama — austauschbar | — |
-| **Auth** | JWT (@fastify/jwt + bcryptjs) | — |
+| **Auth** | JWT (@fastify/jwt + bcryptjs) + API-Key (`X-API-Key` Header) | — |
 | **Bring!** | bring-shopping (npm) | 1.x |
 | **Container** | Docker (Single-Container) + ghcr.io | — |
 
@@ -282,7 +283,7 @@ zauberjournal/
 │       │   ├── database.js     # SQLite-Initialisierung (WAL, FK, CASCADE)
 │       │   └── settings.js     # Runtime-Einstellungen (DB + Env-Fallback, isReweEnabled)
 │       ├── routes/
-│       │   ├── auth.js         # Registrierung, Login, Token-Refresh
+│       │   ├── auth.js         # Registrierung, Login, Token-Refresh, API-Key-Management
 │       │   ├── recipes.js      # CRUD + Foto-Import + Text-Import + Export/Import
 │       │   ├── categories.js   # Kategorien CRUD
 │       │   ├── collections.js  # Sammlungen CRUD + Rezept-Zuordnungen
@@ -290,11 +291,11 @@ zauberjournal/
 │       │   ├── shopping.js     # Einkaufsliste: Generierung, Items, REWE-Zuordnung, Pantry-Transfer
 │       │   ├── pantry.js       # Vorratsschrank CRUD + Verbrauch + CSV/JSON-Import
 │       │   ├── rewe.js         # REWE: Produktsuche, SSE-Matching, Marktsuche, Präferenzen, Cart-Script
-│       │   ├── rewe-userscript.js # REWE: Tampermonkey/Greasemonkey Userscript-Generator
+│       │   ├── rewe-userscript.js # REWE: Tampermonkey Userscript-Generator (API-Key-Auth)
 │       │   ├── bring.js        # Bring!: Account-Verbindung, Listen, Senden, Trennen
 │       │   ├── ingredient-icons.js # Zutaten-Emoji-Mappings (CRUD)
 │       │   ├── ingredient-aliases.js # Zutaten-Aliase, Blockierungen, Export/Import
-│       │   ├── ingredient-conversions.js # Einheiten-Umrechnungen (CRUD + KI-Generierung)
+│       │   ├── recipe-blocks.js # Rezept-Blöcke CRUD
 │       │   └── admin.js        # Admin: Stats, Benutzer, Settings, Logs, Export/Import (Rezepte + Pantry)
 │       ├── services/
 │       │   ├── ai/
@@ -352,6 +353,9 @@ zauberjournal/
 | `POST` | `/register` | Neuen Benutzer registrieren (erster User → Admin) |
 | `POST` | `/login` | Anmelden, JWT erhalten |
 | `GET` | `/me` | Aktuellen Benutzer abrufen |
+| `GET` | `/api-key` | Aktuellen API-Key abrufen (oder `null`) |
+| `POST` | `/api-key` | Neuen API-Key generieren (ersetzt vorhandenen, Rate-Limit: 5/h) |
+| `DELETE` | `/api-key` | API-Key widerrufen (Rate-Limit: 5/h) |
 
 ### Rezepte (`/api/recipes`)
 | Methode | Pfad | Beschreibung |
@@ -432,7 +436,7 @@ zauberjournal/
 | `DELETE` | `/preferences/:id` | Einzelne Präferenz löschen |
 | `DELETE` | `/preferences` | Alle Präferenzen löschen |
 | `GET` | `/cart-script` | Warenkorb-Script generieren (Listing-ID-basiert, für Browser-Konsole) |
-| `GET` | `/userscript` | Tampermonkey/Greasemonkey-Userscript herunterladen (`?token=JWT`, ohne Auth-Hook) |
+| `GET` | `/userscript` | Tampermonkey-Userscript herunterladen (`?token=JWT`). Generiert automatisch API-Key und bettet ihn ein |
 | `GET` | `/settings` | Eigene REWE-Markt-Einstellungen laden (Markt-ID, Marktname, PLZ, reweEnabled) |
 | `PUT` | `/settings` | Eigenen REWE-Markt speichern (`{marketId, marketName, zipCode}`) |
 | `DELETE` | `/settings` | Eigenen REWE-Markt entfernen |
@@ -455,14 +459,9 @@ zauberjournal/
 | `PUT` | `/:id` | Mapping bearbeiten 🔒 |
 | `DELETE` | `/:id` | Mapping löschen 🔒 |
 ### Einheiten-Umrechnungen (`/api/ingredient-conversions`)
-| Methode | Pfad | Beschreibung |
-|---------|------|-------------|
-| `GET` | `/` | Alle Umrechnungen des Benutzers |
-| `POST` | `/` | Neue Umrechnung erstellen |
-| `POST` | `/bulk` | Mehrere Umrechnungen auf einmal speichern (Upsert) |
-| `PUT` | `/:id` | Umrechnung bearbeiten |
-| `DELETE` | `/:id` | Umrechnung löschen |
-| `POST` | `/generate` | KI-generierte Umrechnungen für alle Zutaten mit problematischen Einheiten |
+
+> **Entfernt** — Die Einheiten-Umrechnung erfolgt jetzt über die KI-Aggregation im Einkaufslisten-Service (`shopping-list.js`). Die Route und View existieren noch, werden aber nicht mehr aktiv genutzt.
+
 ### Zutaten-Einstellungen (`/api/ingredient-aliases`)
 | Methode | Pfad | Beschreibung |
 |---------|------|-------------|
@@ -630,11 +629,24 @@ Dieses Projekt verwendet **Tailwind CSS 4** mit CSS-basierter Konfiguration:
 
 - **Vue Transition:** Alle Views müssen **genau ein Root-Element** haben (wegen `<Transition mode="out-in">` in `App.vue`)
 - **REWE-API:** Inoffizielle API, kann sich ändern. Der Admin kann die Integration zentral deaktivieren
-- **REWE-Userscript:** Token läuft nach 7 Tagen ab — danach muss ein neues Userscript installiert werden
 - **Bring!-API:** Nutzt das Community-Paket `bring-shopping` (inoffiziell). Bring!-Passwörter werden AES-256-GCM-verschlüsselt in der DB gespeichert
 - **KI-Genauigkeit:** Foto-Import funktioniert am besten mit gut beleuchteten, scharfen Rezeptfotos
 - **SQLite:** Für Single-Server-Betrieb ausgelegt, nicht für horizontale Skalierung
 - **Passwort ändern:** Es gibt aktuell keine Self-Service-Funktion zum Passwort-Ändern. Admins können Passwörter über die Benutzerverwaltung zurücksetzen
+- **API-Key Speicherung:** API-Keys werden im Klartext in der SQLite-DB gespeichert (akzeptabel für Self-Hosted-Betrieb, nicht für Multi-Tenant)
+
+---
+
+## 🔐 Sicherheit
+
+- **Dual-Auth:** JWT (kurzlebig, `@fastify/jwt`) + API-Key (dauerhaft, `X-API-Key` Header) — das `authenticate`-Decorator prüft beides
+- **Token-Redaktion:** JWT-Tokens in URL-Query-Parametern werden in Server-Logs automatisch als `token=***` maskiert
+- **Rate-Limiting:** API-Key-Generierung und -Widerruf: max. 5 Anfragen pro Stunde
+- **DB-Index:** Unique-Index auf `api_key` (WHERE NOT NULL) für schnelle Lookups und Eindeutigkeit
+- **XSS-Schutz:** Userscript escaped alle Fehlermeldungen (`escapeHtml()`) bevor sie ins DOM eingefügt werden
+- **`@connect`-Einschränkung:** Userscript darf nur mit dem konfigurierten API-Host kommunizieren (kein `@connect *`)
+- **GM_setValue:** Userscript speichert Konfiguration in Tampermonkey-Storage statt in `localStorage` der REWE-Domain
+- **`requireAdmin`:** Nutzt das zentrale `authenticate`-Decorator (API-Key-kompatibel) statt direktem `jwtVerify`
 
 ---
 
