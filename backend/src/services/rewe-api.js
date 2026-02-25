@@ -314,7 +314,7 @@ async function findBestProduct(ingredientName, neededAmount, unit, options = {})
   }
 
   // Nur Produkte mit Preis berücksichtigen
-  const withPrice = products.filter(p => p.price);
+  let withPrice = products.filter(p => p.price);
   if (!withPrice.length) {
     return null;
   }
@@ -335,15 +335,18 @@ async function findBestProduct(ingredientName, neededAmount, unit, options = {})
       const { products: altProducts } = await searchProducts(altQuery, options);
       const altWithPrice = altProducts.filter(p => p.price);
       if (altWithPrice.length) {
-        const altResult = await aiMatchProducts(ai, ingredientName, neededAmount, unit, altWithPrice);
+        // Alternativ-Produkte werden zur neuen Basis für KI + Fallback
+        withPrice = altWithPrice;
+        const altResult = await aiMatchProducts(ai, ingredientName, neededAmount, unit, altWithPrice, { forceMatch: true });
         if (altResult?.product) return altResult;
+        // altResult könnte undefined sein → Fallback mit altWithPrice (s.u.)
       }
     }
   } catch (err) {
     console.warn(`⚠️ KI-REWE-Matching für "${ingredientName}" fehlgeschlagen, nutze Fallback:`, err.message);
   }
 
-  // ── Fallback: Regelbasiertes Scoring ──
+  // ── Fallback: Regelbasiertes Scoring (nutzt ggf. Alternativ-Produkte) ──
   return findBestProductFallback(ingredientName, neededAmount, unit, withPrice);
 }
 
@@ -354,13 +357,17 @@ async function findBestProduct(ingredientName, neededAmount, unit, options = {})
  *   - { alternativeSearch: "..." } wenn kein passendes Produkt (KI schlägt Alternativsuche vor)
  *   - undefined wenn KI kein auswertbares Ergebnis liefert
  */
-async function aiMatchProducts(ai, ingredientName, neededAmount, unit, withPrice) {
+async function aiMatchProducts(ai, ingredientName, neededAmount, unit, withPrice, { forceMatch = false } = {}) {
   const productList = withPrice.slice(0, 8).map((p, i) => ({
     index: i,
     name: p.name,
     price: formatPrice(p.price),
     packageSize: p.packageSize || 'unbekannt',
   }));
+
+  const noMatchBlock = forceMatch
+    ? `\nWICHTIG: Du MUSST eines der Produkte wählen – "noMatch" ist KEINE Option. Dies ist bereits eine Alternativsuche. Wähle das am besten passende Produkt.`
+    : `\nKein passendes Produkt (ALLE sind in der falschen Kategorie):\n{\n  "noMatch": true,\n  "alternativeSearch": "breiterer Suchbegriff",\n  "reason": "Warum keines passt"\n}`;
 
   const prompt = `Wähle das beste REWE-Produkt für diese Zutat:
 
@@ -369,7 +376,7 @@ Benötigt: ${neededAmount || '?'} ${unit || 'Stück'} ${ingredientName}
 Verfügbare Produkte:
 ${JSON.stringify(productList, null, 2)}
 
-Antworte als JSON – entweder Treffer oder kein passendes Produkt:
+Antworte als JSON:
 
 Treffer:
 {
@@ -377,13 +384,7 @@ Treffer:
   "quantity": 1,
   "reason": "Kurze Begründung"
 }
-
-Kein passendes Produkt (ALLE sind in der falschen Kategorie):
-{
-  "noMatch": true,
-  "alternativeSearch": "breiterer Suchbegriff",
-  "reason": "Warum keines passt"
-}
+${noMatchBlock}
 
 Regeln:
 - WICHTIG: Wähle das Produkt in der richtigen Produktkategorie! Wenn eine Zutat gesucht wird (z.B. "Belugalinsen"), wähle das Grundnahrungsmittel (Hülsenfrüchte, Reis, Nudeln etc.) – NIEMALS Brotaufstriche, Saucen, Fertiggerichte, Suppen o.ä. die die Zutat nur als Geschmack enthalten.
@@ -402,11 +403,25 @@ Regeln:
   const aiResult = await ai.chatJSON(prompt, { temperature: 0.1, maxTokens: 256 });
 
   // KI sagt: kein passendes Produkt → Alternativsuche signalisieren
-  if (aiResult?.noMatch && aiResult.alternativeSearch) {
-    return { alternativeSearch: aiResult.alternativeSearch, reason: aiResult.reason };
+  // Robust: verschiedene Key-Schreibweisen der KI akzeptieren
+  if (aiResult?.noMatch || aiResult?.no_match || aiResult?.noResult) {
+    const altSearch = aiResult.alternativeSearch || aiResult.alternative_search
+      || aiResult.alternativeQuery || aiResult.alternative_query
+      || aiResult.searchTerm || aiResult.search;
+    if (altSearch) {
+      return { alternativeSearch: altSearch, reason: aiResult.reason };
+    }
+    // noMatch ohne Suchvorschlag → letztes Wort/Basisbegriff als Fallback
+    console.log(`  ℹ️ KI: noMatch für "${ingredientName}" ohne alternativeSearch-Vorschlag → generiere Fallback-Suchbegriff`);
+    const fallbackSearch = ingredientName
+      .replace(/\s*\(.*?\)\s*/g, '')     // Klammern entfernen
+      .replace(/^Bio\s+/i, '')           // "Bio " Prefix entfernen
+      .trim();
+    return { alternativeSearch: fallbackSearch, reason: aiResult.reason || 'Kein passendes Produkt' };
   }
 
-  if (aiResult && typeof aiResult.index === 'number' && aiResult.index < withPrice.length) {
+  // KI hat ein Produkt gewählt
+  if (aiResult && typeof aiResult.index === 'number' && aiResult.index >= 0 && aiResult.index < withPrice.length) {
     const best = withPrice[aiResult.index];
     const qty = Math.max(1, aiResult.quantity || 1);
     const totalPrice = best.price * qty;
@@ -425,7 +440,9 @@ Regeln:
     };
   }
 
-  return undefined; // Kein auswertbares Ergebnis (Fallback nutzen)
+  // Unerwartetes KI-Format → loggen für Debugging
+  console.warn(`  ⚠️ KI-Antwort für "${ingredientName}" hat unerwartetes Format:`, JSON.stringify(aiResult));
+  return undefined; // Fallback nutzen
 }
 
 /**
@@ -659,7 +676,8 @@ export async function matchShoppingListWithRewe(shoppingItems, onProgress, optio
       if (match) {
         matchedCount++;
         const qtyInfo = match.packagesNeeded > 1 ? ` [${match.packagesNeeded}×]` : '';
-        console.log(`  ✓ ${item.name} → ${match.product.name} (${match.product.priceFormatted || '?'})${qtyInfo}`);
+        const methodTag = match.matchedBy === 'ai' ? '🤖' : '📊';
+        console.log(`  ${methodTag} ${item.name} → ${match.product.name} (${match.product.priceFormatted || '?'})${qtyInfo}`);
       } else {
         console.log(`  ✗ ${item.name} → kein Treffer`);
       }
