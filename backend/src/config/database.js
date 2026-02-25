@@ -592,6 +592,13 @@ function migrateDatabase() {
     console.log('  ↳ Migration: shopping_list_items.rewe_search_query hinzugefügt');
   }
 
+  // Spalte 'api_key' in users hinzufügen (dauerhafter API-Key für Userscript-Auth)
+  const userCols = db.prepare("PRAGMA table_info(users)").all().map(c => c.name);
+  if (!userCols.includes('api_key')) {
+    db.exec("ALTER TABLE users ADD COLUMN api_key TEXT");
+    console.log('  ↳ Migration: users.api_key hinzugefügt');
+  }
+
   // ingredient_conversions Tabelle entfernen (nicht mehr benötigt – KI-Aggregation ersetzt zutat-spezifische Umrechnungen)
   try {
     db.exec("DROP TABLE IF EXISTS ingredient_conversions");

@@ -16,6 +16,7 @@ import swagger from '@fastify/swagger';
 import swaggerUi from '@fastify/swagger-ui';
 import { config } from './config/env.js';
 import { initializeDatabase } from './config/database.js';
+import db from './config/database.js';
 import { mkdirSync, existsSync, readFileSync } from 'fs';
 import { resolve } from 'path';
 
@@ -158,6 +159,17 @@ if (config.isDev) {
 // Auth-Decorator: Authentifizierung prüfen
 // ============================================
 app.decorate('authenticate', async function (request, reply) {
+  // 1. API-Key Auth (für Userscript – dauerhaft, kein Ablauf)
+  const apiKey = request.headers['x-api-key'];
+  if (apiKey) {
+    const user = db.prepare('SELECT id, username, role FROM users WHERE api_key = ? AND is_active = 1').get(apiKey);
+    if (!user) {
+      return reply.status(401).send({ error: 'Ungültiger API-Key.' });
+    }
+    request.user = user;
+    return;
+  }
+  // 2. JWT Auth (Standard)
   try {
     await request.jwtVerify();
   } catch (err) {

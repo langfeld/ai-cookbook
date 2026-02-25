@@ -341,6 +341,21 @@ export const useShoppingStore = defineStore('shopping', () => {
     return `${baseUrl}/api/rewe/userscript.user.js?token=${encodeURIComponent(authStore.token)}`;
   }
 
+  /** API-Key abrufen */
+  async function getApiKey() {
+    return await api.get('/auth/api-key');
+  }
+
+  /** API-Key generieren */
+  async function generateApiKey() {
+    return await api.post('/auth/api-key');
+  }
+
+  /** API-Key widerrufen */
+  async function revokeApiKey() {
+    return await api.del('/auth/api-key');
+  }
+
   return {
     currentList, items, activeList, reweMatches, loading, reweProgress, listHistory,
     openItemsCount, estimatedTotal, reweLinkedItems,
@@ -352,5 +367,7 @@ export const useShoppingStore = defineStore('shopping', () => {
     // REWE Script
     getReweCartScript,
     getReweUserscriptUrl,
+    // API-Key
+    getApiKey, generateApiKey, revokeApiKey,
   };
 });

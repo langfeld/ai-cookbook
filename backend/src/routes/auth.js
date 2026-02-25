@@ -227,4 +227,58 @@ export default async function authRoutes(fastify) {
 
     return { user };
   });
+
+  // ============================================
+  // API-Key Management (für Userscript)
+  // ============================================
+
+  /**
+   * GET /api/auth/api-key
+   * Aktuellen API-Key des Users abrufen (oder null wenn keiner existiert)
+   */
+  fastify.get('/api-key', {
+    onRequest: [fastify.authenticate],
+    schema: {
+      description: 'API-Key abrufen',
+      tags: ['Auth'],
+      security: [{ bearerAuth: [] }],
+    },
+  }, async (request) => {
+    const row = db.prepare('SELECT api_key FROM users WHERE id = ?').get(request.user.id);
+    return { apiKey: row?.api_key || null };
+  });
+
+  /**
+   * POST /api/auth/api-key
+   * Neuen API-Key generieren (ersetzt eventuell vorhandenen)
+   */
+  fastify.post('/api-key', {
+    onRequest: [fastify.authenticate],
+    schema: {
+      description: 'Neuen API-Key generieren',
+      tags: ['Auth'],
+      security: [{ bearerAuth: [] }],
+    },
+  }, async (request) => {
+    const { randomUUID } = await import('crypto');
+    const apiKey = `zj_${randomUUID().replace(/-/g, '')}`;
+    db.prepare('UPDATE users SET api_key = ? WHERE id = ?').run(apiKey, request.user.id);
+    return { apiKey };
+  });
+
+  /**
+   * DELETE /api/auth/api-key
+   * API-Key widerrufen
+   */
+  fastify.delete('/api-key', {
+    onRequest: [fastify.authenticate],
+    schema: {
+      description: 'API-Key widerrufen',
+      tags: ['Auth'],
+      security: [{ bearerAuth: [] }],
+    },
+  }, async (request) => {
+    db.prepare('UPDATE users SET api_key = NULL WHERE id = ?').run(request.user.id);
+    return { message: 'API-Key widerrufen.' };
+  });
 }

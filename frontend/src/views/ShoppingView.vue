@@ -826,27 +826,80 @@
                       </label>
                     </div>
                     <!-- Userscript-Hinweis (nur bei Userscript-Methode) -->
-                    <div v-if="reweAction === 'direct'" class="flex items-center gap-3 bg-stone-100 dark:bg-stone-800 mt-3 px-3 py-2.5 rounded-lg">
-                      <div class="flex-1 min-w-0">
-                        <p class="text-stone-500 dark:text-stone-400 text-xs leading-relaxed">
-                          Benötigt das Tampermonkey-Userscript – legt per 🍳-Button auf rewe.de alles in den Warenkorb.
-                        </p>
+                    <div v-if="reweAction === 'direct'" class="space-y-3 mt-3">
+                      <div class="flex items-center gap-3 bg-stone-100 dark:bg-stone-800 px-3 py-2.5 rounded-lg">
+                        <div class="flex-1 min-w-0">
+                          <p class="text-stone-500 dark:text-stone-400 text-xs leading-relaxed">
+                            Benötigt das Tampermonkey-Userscript – legt per 🍳-Button auf rewe.de alles in den Warenkorb.
+                          </p>
+                        </div>
+                        <div class="flex gap-1.5 shrink-0">
+                          <button
+                            @click="installUserscript"
+                            class="flex items-center gap-1 bg-stone-200 hover:bg-stone-300 dark:bg-stone-700 dark:hover:bg-stone-600 px-2.5 py-1 rounded-md font-medium text-stone-600 dark:text-stone-300 text-xs transition-colors"
+                          >
+                            <Download class="w-3 h-3" />
+                            Installieren
+                          </button>
+                        </div>
                       </div>
-                      <div class="flex gap-1.5 shrink-0">
-                        <button
-                          @click="installUserscript"
-                          class="flex items-center gap-1 bg-stone-200 hover:bg-stone-300 dark:bg-stone-700 dark:hover:bg-stone-600 px-2.5 py-1 rounded-md font-medium text-stone-600 dark:text-stone-300 text-xs transition-colors"
-                        >
-                          <Download class="w-3 h-3" />
-                          Installieren
-                        </button>
-                        <button
-                          @click="regenerateToken"
-                          class="flex items-center gap-1 px-2 py-1 rounded-md text-stone-400 hover:text-stone-600 dark:hover:text-stone-300 text-xs transition-colors"
-                          title="Neues API-Token erzeugen und Userscript neu installieren"
-                        >
-                          <RefreshCw class="w-3 h-3" />
-                        </button>
+
+                      <!-- API-Key Management -->
+                      <div class="space-y-2 bg-stone-100 dark:bg-stone-800 px-3 py-2.5 rounded-lg">
+                        <div class="flex justify-between items-center">
+                          <span class="font-medium text-stone-600 dark:text-stone-400 text-xs">🔑 API-Key</span>
+                          <div class="flex gap-1.5">
+                            <button
+                              v-if="!apiKeyValue"
+                              @click="handleGenerateApiKey"
+                              class="flex items-center gap-1 bg-red-700/80 hover:bg-red-700 px-2 py-1 rounded-md font-medium text-white text-xs transition-colors"
+                            >
+                              <Plus class="w-3 h-3" />
+                              Generieren
+                            </button>
+                            <template v-else>
+                              <button
+                                @click="handleGenerateApiKey"
+                                class="flex items-center gap-1 px-2 py-1 rounded-md text-stone-400 hover:text-stone-600 dark:hover:text-stone-300 text-xs transition-colors"
+                                title="Neuen Key generieren (alter wird ungültig)"
+                              >
+                                <RefreshCw class="w-3 h-3" />
+                              </button>
+                              <button
+                                @click="copyApiKey"
+                                class="flex items-center gap-1 px-2 py-1 rounded-md text-stone-400 hover:text-stone-600 dark:hover:text-stone-300 text-xs transition-colors"
+                                title="Key kopieren"
+                              >
+                                <Copy class="w-3 h-3" />
+                              </button>
+                              <button
+                                @click="handleRevokeApiKey"
+                                class="flex items-center gap-1 px-2 py-1 rounded-md text-stone-400 hover:text-red-500 text-xs transition-colors"
+                                title="Key widerrufen"
+                              >
+                                <Trash2 class="w-3 h-3" />
+                              </button>
+                            </template>
+                          </div>
+                        </div>
+                        <div v-if="apiKeyValue" class="flex items-center gap-2">
+                          <code class="flex-1 bg-stone-200 dark:bg-stone-700 px-2 py-1 rounded font-mono text-stone-600 dark:text-stone-300 text-xs truncate">
+                            {{ showApiKey ? apiKeyValue : '••••••••••••••••••••' }}
+                          </code>
+                          <button
+                            @click="showApiKey = !showApiKey"
+                            class="text-stone-400 hover:text-stone-600 dark:hover:text-stone-300 transition-colors"
+                            :title="showApiKey ? 'Key verbergen' : 'Key anzeigen'"
+                          >
+                            <component :is="showApiKey ? EyeOff : Eye" class="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                        <p v-if="!apiKeyValue" class="text-stone-400 dark:text-stone-500 text-xs">
+                          Noch kein Key vorhanden. Generiere einen Key – er wird beim Installieren automatisch ins Userscript eingebettet.
+                        </p>
+                        <p v-else class="text-stone-400 dark:text-stone-500 text-xs">
+                          Im Userscript unter 🍳 → Einstellungen einfügen, falls sich der Key ändert.
+                        </p>
                       </div>
                     </div>
                   </div>
@@ -1790,7 +1843,7 @@ import { useMealPlanStore } from '@/stores/mealplan.js';
 import { useIngredientAliasStore } from '@/stores/ingredient-aliases.js';
 import { useNotification } from '@/composables/useNotification.js';
 import { useApi } from '@/composables/useApi.js';
-import { ListPlus, Check, ShoppingBag, Plus, Minus, Package, BookOpen, BookX, ExternalLink, ShoppingCart, X, ArrowRightLeft, Search, Tag, Trash2, Star, Heart, Archive, Send, Link2, Unlink, ClipboardCopy, LogIn, LogOut, ChevronDown, ChevronLeft, ChevronRight, Loader2, Terminal, Download, Settings, RefreshCw, Merge, ArrowRight, History, RotateCcw, Ban, MapPin, PenLine, Upload, AlertTriangle } from 'lucide-vue-next';
+import { ListPlus, Check, ShoppingBag, Plus, Minus, Package, BookOpen, BookX, ExternalLink, ShoppingCart, X, ArrowRightLeft, Search, Tag, Trash2, Star, Heart, Archive, Send, Link2, Unlink, ClipboardCopy, LogIn, LogOut, ChevronDown, ChevronLeft, ChevronRight, Loader2, Terminal, Download, Settings, RefreshCw, Merge, ArrowRight, History, RotateCcw, Ban, MapPin, PenLine, Upload, AlertTriangle, Copy, Eye, EyeOff } from 'lucide-vue-next';
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue';
 import UnitInput from '@/components/ui/UnitInput.vue';
 
@@ -1837,6 +1890,10 @@ const settingsTab = ref('rewe');
 const showRewePreview = ref(false);
 const reweAction = ref(['script', 'direct'].includes(localStorage.getItem('rewe_action')) ? localStorage.getItem('rewe_action') : 'script');
 const reweShowPreview = ref(localStorage.getItem('rewe_preview') !== 'false');
+
+// API-Key Management
+const apiKeyValue = ref(null);
+const showApiKey = ref(false);
 
 // REWE global aktiviert? (Default: false → versteckt bis API bestätigt)
 const reweEnabled = ref(false);
@@ -1897,6 +1954,8 @@ async function loadReweMarketSettings() {
   } finally {
     reweMarketSettingsLoading.value = false;
   }
+  // API-Key parallel laden
+  loadApiKey();
 }
 
 // REWE-Märkte nach PLZ suchen
@@ -2455,11 +2514,49 @@ async function executeReweAction() {
   }
 }
 
-/** API-Token erneuern und Userscript neu installieren */
-function regenerateToken() {
-  // Aktueller Token ist noch gültig (User ist eingeloggt) → Userscript einfach neu installieren
-  installUserscript();
-  showSuccess('Userscript mit aktuellem Token wird neu installiert.');
+/** API-Key generieren */
+async function handleGenerateApiKey() {
+  try {
+    const data = await shoppingStore.generateApiKey();
+    apiKeyValue.value = data.apiKey;
+    showApiKey.value = true;
+    showSuccess('API-Key generiert! Beim nächsten Installieren wird er automatisch eingebettet.');
+  } catch {
+    showError('API-Key konnte nicht generiert werden.');
+  }
+}
+
+/** API-Key kopieren */
+async function copyApiKey() {
+  if (!apiKeyValue.value) return;
+  try {
+    await navigator.clipboard.writeText(apiKeyValue.value);
+    showSuccess('API-Key in die Zwischenablage kopiert!');
+  } catch {
+    showError('Kopieren fehlgeschlagen.');
+  }
+}
+
+/** API-Key widerrufen */
+async function handleRevokeApiKey() {
+  try {
+    await shoppingStore.revokeApiKey();
+    apiKeyValue.value = null;
+    showApiKey.value = false;
+    showSuccess('API-Key widerrufen.');
+  } catch {
+    showError('API-Key konnte nicht widerrufen werden.');
+  }
+}
+
+/** API-Key beim Laden der REWE-Einstellungen abrufen */
+async function loadApiKey() {
+  try {
+    const data = await shoppingStore.getApiKey();
+    apiKeyValue.value = data.apiKey || null;
+  } catch {
+    // Nicht kritisch
+  }
 }
 
 /** Produkt-Picker öffnen: Alternativen für eine Zutat suchen */
@@ -2678,8 +2775,13 @@ async function copyCartScript() {
   }
 }
 
-function installUserscript() {
+async function installUserscript() {
   try {
+    // Sicherstellen, dass ein API-Key existiert
+    if (!apiKeyValue.value) {
+      const data = await shoppingStore.generateApiKey();
+      apiKeyValue.value = data.apiKey;
+    }
     const url = shoppingStore.getReweUserscriptUrl();
     window.open(url, '_blank');
     showSuccess('Userscript wird geöffnet – bestätige die Installation in Tampermonkey!');

@@ -8,14 +8,16 @@
  * Auth erfolgt manuell über ?token= Query-Parameter.
  */
 
+import db from '../config/database.js';
+
 export default async function reweUserscriptRoute(fastify) {
 
   /**
    * GET /api/rewe/userscript.user.js
    * Generiert ein Tampermonkey/Greasemonkey/ViolentMonkey-Userscript.
-   * Auth über ?token= Query-Parameter (JWT).
-   * URL endet auf .user.js → Userscript-Manager erkennt es automatisch
-   * und öffnet den Installations-Dialog.
+   * Auth über ?token= Query-Parameter (JWT) – nur für die Erstinstallation.
+   * Das Userscript selbst nutzt danach einen dauerhaften API-Key aus GM_getValue.
+   * URL endet auf .user.js → Userscript-Manager erkennt es automatisch.
    */
   fastify.get('/userscript.user.js', {
     schema: {
@@ -44,7 +46,16 @@ export default async function reweUserscriptRoute(fastify) {
     const host = request.headers['x-forwarded-host'] || request.headers.host;
     const apiBaseUrl = `${proto}://${host}/api`;
 
-    const script = generateReweUserscript(apiBaseUrl, request.query.token);
+    // API-Key des Users abrufen (oder neuen generieren)
+    const { randomUUID } = await import('crypto');
+    let row = db.prepare('SELECT api_key FROM users WHERE id = ?').get(user.id);
+    let apiKey = row?.api_key;
+    if (!apiKey) {
+      apiKey = `zj_${randomUUID().replace(/-/g, '')}`;
+      db.prepare('UPDATE users SET api_key = ? WHERE id = ?').run(apiKey, user.id);
+    }
+
+    const script = generateReweUserscript(apiBaseUrl, apiKey);
 
     reply
       .type('text/javascript; charset=utf-8')
@@ -62,11 +73,11 @@ export default async function reweUserscriptRoute(fastify) {
  * - Zeigt Fortschritt und Ergebnis in einem Panel auf der Seite
  * - Einmal installieren, immer aktuell (holt Daten live vom Server)
  */
-function generateReweUserscript(apiBaseUrl, authToken) {
+function generateReweUserscript(apiBaseUrl, apiKey) {
   return `// ==UserScript==
 // @name         Zauberjournal → REWE Warenkorb
 // @namespace    zauberjournal-rewe
-// @version      1.0
+// @version      1.1
 // @description  Einkaufsliste aus dem Zauberjournal automatisch in den REWE-Warenkorb legen
 // @author       Zauberjournal
 // @match        https://shop.rewe.de/*
@@ -74,6 +85,8 @@ function generateReweUserscript(apiBaseUrl, authToken) {
 // @icon         https://www.rewe.de/favicon.ico
 // @grant        GM_xmlhttpRequest
 // @grant        GM_addStyle
+// @grant        GM_setValue
+// @grant        GM_getValue
 // @connect      *
 // @run-at       document-idle
 // ==/UserScript==
@@ -83,7 +96,17 @@ function generateReweUserscript(apiBaseUrl, authToken) {
 
   /* ─── Konfiguration ─── */
   const API_BASE = '${apiBaseUrl}';
-  const AUTH_TOKEN = '${authToken}';
+
+  /* API-Key: Beim ersten Install wird der Key aus dem Script eingebettet.
+     Danach wird er in GM_storage gespeichert und kann jederzeit aktualisiert werden. */
+  const EMBEDDED_KEY = '${apiKey}';
+  if (EMBEDDED_KEY && !GM_getValue('zj_api_key', '')) {
+    GM_setValue('zj_api_key', EMBEDDED_KEY);
+  }
+
+  function getApiKey() {
+    return GM_getValue('zj_api_key', '');
+  }
 
   /* ─── Styles ─── */
   GM_addStyle(\`
@@ -317,11 +340,16 @@ function generateReweUserscript(apiBaseUrl, authToken) {
   /* ─── API-Aufruf (Cross-Origin via GM_xmlhttpRequest) ─── */
   function apiGet(path) {
     return new Promise((resolve, reject) => {
+      const key = getApiKey();
+      if (!key) {
+        reject(new Error('NO_API_KEY'));
+        return;
+      }
       GM_xmlhttpRequest({
         method: 'GET',
         url: API_BASE + path,
         headers: {
-          'Authorization': 'Bearer ' + AUTH_TOKEN,
+          'X-API-Key': key,
           'Accept': 'application/json',
         },
         onload(response) {
@@ -380,8 +408,10 @@ function generateReweUserscript(apiBaseUrl, authToken) {
       renderProducts();
 
     } catch(err) {
-      if (err.message === 'TOKEN_EXPIRED') {
-        setStatus('<div class="ac-error-box">🔑 Sitzung abgelaufen!<br><br>Bitte im Zauberjournal ein neues Userscript generieren und in Tampermonkey aktualisieren.</div>');
+      if (err.message === 'TOKEN_EXPIRED' || err.message === 'NO_API_KEY') {
+        showApiKeyDialog(err.message === 'NO_API_KEY'
+          ? 'Kein API-Key hinterlegt.'
+          : 'API-Key ungültig oder widerrufen.');
       } else {
         setStatus('<div class="ac-error-box">❌ ' + err.message + '<br><br>Ist der Zauberjournal Server erreichbar?</div>');
       }
@@ -557,6 +587,69 @@ function generateReweUserscript(apiBaseUrl, authToken) {
         window.location.href = 'https://www.rewe.de/shop/checkout/basket';
       }, 1500);
     }
+  }
+
+  /* ─── API-Key-Eingabe-Dialog ─── */
+  function showApiKeyDialog(reason) {
+    const body = document.getElementById('ac-panel-body');
+    const footer = document.getElementById('ac-panel-footer');
+
+    body.innerHTML = \`
+      <div style="padding: 20px;">
+        <div class="ac-error-box" style="margin: 0 0 16px 0;">
+          🔑 \${reason}<br><br>
+          Bitte gib deinen API-Key ein.<br>
+          Du findest ihn in den Zauberjournal REWE-Einstellungen.
+        </div>
+        <input type="text" id="ac-apikey-input" placeholder="zj_..."
+          style="width: 100%; padding: 10px 12px; border: 2px solid #ddd; border-radius: 8px;
+                font-family: monospace; font-size: 13px; box-sizing: border-box;
+                outline: none; transition: border-color 0.2s;"
+          onfocus="this.style.borderColor='#c75b52'"
+          onblur="this.style.borderColor='#ddd'">
+        <div id="ac-apikey-error" style="color: #991b1b; font-size: 12px; margin-top: 6px; display: none;"></div>
+      </div>
+    \`;
+
+    footer.innerHTML = \`
+      <button class="ac-btn ac-btn-primary" id="ac-btn-save-key">
+        💾 API-Key speichern
+      </button>
+    \`;
+
+    const input = document.getElementById('ac-apikey-input');
+    const errorEl = document.getElementById('ac-apikey-error');
+
+    // Aktuellen Key vorausfüllen (falls vorhanden)
+    const currentKey = getApiKey();
+    if (currentKey) input.value = currentKey;
+
+    document.getElementById('ac-btn-save-key').onclick = () => {
+      const newKey = input.value.trim();
+      if (!newKey) {
+        errorEl.textContent = 'Bitte einen API-Key eingeben.';
+        errorEl.style.display = 'block';
+        return;
+      }
+      if (!newKey.startsWith('zj_')) {
+        errorEl.textContent = 'Ungültiges Format. Der Key muss mit "zj_" beginnen.';
+        errorEl.style.display = 'block';
+        return;
+      }
+      errorEl.style.display = 'none';
+      GM_setValue('zj_api_key', newKey);
+      // Erneut laden mit neuem Key
+      products = [];
+      loadProducts();
+    };
+
+    // Enter-Taste zum Speichern
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') document.getElementById('ac-btn-save-key').click();
+    });
+
+    // Panel öffnen falls geschlossen
+    if (!panelOpen) togglePanel();
   }
 
   function escapeHtml(str) {
