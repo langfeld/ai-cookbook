@@ -190,11 +190,6 @@
             </span>
             <span class="flex-1 text-stone-700 dark:text-stone-300 text-sm">
               {{ ing.name }}
-              <span v-if="ing.amounts.length === 1 && getConversion(ing)"
-                    class="ml-1.5 text-stone-400 dark:text-stone-500 text-xs"
-                    :title="getConversion(ing).rule">
-                ≈ {{ getConversion(ing).amount }}&nbsp;{{ getConversion(ing).unit }}
-              </span>
               <span v-if="ing.is_optional" class="ml-1 text-stone-400 text-xs">(optional)</span>
               <span v-if="ing.notes" class="ml-1 text-stone-400 text-xs">– {{ ing.notes }}</span>
             </span>
@@ -219,11 +214,6 @@
                 </span>
                 <span class="flex-1 text-stone-700 dark:text-stone-300 text-sm">
                   {{ ing.name }}
-                  <span v-if="getConversion(ing)"
-                        class="ml-1.5 text-stone-400 dark:text-stone-500 text-xs"
-                        :title="getConversion(ing).rule">
-                    ≈ {{ getConversion(ing).amount }}&nbsp;{{ getConversion(ing).unit }}
-                  </span>
                   <span v-if="ing.is_optional" class="ml-1 text-stone-400 text-xs">(optional)</span>
                   <span v-if="ing.notes" class="ml-1 text-stone-400 text-xs">– {{ ing.notes }}</span>
                 </span>
@@ -387,7 +377,6 @@
       v-model="showCookingMode"
       :recipe="recipe"
       :adjusted-servings="adjustedServings"
-      :conversion-map="conversionMap"
       @finished="handleCookingFinished"
     />
 
@@ -446,7 +435,6 @@ const showMealPlanSwapDialog = ref(false);
 const pendingSwapData = ref(null);
 const ingredientView = ref('all');
 const showCookingMode = ref(false);
-const conversionMap = ref(new Map());
 
 // ─── Wochenplaner-Modal ───
 const showPlannerModal = ref(false);
@@ -577,13 +565,6 @@ function toBaseUnit(amount, unit, ingredientName) {
     return { amount: amount * stdConv[norm].factor, unit: stdConv[norm].base };
   }
 
-  // Zutat-spezifische Konvertierung aus Umrechnungstabelle (z.B. 1 Stk Ei → 50 g)
-  if (ingredientName) {
-    const key = `${ingredientName.toLowerCase().trim()}|${(unit || '').toLowerCase().trim()}`;
-    const conv = conversionMap.value.get(key);
-    if (conv) return { amount: amount * conv.to_amount, unit: conv.to_unit };
-  }
-
   return { amount, unit: norm };
 }
 
@@ -624,7 +605,7 @@ const flatIngredients = computed(() => {
     }
   }
 
-  // Top-Level amount/unit für Einzel-Einheit beibehalten (Kompatibilität mit getConversion)
+  // Top-Level amount/unit für Einzel-Einheit beibehalten
   const result = [...merged.values()];
   for (const ing of result) {
     if (ing.amounts.length === 1) {
@@ -650,21 +631,6 @@ function scaleAmountRaw(amount) {
 function scaleAmount(amount) {
   const raw = scaleAmountRaw(amount);
   return raw ? formatAmount(raw) : '';
-}
-
-// Umgerechnete Menge für eine Zutat (z. B. 2 Stk → ≈ 160 g)
-function getConversion(ing) {
-  if (!ing.unit || !ing.amount) return null;
-  const key = `${ing.name.toLowerCase()}|${ing.unit.toLowerCase()}`;
-  const conv = conversionMap.value.get(key);
-  if (!conv) return null;
-  const scaled = scaleAmountRaw(ing.amount);
-  if (!scaled) return null;
-  return {
-    amount: formatAmount(scaled * conv.to_amount),
-    unit: conv.to_unit,
-    rule: `1 ${ing.unit} ≈ ${formatAmount(conv.to_amount)} ${conv.to_unit}`,
-  };
 }
 
 // Zutat-Farbe bestimmen (anhand des Namens) – nur Fallback für "•"
@@ -760,26 +726,9 @@ async function deleteRecipe() {
   }
 }
 
-async function loadConversions() {
-  try {
-    const data = await apiRaw('/ingredient-conversions');
-    const map = new Map();
-    for (const c of data.conversions || []) {
-      map.set(`${c.ingredient_name.toLowerCase()}|${c.from_unit.toLowerCase()}`, {
-        to_amount: c.to_amount,
-        to_unit: c.to_unit,
-      });
-    }
-    conversionMap.value = map;
-  } catch { /* Umrechnungen sind optional */ }
-}
-
 onMounted(async () => {
   await loadIcons();
-  await Promise.all([
-    recipesStore.fetchRecipe(route.params.id),
-    loadConversions(),
-  ]);
+  await recipesStore.fetchRecipe(route.params.id);
   if (recipe.value) {
     adjustedServings.value = recipe.value.servings;
   }

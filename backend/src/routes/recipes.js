@@ -17,7 +17,7 @@
 
 import db from '../config/database.js';
 import { parseRecipeFromImage, parseRecipeFromText, parseRecipeFromUrl, suggestCategories } from '../services/recipe-parser.js';
-import { autoGenerateConversions } from './ingredient-conversions.js';
+// autoGenerateConversions entfernt – natürliche Einheiten + KI-Aggregation statt manueller Umrechnungstabelle
 import { config } from '../config/env.js';
 import { writeFileSync, readFileSync, existsSync } from 'fs';
 import { resolve, join } from 'path';
@@ -237,10 +237,6 @@ export default async function recipesRoutes(fastify) {
     });
 
     const recipeId = transaction();
-    // Auto-Umrechnungen im Hintergrund generieren
-    if (ingredients?.length) {
-      autoGenerateConversions(userId, ingredients).catch(() => {});
-    }
     return reply.status(201).send({ id: recipeId, message: 'Rezept erstellt!' });
   });
 
@@ -355,11 +351,6 @@ export default async function recipesRoutes(fastify) {
 
     const recipeId = transaction();
 
-    // Auto-Umrechnungen im Hintergrund generieren
-    if (parsedRecipe.ingredients?.length) {
-      autoGenerateConversions(userId, parsedRecipe.ingredients).catch(() => {});
-    }
-
     return reply.status(201).send({
       id: recipeId,
       message: 'Rezept erfolgreich aus Foto importiert!',
@@ -440,10 +431,6 @@ export default async function recipesRoutes(fastify) {
     });
 
     const recipeId = transaction();
-    // Auto-Umrechnungen im Hintergrund generieren
-    if (parsedRecipe.ingredients?.length) {
-      autoGenerateConversions(userId, parsedRecipe.ingredients).catch(() => {});
-    }
     return reply.status(201).send({ id: recipeId, recipe: parsedRecipe });
   });
 
@@ -521,10 +508,6 @@ export default async function recipesRoutes(fastify) {
     });
 
     const recipeId = transaction();
-    // Auto-Umrechnungen im Hintergrund generieren
-    if (parsedRecipe.ingredients?.length) {
-      autoGenerateConversions(userId, parsedRecipe.ingredients).catch(() => {});
-    }
     return reply.status(201).send({ id: recipeId, recipe: parsedRecipe });
   });
 

@@ -57,8 +57,9 @@ export function getAIProvider(options = {}) {
     if (!simpleProvider || simpleProviderName !== providerName) {
       // Config kopieren und Modell durch das einfache ersetzen
       const simpleConfig = { ...aiConfig };
-      if (providerName === 'kimi' && simpleConfig.kimi?.simpleModel) {
-        simpleConfig.kimi = { ...simpleConfig.kimi, model: simpleConfig.kimi.simpleModel };
+      const providerConfig = simpleConfig[providerName];
+      if (providerConfig?.simpleModel) {
+        simpleConfig[providerName] = { ...providerConfig, model: providerConfig.simpleModel };
       }
       const factory = providerMap[providerName];
       if (!factory) {

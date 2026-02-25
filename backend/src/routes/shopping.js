@@ -49,8 +49,8 @@ export default async function shoppingRoutes(fastify) {
       return reply.status(404).send({ error: 'Wochenplan nicht gefunden' });
     }
 
-    // Einkaufsliste generieren (mit Vorratsschrank-Abgleich)
-    const shoppingData = generateShoppingList(userId, mealPlanId, { excludePastDays });
+    // Einkaufsliste generieren (mit Vorratsschrank-Abgleich + KI-Aggregation)
+    const shoppingData = await generateShoppingList(userId, mealPlanId, { excludePastDays });
 
     // Manuelle Items aus der aktuellen aktiven Liste sichern (bevor sie deaktiviert wird)
     const oldList = db.prepare(
@@ -136,6 +136,7 @@ export default async function shoppingRoutes(fastify) {
         quantity: item.rewe_quantity || 1, // Anzahl benötigter Packungen
         packageSize: item.rewe_package_size,
         imageUrl: item.rewe_image_url || null,
+        matchedBy: item.rewe_matched_by || null,
         url: buildReweProductUrl(item.rewe_product_name, item.rewe_product_id),
       } : null;
 
@@ -219,6 +220,7 @@ export default async function shoppingRoutes(fastify) {
         quantity: item.rewe_quantity || 1,
         packageSize: item.rewe_package_size,
         imageUrl: item.rewe_image_url || null,
+        matchedBy: item.rewe_matched_by || null,
         url: buildReweProductUrl(item.rewe_product_name, item.rewe_product_id),
       } : null;
 
@@ -384,32 +386,13 @@ export default async function shoppingRoutes(fastify) {
       return reply.status(404).send({ error: 'Artikel nicht gefunden' });
     }
 
-    // Packungsgröße parsen und benötigte Menge berechnen
-    const pkgMatch = (packageSize || productName || '').match(/([\d.,]+)\s*(?:x\s*[\d.,]+\s*)?(g|kg|ml|l|stk|stück|st)\b/i);
-    let pkgAmount = null, pkgUnit = null;
-    if (pkgMatch) {
-      pkgAmount = parseFloat(pkgMatch[1].replace(',', '.'));
-      pkgUnit = pkgMatch[2].toLowerCase();
-      if (pkgUnit === 'kg') { pkgAmount *= 1000; pkgUnit = 'g'; }
-      else if (pkgUnit === 'l') { pkgAmount *= 1000; pkgUnit = 'ml'; }
-    }
-
-    // Stückzahl aus Multiplier-Wörtern erkennen (Duo=2, Trio=3, etc.)
-    let pieceCount = null;
-    const nameToCheck = (productName || '').toLowerCase();
-    if (/\bduo\b/.test(nameToCheck)) pieceCount = 2;
-    else if (/\btrio\b/.test(nameToCheck)) pieceCount = 3;
-    else if (/\bdoppelpack\b/.test(nameToCheck)) pieceCount = 2;
-    else {
-      const erPackMatch = nameToCheck.match(/(\d+)er[\s-]?pack/);
-      if (erPackMatch) pieceCount = parseInt(erPackMatch[1], 10);
-    }
-
+    // Packungsgröße parsen und benötigte Menge berechnen (nutzt zentrale Funktion aus rewe-api)
+    const { amount: pkgAmount, unit: pkgUnit, pieceCount } = parsePackageSize(packageSize, productName);
     const quantity = calculatePackagesNeeded(item.amount, item.unit, pkgAmount, pkgUnit, pieceCount);
 
     db.prepare(`
       UPDATE shopping_list_items
-      SET rewe_product_id = ?, rewe_product_name = ?, rewe_price = ?, rewe_package_size = ?, rewe_quantity = ?, rewe_image_url = ?
+      SET rewe_product_id = ?, rewe_product_name = ?, rewe_price = ?, rewe_package_size = ?, rewe_quantity = ?, rewe_image_url = ?, rewe_matched_by = 'manual'
       WHERE id = ?
     `).run(productId, productName, price, packageSize || null, quantity, imageUrl || null, item.id);
 

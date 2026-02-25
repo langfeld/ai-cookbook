@@ -4,23 +4,121 @@
  * ============================================
  *
  * Generiert optimierte Einkaufslisten aus dem Wochenplan:
- * - Fasst gleiche Zutaten zusammen
+ * - Fasst gleiche Zutaten zusammen (identisch + KI-Aggregation)
  * - Rechnet Mengen um (Portionsanpassung)
  * - Zieht Vorratsschrank-Bestände ab
- * - Berechnet Überschuss für den Vorratsschrank
+ * - Nutzt KI für intelligente Zusammenfassung verschiedener Einheiten
  */
 
 import db from '../config/database.js';
-import { convertToBaseUnit, getUnitType, normalizeUnit, scaleIngredient, unitsCompatible } from '../utils/helpers.js';
+import { normalizeUnit, scaleIngredient } from '../utils/helpers.js';
 import { parsePackageSize } from './rewe-api.js';
+import { getAIProvider } from './ai/provider.js';
+
+/**
+ * KI-gestützte Aggregation der Einkaufsliste.
+ * Fasst gleiche Zutaten mit verschiedenen Einheiten intelligent zusammen.
+ * Fallback: nur identische Einheiten addieren.
+ */
+async function aiAggregateItems(itemsList) {
+  // Schritt 1: Identische Zutaten+Einheiten einfach addieren
+  const simpleMap = new Map();
+  for (const item of itemsList) {
+    const key = `${item.name.toLowerCase()}_${(item.unit || '').toLowerCase()}`;
+    if (simpleMap.has(key)) {
+      const existing = simpleMap.get(key);
+      existing.amount = (existing.amount || 0) + (item.amount || 0);
+      existing.recipes.push(...item.recipes);
+      for (const id of item.recipeIds) {
+        if (!existing.recipeIds.includes(id)) existing.recipeIds.push(id);
+      }
+    } else {
+      simpleMap.set(key, { ...item, recipes: [...item.recipes], recipeIds: [...item.recipeIds] });
+    }
+  }
+
+  const preAggregated = [...simpleMap.values()];
+
+  // Prüfen ob überhaupt Zusammenfassung nötig (gleiche Zutat mit verschiedenen Einheiten?)
+  const nameCount = new Map();
+  for (const item of preAggregated) {
+    const key = item.name.toLowerCase();
+    nameCount.set(key, (nameCount.get(key) || 0) + 1);
+  }
+  const needsAI = [...nameCount.values()].some(c => c > 1);
+
+  if (!needsAI) {
+    return preAggregated; // Keine Duplikate → KI nicht nötig
+  }
+
+  // Schritt 2: KI zusammenfassen lassen
+  try {
+    const ai = getAIProvider({ simple: true });
+
+    // Nur die duplizierten Zutaten an die KI schicken
+    const duplicateNames = new Set([...nameCount.entries()].filter(([, c]) => c > 1).map(([n]) => n));
+    const toMerge = preAggregated.filter(i => duplicateNames.has(i.name.toLowerCase()));
+    const keepAsIs = preAggregated.filter(i => !duplicateNames.has(i.name.toLowerCase()));
+
+    const prompt = `Fasse diese Einkaufslisten-Einträge zusammen. Gleiche Zutaten mit verschiedenen Einheiten sollen zu EINEM Eintrag werden.
+Wähle die natürlichste Einkaufseinheit:
+- Zählbare Zutaten (Zwiebel, Tomate, Paprika, Ei, Brötchen etc.) → Stückzahl (unit: "")
+- Gewichtsware (Fleisch, Käse, Mehl etc.) → g oder kg
+- Flüssigkeiten → ml oder l
+
+Eingabe:
+${JSON.stringify(toMerge.map(i => ({ name: i.name, amount: i.amount, unit: i.unit })), null, 2)}
+
+Antworte als JSON-Array:
+[{ "name": "Zutatename", "amount": 3, "unit": "" }]
+
+Regeln:
+- Jede Zutat nur EINMAL in der Ausgabe
+- Mengen sinnvoll umrechnen (z.B. 150g Zwiebel ≈ 1-2 Zwiebeln → 2 Zwiebeln)
+- Bei Unsicherheit lieber aufrunden
+- name muss exakt einem der Eingabe-Namen entsprechen`;
+
+    const merged = await ai.chatJSON(prompt, { temperature: 0.1, maxTokens: 2048 });
+
+    if (!Array.isArray(merged)) {
+      console.warn('⚠️ KI-Aggregation: Unerwartetes Format, nutze Fallback');
+      return preAggregated;
+    }
+
+    // KI-Ergebnis mit Rezept-Referenzen anreichern
+    const result = [...keepAsIs];
+    for (const aiItem of merged) {
+      // Alle Originaleinträge dieser Zutat finden
+      const originals = toMerge.filter(i => i.name.toLowerCase() === aiItem.name.toLowerCase());
+      const allRecipes = originals.flatMap(o => o.recipes);
+      const allRecipeIds = [...new Set(originals.flatMap(o => o.recipeIds))];
+      const isOptional = originals.every(o => o.isOptional);
+
+      result.push({
+        name: aiItem.name || originals[0]?.name,
+        amount: aiItem.amount,
+        unit: aiItem.unit || '',
+        recipes: allRecipes,
+        recipeIds: allRecipeIds,
+        isOptional,
+      });
+    }
+
+    console.log(`🤖 KI-Aggregation: ${preAggregated.length} → ${result.length} Einträge`);
+    return result;
+  } catch (err) {
+    console.warn('⚠️ KI-Aggregation fehlgeschlagen, nutze einfache Zusammenfassung:', err.message);
+    return preAggregated;
+  }
+}
 
 /**
  * Generiert eine Einkaufsliste aus einem Wochenplan
  * @param {number} userId - Benutzer-ID
  * @param {number} mealPlanId - Wochenplan-ID
- * @returns {object} - Einkaufsliste mit zusammengefassten Zutaten
+ * @returns {Promise<object>} - Einkaufsliste mit zusammengefassten Zutaten
  */
-export function generateShoppingList(userId, mealPlanId, options = {}) {
+export async function generateShoppingList(userId, mealPlanId, options = {}) {
   const { excludePastDays = false } = options;
 
   // --- 1. Alle Rezepte und Portionen aus dem Wochenplan laden ---
@@ -45,10 +143,8 @@ export function generateShoppingList(userId, mealPlanId, options = {}) {
       const weekStart = new Date(plan.week_start + 'T00:00:00');
       const today = new Date();
       today.setHours(0, 0, 0, 0);
-      // Tage seit Wochenbeginn berechnen
       const diffMs = today.getTime() - weekStart.getTime();
       const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-      // Nur filtern wenn wir innerhalb der Woche sind (0-6)
       if (diffDays > 0 && diffDays <= 6) {
         const beforeCount = filteredEntries.length;
         filteredEntries = filteredEntries.filter(e => e.day_of_week >= diffDays);
@@ -58,10 +154,10 @@ export function generateShoppingList(userId, mealPlanId, options = {}) {
     }
   }
 
-  // --- 2. Zutaten sammeln und Mengen umrechnen ---
-  const ingredientMap = new Map(); // Key: normalisierter Name + Einheit
+  // --- 2. Zutaten sammeln und Mengen skalieren ---
+  const rawItems = [];
 
-  // Alias-Tabelle laden: alias_name → canonical_name
+  // Alias-Tabelle laden
   const aliasRows = db.prepare(
     'SELECT alias_name, canonical_name FROM ingredient_aliases WHERE user_id = ?'
   ).all(userId);
@@ -82,87 +178,31 @@ export function generateShoppingList(userId, mealPlanId, options = {}) {
     ).all(entry.recipe_id);
 
     for (const ing of ingredients) {
-      // Alias auflösen: Falls der Zutatname ein Alias ist, kanonischen Namen verwenden
       const resolvedName = aliasMap.get(ing.name.toLowerCase()) || ing.name;
 
-      // Geblockte Zutaten überspringen
-      if (blockedSet.has(resolvedName.toLowerCase())) {
-        continue;
-      }
+      if (blockedSet.has(resolvedName.toLowerCase())) continue;
 
-      // Menge auf geplante Portionen umrechnen
+      // Menge auf geplante Portionen skalieren
       const scaledAmount = ing.amount
         ? scaleIngredient(ing.amount, entry.original_servings, entry.planned_servings)
         : null;
 
-      // In Basiseinheit konvertieren für Zusammenfassung
-      const normalized = ing.amount
-        ? convertToBaseUnit(scaledAmount, ing.unit)
-        : { amount: null, unit: normalizeUnit(ing.unit) };
+      // Einheit normalisieren (Plural/Tippfehler bereinigen, natürliche Einheit beibehalten)
+      const unit = normalizeUnit(ing.unit);
 
-      const key = `${resolvedName.toLowerCase()}_${normalized.unit}`;
-
-      if (ingredientMap.has(key)) {
-        const existing = ingredientMap.get(key);
-        existing.amount = (existing.amount || 0) + (normalized.amount || 0);
-        existing.recipes.push(entry.recipe_title);
-        if (!existing.recipeIds.includes(entry.recipe_id)) {
-          existing.recipeIds.push(entry.recipe_id);
-        }
-      } else {
-        ingredientMap.set(key, {
-          name: resolvedName,
-          amount: normalized.amount,
-          unit: normalized.unit,
-          recipes: [entry.recipe_title],
-          recipeIds: [entry.recipe_id],
-          isOptional: ing.is_optional,
-        });
-      }
+      rawItems.push({
+        name: resolvedName,
+        amount: scaledAmount,
+        unit,
+        recipes: [entry.recipe_title],
+        recipeIds: [entry.recipe_id],
+        isOptional: ing.is_optional,
+      });
     }
   }
 
-  // --- 2b. Zweiter Konsolidierungsschritt: ---
-  // Gleiche Zutat mit unterschiedlichen, aber KOMPATIBLEN Einheiten zusammenführen
-  // z.B. "Halloumi 200g" + "Halloumi 500g" → 700g
-  // Inkompatible Einheiten (z.B. "200g" + "1 Stk") bleiben getrennt,
-  // um keine sinnlosen Additionen wie "201g" zu erzeugen.
-  const consolidatedMap = new Map();
-  for (const [key, item] of ingredientMap) {
-    const nameKey = item.name.toLowerCase();
-
-    // Bestehenden Eintrag mit kompatiblen Einheiten suchen
-    let mergedKey = null;
-    for (const [cKey, existing] of consolidatedMap) {
-      if (existing.name.toLowerCase() !== nameKey) continue;
-      const compat = unitsCompatible(existing.unit, item.unit);
-      if (compat.compatible) {
-        mergedKey = cKey;
-        break;
-      }
-    }
-
-    if (mergedKey) {
-      const existing = consolidatedMap.get(mergedKey);
-      const compat = unitsCompatible(existing.unit, item.unit);
-
-      // Mengen addieren (mit Umrechnungsfaktor, z.B. g↔ml)
-      existing.amount = (existing.amount || 0) + (item.amount || 0) * compat.factor;
-
-      // Rezepte zusammenführen
-      for (const title of item.recipes) {
-        existing.recipes.push(title);
-      }
-      for (const id of item.recipeIds) {
-        if (!existing.recipeIds.includes(id)) {
-          existing.recipeIds.push(id);
-        }
-      }
-    } else {
-      // Kein kompatibler Eintrag → separat aufnehmen
-      consolidatedMap.set(`${nameKey}_${item.unit || 'none'}`, { ...item });
-    }
-  }
+  // --- 2b. KI-gestützte Aggregation ---
+  const aggregated = await aiAggregateItems(rawItems);
 
   // --- 3. Vorräte abziehen ---
   const pantryItems = db.prepare(
@@ -171,35 +211,38 @@ export function generateShoppingList(userId, mealPlanId, options = {}) {
 
   const adjustedItems = [];
 
-  for (const [key, item] of consolidatedMap) {
+  for (const item of aggregated) {
     let remainingAmount = item.amount;
     let pantryDeducted = 0;
     let pantryNote = null;
 
-    // Passende Vorräte suchen
     const matchingPantry = pantryItems.find(
       p => p.ingredient_name.toLowerCase() === item.name.toLowerCase()
     );
 
     if (matchingPantry && remainingAmount) {
       if (matchingPantry.is_permanent) {
-        // Dauerhaft verfügbar → komplett abziehen, Bestand bleibt unverändert
         pantryDeducted = remainingAmount;
         remainingAmount = 0;
       } else {
-        const pantryConverted = convertToBaseUnit(matchingPantry.amount, matchingPantry.unit);
+        const pantryUnit = normalizeUnit(matchingPantry.unit);
+        const itemUnit = item.unit || '';
 
-        // Kompatibilität prüfen (g===g, oder g↔ml mit Näherung 1:1)
-        const compat = unitsCompatible(pantryConverted.unit, item.unit);
-        if (compat.compatible) {
-          const adjustedPantryAmount = pantryConverted.amount * compat.factor;
-          const deduction = Math.min(adjustedPantryAmount, remainingAmount);
+        if (pantryUnit === itemUnit || (!pantryUnit && !itemUnit)) {
+          // Identische Einheiten → direkt abziehen
+          const deduction = Math.min(matchingPantry.amount, remainingAmount);
+          remainingAmount -= deduction;
+          pantryDeducted = deduction;
+        } else if (
+          (pantryUnit === 'g' && itemUnit === 'ml') || (pantryUnit === 'ml' && itemUnit === 'g')
+        ) {
+          // g↔ml Näherung
+          const deduction = Math.min(matchingPantry.amount, remainingAmount);
           remainingAmount -= deduction;
           pantryDeducted = deduction;
         } else {
-          // Vorrat vorhanden aber Einheiten inkompatibel (z.B. 500g vs 2 Stk)
-          // → Hinweis setzen, damit der Nutzer informiert wird
-          pantryNote = `Im Vorrat: ${matchingPantry.amount} ${matchingPantry.unit || ''} (andere Einheit)`.trim();
+          // Inkompatible Einheiten → Hinweis
+          pantryNote = `Im Vorrat: ${matchingPantry.amount} ${matchingPantry.unit || 'Stk'} (andere Einheit)`.trim();
         }
       }
     }
@@ -216,7 +259,6 @@ export function generateShoppingList(userId, mealPlanId, options = {}) {
 
   return {
     items: adjustedItems.sort((a, b) => {
-      // Nicht benötigte Items ans Ende
       if (a.needsToBuy !== b.needsToBuy) return a.needsToBuy ? -1 : 1;
       return a.name.localeCompare(b.name, 'de');
     }),
@@ -264,20 +306,9 @@ export function saveShoppingList(userId, mealPlanId, items, name = 'Einkaufslist
 }
 
 /**
- * Verarbeitet den Einkauf: Gekaufte Items in den Vorratsschrank
- *
- * Wenn ein REWE-Produkt zugeordnet wurde, wird die tatsächlich gekaufte Menge
- * (Packungsgröße × Anzahl Packungen) verwendet, nicht die Rezeptmenge.
- * Beispiel: Rezept braucht 500g Kartoffeln → REWE 3kg-Sack gewählt → 3000g im Vorrat.
- *
- * Bei inkompatiblen Einheiten (z.B. 2 Stk + 500g) wird NICHT blind addiert,
- * da sonst unsinnige Werte entstehen (z.B. 502g). Stattdessen wird:
- * - Gewicht/Volumen bevorzugt (präziser als Zähleinheiten)
- * - Bei Zähl- vs. Gewichtskonflikt nur aktualisiert, wenn die neue Einheit präziser ist
- *
- * @param {number} userId - Benutzer-ID
- * @param {number} listId - Einkaufslisten-ID
- * @param {object[]} purchasedItems - Gekaufte Items (mit optionalen REWE-Daten)
+ * Verarbeitet den Einkauf: Gekaufte Items in den Vorratsschrank überführen.
+ * Items werden in ihrer natürlichen Einheit in die Pantry übernommen.
+ * Bei REWE-Produkten wird die tatsächlich gekaufte Menge verwendet.
  */
 export function processPurchase(userId, listId, purchasedItems) {
   const upsertPantry = db.prepare(`
@@ -304,31 +335,17 @@ export function processPurchase(userId, listId, purchasedItems) {
   const transaction = db.transaction(() => {
     for (const item of purchasedItems) {
       let amount = item.amount;
-      let unit = item.unit || 'Stk';
+      let unit = normalizeUnit(item.unit || '');
 
       // Wenn REWE-Produkt zugeordnet: tatsächlich gekaufte Menge berechnen
       if (item.rewe_package_size) {
         const parsed = parsePackageSize(item.rewe_package_size);
         if (parsed.amount && parsed.unit) {
           const reweQty = item.rewe_quantity || 1;
-          let totalPurchased = parsed.amount * reweQty; // z.B. 3000g bei "3kg"-Sack
-          let purchasedUnit = parsed.unit;               // parsePackageSize liefert immer g / ml
-
-          // Einheit an die Rezept-/Listen-Einheit angleichen
-          const origUnit = (item.unit || '').toLowerCase();
-          if (origUnit === 'kg' && purchasedUnit === 'g') {
-            totalPurchased /= 1000;
-            purchasedUnit = 'kg';
-          } else if (origUnit === 'l' && purchasedUnit === 'ml') {
-            totalPurchased /= 1000;
-            purchasedUnit = 'l';
-          }
-
-          amount = totalPurchased;
-          unit = purchasedUnit;
+          amount = parsed.amount * reweQty;
+          unit = parsed.unit;
         }
       }
-      unit = normalizeUnit(unit);
 
       if (amount > 0) {
         const ingredientName = item.ingredient_name || item.name;
@@ -336,28 +353,15 @@ export function processPurchase(userId, listId, purchasedItems) {
         const existing = getExistingPantry.get(userId, ingredientName);
 
         if (!existing) {
-          // Kein bestehender Eintrag → einfach einfügen
           upsertPantry.run(userId, ingredientName, amount, unit, category);
         } else {
-          // Bestehender Eintrag → Einheiten auf Kompatibilität prüfen
-          const existingConverted = convertToBaseUnit(existing.amount, existing.unit);
-          const newConverted = convertToBaseUnit(amount, unit);
-          const compat = unitsCompatible(existingConverted.unit, newConverted.unit);
-
-          if (compat.compatible) {
-            // Kompatible Einheiten → Mengen addieren (z.B. 500g + 200g)
+          const existingUnit = normalizeUnit(existing.unit);
+          if (existingUnit === unit || (!existingUnit && !unit)) {
+            // Gleiche Einheit → addieren
             upsertPantry.run(userId, ingredientName, amount, unit, category);
           } else {
-            // Inkompatible Einheiten (z.B. 500g + 2 Stk)
-            const existingType = getUnitType(existing.unit);
-            const newType = getUnitType(unit);
-
-            if ((newType === 'weight' || newType === 'volume') && existingType === 'counting') {
-              // Neue Daten sind präziser (Gewicht/Volumen) → bestehende Zähleinheit ersetzen
-              replacePantry.run(userId, ingredientName, amount, unit, category);
-            }
-            // Sonst: bestehende Gewichts-/Volumendaten behalten, Zähleinheit ignorieren
-            // (z.B. Vorrat hat 500g, Einkauf war "2 Stk" → 500g bleibt, da 2+500 Unsinn wäre)
+            // Unterschiedliche Einheiten → ersetzen mit neuerer Einheit
+            replacePantry.run(userId, ingredientName, amount, unit, category);
           }
         }
       }

@@ -13,14 +13,22 @@ const STANDARD_UNITS = [
   { value: 'l', label: 'l', group: 'Volumen' },
   { value: 'TL', label: 'TL', group: 'Löffel' },
   { value: 'EL', label: 'EL', group: 'Löffel' },
-  { value: 'Stk', label: 'Stk', group: 'Zählbar' },
+  { value: '', label: '(Stück)', group: 'Zählbar' },
+  { value: 'Scheibe', label: 'Scheibe', group: 'Zählbar' },
+  { value: 'Zehe', label: 'Zehe', group: 'Zählbar' },
+  { value: 'Knolle', label: 'Knolle', group: 'Zählbar' },
+  { value: 'Stange', label: 'Stange', group: 'Zählbar' },
+  { value: 'Kopf', label: 'Kopf', group: 'Zählbar' },
   { value: 'Bund', label: 'Bund', group: 'Zählbar' },
-  { value: 'Dose', label: 'Dose', group: 'Zählbar' },
-  { value: 'Pkg', label: 'Pkg', group: 'Zählbar' },
-  { value: 'Becher', label: 'Becher', group: 'Zählbar' },
+  { value: 'Zweig', label: 'Zweig', group: 'Zählbar' },
+  { value: 'Blatt', label: 'Blatt', group: 'Zählbar' },
+  { value: 'Ring', label: 'Ring', group: 'Zählbar' },
+  { value: 'Handvoll', label: 'Handvoll', group: 'Zählbar' },
+  { value: 'Dose', label: 'Dose', group: 'Verpackung' },
+  { value: 'Pkg', label: 'Pkg', group: 'Verpackung' },
+  { value: 'Becher', label: 'Becher', group: 'Verpackung' },
   { value: 'Prise', label: 'Prise', group: 'Sonstige' },
-  { value: 'Scheibe', label: 'Scheibe', group: 'Sonstige' },
-  { value: 'Zehe', label: 'Zehe', group: 'Sonstige' },
+  { value: 'Rispe', label: 'Rispe', group: 'Sonstige' },
 ];
 
 const STANDARD_SET = new Set(STANDARD_UNITS.map(u => u.value.toLowerCase()));
@@ -44,11 +52,7 @@ const localValue = computed({
   set: (v) => emit('update:modelValue', v),
 });
 
-const isNonStandard = computed(() => {
-  const val = localValue.value?.trim();
-  if (!val) return false;
-  return !STANDARD_SET.has(val.toLowerCase());
-});
+const isNonStandard = computed(() => false); // Alle Einheiten sind jetzt akzeptabel
 
 const filteredUnits = computed(() => {
   const q = filterText.value.toLowerCase();

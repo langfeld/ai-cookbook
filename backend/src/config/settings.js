@@ -66,14 +66,17 @@ export function getAiConfig() {
     openai: {
       apiKey: getSetting('openai_api_key', env.OPENAI_API_KEY || ''),
       model:  getSetting('openai_model',   env.OPENAI_MODEL || 'gpt-4o'),
+      simpleModel: getSetting('openai_simple_model', env.OPENAI_SIMPLE_MODEL || 'gpt-4o-mini'),
     },
     anthropic: {
       apiKey: getSetting('anthropic_api_key', env.ANTHROPIC_API_KEY || ''),
       model:  getSetting('anthropic_model',   env.ANTHROPIC_MODEL || 'claude-sonnet-4-20250514'),
+      simpleModel: getSetting('anthropic_simple_model', env.ANTHROPIC_SIMPLE_MODEL || 'claude-haiku-4-20250414'),
     },
     ollama: {
       baseUrl: getSetting('ollama_base_url', env.OLLAMA_BASE_URL || 'http://localhost:11434'),
       model:   getSetting('ollama_model',    env.OLLAMA_MODEL || 'llava'),
+      simpleModel: getSetting('ollama_simple_model', env.OLLAMA_SIMPLE_MODEL || ''),
     },
   };
 }

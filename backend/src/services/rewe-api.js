@@ -14,6 +14,7 @@
  */
 
 import { isReweEnabled } from '../config/settings.js';
+import { getAIProvider } from './ai/provider.js';
 
 const REWE_SEARCH_URL = 'https://www.rewe.de/shop/api/products';
 const REWE_SHOP_BASE = 'https://www.rewe.de/shop';
@@ -234,47 +235,33 @@ export function scoreRelevance(productName, ingredientName) {
 
 /**
  * Berechnet, wie viele REWE-Packungen benötigt werden.
- *
- * Logik:
- * - Stückangaben ("2 Stk Halloumi") → Menge = Anzahl Packungen
- * - Gewicht/Volumen ("400g Reis", "1l Milch") → ceil(benötigte Menge / Packungsgröße)
- * - Kücheneinheiten (EL, TL, Prise…) → 1 Packung reicht meist
- * - Keine Angabe → 1
- *
- * @param {number|null} neededAmount - Benötigte Menge (aus Einkaufsliste)
- * @param {string|null} neededUnit - Einheit (aus Einkaufsliste)
- * @param {number|null} packageAmount - Packungsgröße in Basiseinheit (g/ml)
- * @param {string|null} packageUnit - Einheit der Packungsgröße (g/ml/stk)
- * @param {number|null} [pieceCount] - Stückzahl pro Packung (aus Produktname: "Duo"=2, "4 Stück"=4)
- * @returns {number} Anzahl benötigter Packungen (mind. 1)
+ * Vereinfachte Logik – die KI liefert im AI-Matching bereits die Menge mit.
+ * Diese Funktion dient nur noch als Fallback.
  */
 export function calculatePackagesNeeded(neededAmount, neededUnit, packageAmount, packageUnit, pieceCount) {
-  // Ohne Mengenangabe → 1 Packung
   if (!neededAmount || neededAmount <= 0) return 1;
 
-  const unitLow = (neededUnit || '').toLowerCase().trim().replace(/\.$/, ''); // "Stk." → "stk"
+  const unitLow = (neededUnit || '').toLowerCase().trim().replace(/\.$/, '');
   const pkgUnitLow = (packageUnit || '').toLowerCase().trim().replace(/\.$/, '');
 
-  // Kücheneinheiten → 1 Packung reicht normalerweise
-  const kitchenUnits = [
-    'el', 'tl', 'prise', 'prisen', 'etwas', 'messerspitze',
-    'zehe', 'zehen', 'scheibe', 'scheiben', 'blatt', 'blätter',
-    'bund', 'zweig', 'zweige', 'handvoll', 'spritzer', 'schuss',
-    'nach geschmack', 'n. b', 'dose', 'dosen', 'glas', 'becher',
-  ];
-  if (kitchenUnits.includes(unitLow)) return 1;
+  // Löffel/Prise → 1 Packung reicht
+  const spoonUnits = ['el', 'tl', 'prise', 'prisen', 'etwas', 'messerspitze', 'handvoll', 'spritzer', 'schuss'];
+  if (spoonUnits.includes(unitLow)) return 1;
 
-  // Stückeinheiten (einkaufsbezogen)
+  // Stückeinheiten
   const pieceUnits = [
     'stk', 'stück', 'st', 'packung', 'pkg', 'pck', 'päckchen',
     'verp', 'verpackung', 'flasche', 'flaschen', 'tüte', 'tüten',
-    'beutel', 'tafel', 'tafeln', 'netz',
+    'beutel', 'tafel', 'tafeln', 'netz', 'dose', 'dosen', 'glas',
+    'becher', 'scheibe', 'scheiben', 'zehe', 'zehen', 'bund',
+    'zweig', 'zweige', 'blatt', 'blätter', 'kopf', 'köpfe',
+    'knolle', 'knollen', 'stange', 'stangen', 'ring', 'ringe',
+    'rispe', 'rispen', '',
   ];
 
-  const neededIsPiece = pieceUnits.includes(unitLow) || !unitLow;
+  const neededIsPiece = pieceUnits.includes(unitLow);
   const pkgIsPiece = pieceUnits.includes(pkgUnitLow);
 
-  // Gewicht-/Volumeneinheiten
   const weightUnits = ['g', 'kg'];
   const volumeUnits = ['ml', 'l'];
   const neededIsWeight = weightUnits.includes(unitLow);
@@ -282,52 +269,42 @@ export function calculatePackagesNeeded(neededAmount, neededUnit, packageAmount,
   const pkgIsWeight = weightUnits.includes(pkgUnitLow);
   const pkgIsVolume = volumeUnits.includes(pkgUnitLow);
 
-  // ─── Fall 1: Beide Stück-Einheiten ───
-  // z.B. "2 Stk" Brötchen + Packung "4 Stück" → ceil(2/4) = 1
+  // Beide Stück → direkt teilen
   if (neededIsPiece && pkgIsPiece && packageAmount > 0) {
     return Math.max(1, Math.ceil(neededAmount / packageAmount));
   }
 
-  // ─── Fall 2: Stück benötigt, Packung nach Gewicht ───
-  // z.B. "2 Stk" Halloumi + Packung "225g" → jede Packung = 1 Stück → 2
-  // z.B. "2 Verp." Butter + Packung "250g" → 2
-  // ABER: Wenn Stückzahl pro Packung bekannt (z.B. "Duo"=2, "Trio"=3):
-  //       "2 Stk" Zwiebel + "Duo 150g" → pieceCount=2 → ceil(2/2) = 1
+  // Stück benötigt, Packung nach Gewicht → pieceCount nutzen oder 1:1
   if (neededIsPiece && (pkgIsWeight || pkgIsVolume)) {
     if (pieceCount && pieceCount > 0) {
       return Math.max(1, Math.ceil(neededAmount / pieceCount));
     }
-    return Math.ceil(neededAmount);
+    return Math.max(1, Math.ceil(neededAmount));
   }
 
-  // ─── Fall 3: Stück benötigt, keine Packungsinfo ───
+  // Stück benötigt, keine Packungsinfo
   if (neededIsPiece && !packageAmount) {
-    return Math.ceil(neededAmount);
+    return Math.max(1, Math.ceil(neededAmount));
   }
 
-  // ─── Fall 4: Gewicht/Volumen benötigt + Packungsgröße bekannt ───
+  // Gewicht/Volumen + Packungsgröße
   if (packageAmount > 0) {
     let neededBase = neededAmount;
-    if (unitLow === 'kg') neededBase = neededAmount * 1000;
-    else if (unitLow === 'l') neededBase = neededAmount * 1000;
+    if (unitLow === 'kg') neededBase *= 1000;
+    else if (unitLow === 'l') neededBase *= 1000;
 
     if ((neededIsWeight && pkgIsWeight) || (neededIsVolume && pkgIsVolume)) {
       return Math.max(1, Math.ceil(neededBase / packageAmount));
     }
   }
 
-  // ─── Fallback: 1 Packung ───
   return 1;
 }
 
 /**
- * Sucht das beste REWE-Produkt für eine Zutat
- * Strategie: Relevantestes Produkt mit dem günstigsten GESAMTPREIS
- * (berücksichtigt, wie viele Packungen nötig sind)
- *
- * Beispiel: 2× Knoblauch benötigt
- *   - "Knoblauch 1 Stk" 1,00€ → 2 Packungen → 2,00€ Gesamt
- *   - "Knoblauch 3er Netz" 1,50€ → 1 Packung → 1,50€ Gesamt ← günstiger!
+ * KI-gestütztes Produkt-Matching: Wählt das beste REWE-Produkt für eine Zutat.
+ * Primär: KI entscheidet anhand der Suchergebnisse.
+ * Fallback: Regelbasiertes Scoring wenn KI nicht verfügbar.
  */
 async function findBestProduct(ingredientName, neededAmount, unit, options = {}) {
   const { products } = await searchProducts(ingredientName, options);
@@ -336,35 +313,94 @@ async function findBestProduct(ingredientName, neededAmount, unit, options = {})
     return null;
   }
 
-  // Jedes Produkt mit Relevanz-Score versehen
-  const scored = products
-    .filter(p => p.price)
-    .map(p => ({
-      ...p,
-      relevance: scoreRelevance(p.name, ingredientName),
+  // Nur Produkte mit Preis berücksichtigen
+  const withPrice = products.filter(p => p.price);
+  if (!withPrice.length) {
+    return null;
+  }
+
+  // ── Primär: KI-Matching ──
+  try {
+    const ai = getAIProvider({ simple: true });
+
+    const productList = withPrice.slice(0, 8).map((p, i) => ({
+      index: i,
+      name: p.name,
+      price: formatPrice(p.price),
+      packageSize: p.packageSize || 'unbekannt',
     }));
 
-  // Nur einigermaßen relevante Produkte (Score > 0)
+    const prompt = `Wähle das beste REWE-Produkt für diese Zutat:
+
+Benötigt: ${neededAmount || '?'} ${unit || 'Stück'} ${ingredientName}
+
+Verfügbare Produkte:
+${JSON.stringify(productList, null, 2)}
+
+Antworte als JSON:
+{
+  "index": 0,
+  "quantity": 1,
+  "reason": "Kurze Begründung"
+}
+
+Regeln:
+- Wähle das Produkt, das am besten zur Zutat passt (kein aromatisiertes Produkt, kein Getränk wenn Obst gesucht)
+- quantity = Anzahl Packungen die benötigt werden
+- Bevorzuge größere Packungen wenn günstiger pro Einheit
+- Bei zählbaren Zutaten (z.B. 2 Zwiebeln): Netz/Beutel bevorzugen wenn verfügbar`;
+
+    const aiResult = await ai.chatJSON(prompt, { temperature: 0.1, maxTokens: 256 });
+
+    if (aiResult && typeof aiResult.index === 'number' && aiResult.index < withPrice.length) {
+      const best = withPrice[aiResult.index];
+      const qty = Math.max(1, aiResult.quantity || 1);
+      const totalPrice = best.price * qty;
+
+      return {
+        product: best,
+        neededAmount,
+        unit,
+        packageAmount: best.parsedAmount,
+        packagesNeeded: qty,
+        totalPrice,
+        matchedBy: 'ai',
+        surplus: 0,
+        surplusForPantry: null,
+      };
+    }
+  } catch (err) {
+    console.warn(`⚠️ KI-REWE-Matching für "${ingredientName}" fehlgeschlagen, nutze Fallback:`, err.message);
+  }
+
+  // ── Fallback: Regelbasiertes Scoring ──
+  return findBestProductFallback(ingredientName, neededAmount, unit, withPrice);
+}
+
+/**
+ * Regelbasiertes Produkt-Matching (Fallback wenn KI nicht verfügbar).
+ * Nutzt scoreRelevance() und calculatePackagesNeeded().
+ */
+function findBestProductFallback(ingredientName, neededAmount, unit, products) {
+  const scored = products.map(p => ({
+    ...p,
+    relevance: scoreRelevance(p.name, ingredientName),
+  }));
+
   const relevant = scored.filter(p => p.relevance > 0);
   const candidates = relevant.length ? relevant : scored;
 
-  // Für jeden Kandidaten: benötigte Packungen + Gesamtpreis berechnen
   const withCosts = candidates.map(p => {
     const qty = calculatePackagesNeeded(neededAmount, unit, p.parsedAmount, p.parsedUnit, p.parsedPieceCount);
     const totalPrice = p.price * qty;
 
-    // Grundpreis berechnen (Cents pro kg bzw. pro Stück)
-    // Dient als Maß für das Preis-Leistungs-Verhältnis
     let pricePerUnit = null;
     if (p.parsedAmount > 0 && p.price > 0) {
       if (['g', 'kg'].includes(p.parsedUnit)) {
-        // Cents pro kg (parsedAmount ist bereits in g)
         pricePerUnit = (p.price / p.parsedAmount) * 1000;
       } else if (['ml', 'l'].includes(p.parsedUnit)) {
-        // Cents pro Liter (parsedAmount ist bereits in ml)
         pricePerUnit = (p.price / p.parsedAmount) * 1000;
       } else if (['stück', 'stk', 'st'].includes(p.parsedUnit)) {
-        // Cents pro Stück
         pricePerUnit = p.price / p.parsedAmount;
       }
     }
@@ -372,51 +408,20 @@ async function findBestProduct(ingredientName, neededAmount, unit, options = {})
     return { ...p, packagesNeeded: qty, totalPrice, pricePerUnit };
   });
 
-  // Sortieren: Erst nach Relevanz-Gruppe (10er-Schritte), dann nach GRUNDPREIS
-  // Der Grundpreis (€/kg, €/Stück) bevorzugt größere, preiswertere Packungen.
-  // Beispiel: Zwiebel-Netz 500g für 1,19€ (2,38€/kg) schlägt
-  //           Zwiebel-Duo 150g für 0,99€ (6,60€/kg)
   withCosts.sort((a, b) => {
     const groupA = Math.floor(a.relevance / 10);
     const groupB = Math.floor(b.relevance / 10);
     if (groupB !== groupA) return groupB - groupA;
-
-    // Innerhalb gleicher Relevanz: günstigster Grundpreis zuerst
     if (a.pricePerUnit != null && b.pricePerUnit != null) {
       const unitDiff = a.pricePerUnit - b.pricePerUnit;
       if (Math.abs(unitDiff) > 0.01) return unitDiff;
     }
-
-    // Fallback: günstigster Gesamtpreis
     return a.totalPrice - b.totalPrice;
   });
 
-  // Top-Relevanz-Gruppe ermitteln
-  const topGroup = Math.floor((withCosts[0]?.relevance || 0) / 10);
-  const topTier = withCosts.filter(p => Math.floor(p.relevance / 10) >= topGroup);
-
-  // Das mit dem günstigsten Gesamtpreis in der Top-Gruppe (bereits sortiert)
-  const best = topTier[0] || withCosts[0] || products[0];
-
+  const best = withCosts[0] || products[0];
   const packagesNeeded = best.packagesNeeded || 1;
   const totalPrice = best.totalPrice || best.price;
-
-  // Überschuss berechnen (basierend auf Gesamtmenge aller Packungen)
-  const totalPackageAmount = best.parsedAmount ? best.parsedAmount * packagesNeeded : 0;
-  let surplus = 0;
-  if (totalPackageAmount && neededAmount) {
-    // Nur bei kompatiblen Einheiten (Gewicht/Volumen) Überschuss berechnen
-    const unitLow = (unit || '').toLowerCase();
-    const pkgUnitLow = (best.parsedUnit || '').toLowerCase();
-    const bothWeight = ['g', 'kg'].includes(unitLow) && pkgUnitLow === 'g';
-    const bothVolume = ['ml', 'l'].includes(unitLow) && pkgUnitLow === 'ml';
-    if (bothWeight || bothVolume) {
-      let neededBase = neededAmount;
-      if (unitLow === 'kg') neededBase *= 1000;
-      if (unitLow === 'l') neededBase *= 1000;
-      surplus = Math.max(0, totalPackageAmount - neededBase);
-    }
-  }
 
   return {
     product: best,
@@ -425,12 +430,9 @@ async function findBestProduct(ingredientName, neededAmount, unit, options = {})
     packageAmount: best.parsedAmount,
     packagesNeeded,
     totalPrice,
-    surplus,
-    surplusForPantry: surplus > 0 ? {
-      ingredient_name: ingredientName,
-      amount: surplus,
-      unit: best.parsedUnit || unit,
-    } : null,
+    matchedBy: 'fallback',
+    surplus: 0,
+    surplusForPantry: null,
   };
 }
 
@@ -445,12 +447,14 @@ async function findBestProduct(ingredientName, neededAmount, unit, options = {})
  * Dies ist unabhängig von amount/unit und hilft bei der Mengenberechnung,
  * wenn Stückzahlen benötigt aber Gewichtspackungen gefunden werden.
  */
-export function parsePackageSize(sizeStr) {
-  if (!sizeStr) return { amount: null, unit: null, raw: null, pieceCount: null };
+export function parsePackageSize(sizeStr, productName) {
+  if (!sizeStr && !productName) return { amount: null, unit: null, raw: null, pieceCount: null };
+
+  const textToParse = sizeStr || productName || '';
 
   // Verschiedene Formate: "500g", "1kg", "1,5l", "250 ml", "6 Stück", "4x250ml"
-  const match = sizeStr.match(/([\d.,]+)\s*(?:x\s*[\d.,]+\s*)?(g|kg|ml|l|stk|stück|st)\b/i);
-  if (!match) return { amount: null, unit: null, raw: null, pieceCount: parsePieceCountFromName(sizeStr) };
+  const match = textToParse.match(/([\d.,]+)\s*(?:x\s*[\d.,]+\s*)?(g|kg|ml|l|stk|stück|st)\b/i);
+  if (!match) return { amount: null, unit: null, raw: null, pieceCount: parsePieceCountFromName(productName || sizeStr) };
 
   let amount = parseFloat(match[1].replace(',', '.'));
   let unit = match[2].toLowerCase();
@@ -466,10 +470,10 @@ export function parsePackageSize(sizeStr) {
   }
 
   // Stückzahl aus Multiplier-Wörtern extrahieren (Duo, Trio, Doppelpack…)
-  // Nur relevant, wenn die Haupteinheit NICHT schon "stück" ist
+  // Prüfe sowohl sizeStr als auch productName
   const pieceCount = (unit === 'stück' || unit === 'stk' || unit === 'st')
     ? amount  // "4 Stück" → pieceCount = 4
-    : parsePieceCountFromName(sizeStr);
+    : parsePieceCountFromName(productName || sizeStr);
 
   return { amount, unit, raw, pieceCount };
 }
@@ -570,6 +574,7 @@ export async function matchShoppingListWithRewe(shoppingItems, onProgress, optio
           packagesNeeded,
           totalPrice: found.price ? found.price * packagesNeeded : null,
           fromPreference: true,
+          matchedBy: 'preference',
         };
         fromPreference = true;
         matchedCount++;
@@ -626,6 +631,7 @@ export async function matchShoppingListWithRewe(shoppingItems, onProgress, optio
         price: match?.product?.priceFormatted || null,
         packagesNeeded: match?.packagesNeeded || null,
         fromPreference,
+        matchedBy: match?.matchedBy || null,
       });
     }
 

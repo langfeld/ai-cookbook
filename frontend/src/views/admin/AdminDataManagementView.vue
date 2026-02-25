@@ -170,14 +170,6 @@
       @close="activeModal = null"
       @imported="handleImported"
     />
-
-    <IngredientConversionsImportExportModal
-      v-if="activeModal === 'conversions'"
-      :is-admin="true"
-      :users="adminUsers"
-      @close="activeModal = null"
-      @imported="handleImported"
-    />
   </div>
 </template>
 
@@ -195,7 +187,6 @@ import IngredientAliasesImportExportModal from '@/components/admin/IngredientAli
 import MealPlanImportExportModal from '@/components/mealplan/MealPlanImportExportModal.vue';
 import ShoppingListImportExportModal from '@/components/shopping/ShoppingListImportExportModal.vue';
 import RecipeBlocksImportExportModal from '@/components/recipes/RecipeBlocksImportExportModal.vue';
-import IngredientConversionsImportExportModal from '@/components/recipes/IngredientConversionsImportExportModal.vue';
 
 import {
   Users,
@@ -210,7 +201,6 @@ import {
   DatabaseBackup,
   Calendar,
   Ban,
-  Scale,
 } from 'lucide-vue-next';
 
 const api = useApi();
@@ -325,17 +315,6 @@ const dataCategories = computed(() => [
     count: counts.value.recipeBlocks,
     action: () => { activeModal.value = 'recipe-blocks'; },
   },
-  {
-    key: 'conversions',
-    emoji: '⚖️',
-    label: 'Umrechnungen',
-    description: 'Einheiten-Umrechnungen aller Benutzer exportieren/importieren.',
-    icon: Scale,
-    bgClass: 'bg-amber-50 dark:bg-amber-900/30',
-    iconClass: 'text-amber-600 dark:text-amber-400',
-    count: counts.value.conversions,
-    action: () => { activeModal.value = 'conversions'; },
-  },
 ]);
 
 // ============================================
@@ -394,7 +373,6 @@ async function fetchCounts() {
       mealPlans: stats.total_meal_plans || 0,
       shoppingLists: stats.total_shopping_lists || 0,
       recipeBlocks: stats.recipe_blocks || 0,
-      conversions: stats.ingredient_conversions || 0,
     };
   } catch {
     // Ignorieren

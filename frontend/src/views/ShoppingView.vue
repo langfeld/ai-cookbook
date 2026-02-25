@@ -538,6 +538,9 @@
                       </p>
                       <p v-if="item.rewe_product.packageSize" class="mt-0.5 text-stone-500 dark:text-stone-400 text-xs">
                         {{ item.rewe_product.packageSize }}
+                        <span v-if="item.rewe_product.matchedBy" class="ml-1" :title="matchedByLabel(item.rewe_product.matchedBy)">
+                          {{ matchedByIcon(item.rewe_product.matchedBy) }}
+                        </span>
                       </p>
                     </div>
                     <!-- Preis -->
@@ -2091,6 +2094,16 @@ function categoryIcon(cat) {
 
 function formatPrice(cents) {
   return (cents / 100).toLocaleString('de-DE', { style: 'currency', currency: 'EUR' });
+}
+
+/** Matching-Methoden-Icon: KI, Fallback-Scoring, manuelle Auswahl oder Präferenz */
+function matchedByIcon(method) {
+  const icons = { ai: '🤖', fallback: '📊', manual: '✋', preference: '⭐' };
+  return icons[method] || '';
+}
+function matchedByLabel(method) {
+  const labels = { ai: 'KI-Matching', fallback: 'Regel-basiert', manual: 'Manuell gewählt', preference: 'Gemerktes Produkt' };
+  return labels[method] || method;
 }
 
 function reweProductUrl(productName, productId) {

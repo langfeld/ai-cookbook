@@ -70,14 +70,16 @@ export function formatAmount(amount) {
 }
 
 /**
- * Normalisiert Einheiten für den Vergleich
- * z.B. "Gramm" -> "g", "Milliliter" -> "ml"
+ * Normalisiert Einheiten für den Vergleich.
+ * Korrigiert Tippfehler/Plural, behält aber natürliche Einheiten bei.
+ * Leerer String ("") bedeutet implizit "Stück".
  */
 export function normalizeUnit(unit) {
   if (!unit) return '';
 
   // Trailing-Punkt entfernen (z.B. "Verp." → "Verp") und trimmen
   const cleaned = unit.trim().replace(/\.$/, '');
+  if (!cleaned) return '';
 
   const unitMap = {
     // Gewicht
@@ -89,42 +91,41 @@ export function normalizeUnit(unit) {
     // Löffel
     teelöffel: 'TL', 'tl': 'TL',
     esslöffel: 'EL', 'el': 'EL',
-    // Stück-ähnliche Einheiten → alle auf "Stk" normalisieren
-    stück: 'Stk', stueck: 'Stk', stk: 'Stk', st: 'Stk',
-    verp: 'Stk', verpackung: 'Stk', verpackungen: 'Stk',
-    kopf: 'Stk', köpfe: 'Stk',
-    knolle: 'Stk', knollen: 'Stk',
-    stange: 'Stk', stangen: 'Stk',
-    zweig: 'Stk', zweige: 'Stk',
-    blatt: 'Stk', blätter: 'Stk',
-    rispe: 'Stk', rispen: 'Stk',
+    // Stück — nur explizite Stück-Synonyme auf "" (leer = Stück) normalisieren
+    stück: '', stueck: '', stk: '', st: '',
+    // Natürliche Zähleinheiten bleiben erhalten
+    kopf: 'Kopf', köpfe: 'Kopf',
+    knolle: 'Knolle', knollen: 'Knolle',
+    stange: 'Stange', stangen: 'Stange',
+    zweig: 'Zweig', zweige: 'Zweig',
+    blatt: 'Blatt', blätter: 'Blatt',
+    rispe: 'Rispe', rispen: 'Rispe',
+    ring: 'Ring', ringe: 'Ring',
+    handvoll: 'Handvoll',
+    // Verpackungseinheiten
+    packung: 'Pkg', pkg: 'Pkg', pack: 'Pkg', päckchen: 'Pkg',
+    verp: 'Pkg', verpackung: 'Pkg', verpackungen: 'Pkg',
     // Andere zählbare Einheiten
     bund: 'Bund',
     dose: 'Dose', dosen: 'Dose',
     becher: 'Becher',
-    packung: 'Pkg', pkg: 'Pkg', pack: 'Pkg', päckchen: 'Pkg',
     prise: 'Prise', prisen: 'Prise',
     scheibe: 'Scheibe', scheiben: 'Scheibe',
     zehe: 'Zehe', zehen: 'Zehe',
   };
 
-  return unitMap[cleaned.toLowerCase()] || unit;
+  return unitMap[cleaned.toLowerCase()] ?? cleaned;
 }
 
 /**
- * Konvertiert Mengen in eine einheitliche Basis für den Vergleich
- * z.B. 1 kg → 1000 g, 1 TL → 5 g, 1 EL → 15 g
- *
- * TL/EL werden zu Gramm konvertiert (nicht ml), weil sie in Rezepten
- * überwiegend für trockene Zutaten (Gewürze, Mehl, Zucker) verwendet werden.
- * Für Flüssigkeiten (Dichte ≈ 1 g/ml) ist der Unterschied vernachlässigbar.
+ * Konvertiert Mengen in eine einheitliche Basis für einfache Fälle.
+ * Nur für kg→g und l→ml. Keine erzwungene Konvertierung von EL/TL.
+ * Wird intern als Hilfsfunktion verwendet (nicht mehr für Einkaufslisten-Aggregation).
  */
 export function convertToBaseUnit(amount, unit) {
   const conversions = {
     kg: { base: 'g', factor: 1000 },
     l: { base: 'ml', factor: 1000 },
-    EL: { base: 'g', factor: 15 },
-    TL: { base: 'g', factor: 5 },
   };
 
   const normalized = normalizeUnit(unit);
@@ -140,25 +141,21 @@ export function convertToBaseUnit(amount, unit) {
 
 /**
  * Bestimmt den Einheitentyp: 'weight', 'volume' oder 'counting'
- * Wird verwendet um inkompatible Einheiten zu erkennen
- * (z.B. Stk vs g → kann nicht sinnvoll addiert werden)
  */
 export function getUnitType(unit) {
   const normalized = normalizeUnit(unit);
   if (['g', 'kg'].includes(normalized)) return 'weight';
   if (['ml', 'l'].includes(normalized)) return 'volume';
-  if (['EL', 'TL'].includes(normalized)) return 'weight'; // EL/TL werden zu g konvertiert
-  return 'counting'; // Stk, Pkg, Dose, Becher, Scheibe, Bund, Zehe, Prise, ...
+  if (['EL', 'TL'].includes(normalized)) return 'spoon';
+  return 'counting';
 }
 
 /**
- * Prüft ob zwei Einheiten kompatibel sind (direkt oder via g↔ml Näherung)
- * Gibt den Umrechnungsfaktor zurück (amount_a * factor ≈ amount_b)
- * @returns {{ compatible: boolean, factor: number }}
+ * Prüft ob zwei Einheiten einfach kompatibel sind (identisch oder g↔ml).
+ * Wird nur noch als schneller Check verwendet; die KI übernimmt komplexe Fälle.
  */
 export function unitsCompatible(unitA, unitB) {
   if (unitA === unitB) return { compatible: true, factor: 1 };
-  // g ↔ ml: Dichte ≈ 1 g/ml für die meisten Kochzutaten
   if ((unitA === 'g' && unitB === 'ml') || (unitA === 'ml' && unitB === 'g')) {
     return { compatible: true, factor: 1 };
   }

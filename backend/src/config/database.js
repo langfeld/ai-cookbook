@@ -391,23 +391,8 @@ export function initializeDatabase() {
     );
     CREATE INDEX IF NOT EXISTS idx_blocked_ingredients_user ON blocked_ingredients(user_id);
 
-    -- ============================================
-    -- Einheiten-Umrechnungen (zutat-spezifisch)
-    -- z.B. 1 Stk Zwiebel = 80 g, 1 EL Olivenöl = 15 ml
-    -- ============================================
-    CREATE TABLE IF NOT EXISTS ingredient_conversions (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id INTEGER NOT NULL,
-      ingredient_name TEXT NOT NULL COLLATE NOCASE,
-      from_unit TEXT NOT NULL COLLATE NOCASE,
-      to_amount REAL NOT NULL,
-      to_unit TEXT NOT NULL COLLATE NOCASE,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-      UNIQUE(user_id, ingredient_name, from_unit)
-    );
-    CREATE INDEX IF NOT EXISTS idx_ingredient_conversions_user ON ingredient_conversions(user_id);
-    CREATE INDEX IF NOT EXISTS idx_ingredient_conversions_lookup ON ingredient_conversions(user_id, ingredient_name);
+    -- ingredient_conversions entfernt – KI-Aggregation ersetzt zutat-spezifische Umrechnungen
+    -- Tabelle wird in migrateDatabase() per DROP TABLE entfernt
 
     -- ============================================
     -- Rezept-Sperren (für Wochenplanung)
@@ -587,6 +572,19 @@ function migrateDatabase() {
     insertMany(defaultIcons);
     console.log(`  ↳ Migration: ${defaultIcons.length} Standard-Zutaten-Icons erstellt`);
   }
+
+  // Spalte 'rewe_matched_by' in shopping_list_items hinzufügen (Matching-Methode: 'ai' oder 'fallback')
+  const sliColsLatest = db.prepare("PRAGMA table_info(shopping_list_items)").all().map(c => c.name);
+  if (!sliColsLatest.includes('rewe_matched_by')) {
+    db.exec("ALTER TABLE shopping_list_items ADD COLUMN rewe_matched_by TEXT");
+    console.log('  ↳ Migration: shopping_list_items.rewe_matched_by hinzugefügt');
+  }
+
+  // ingredient_conversions Tabelle entfernen (nicht mehr benötigt – KI-Aggregation ersetzt zutat-spezifische Umrechnungen)
+  try {
+    db.exec("DROP TABLE IF EXISTS ingredient_conversions");
+    console.log('  ↳ Migration: ingredient_conversions Tabelle entfernt');
+  } catch { /* Tabelle existiert möglicherweise nicht */ }
 }
 
 /**

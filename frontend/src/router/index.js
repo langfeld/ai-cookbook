@@ -59,12 +59,6 @@ const routes = [
     meta: { requiresAuth: true, title: 'Vorratsschrank' },
   },
   {
-    path: '/ingredient-conversions',
-    name: 'ingredient-conversions',
-    component: () => import('@/views/IngredientConversionsView.vue'),
-    meta: { requiresAuth: true, title: 'Einheiten-Umrechnung' },
-  },
-  {
     path: '/my-data',
     name: 'my-data',
     component: () => import('@/views/UserDataManagementView.vue'),
