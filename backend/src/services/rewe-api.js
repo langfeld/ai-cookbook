@@ -319,13 +319,16 @@ async function findBestProduct(ingredientName, neededAmount, unit, options = {})
     return null;
   }
 
+  // Tatsächlich verwendeter Suchbegriff (für "Alternative wählen" im Frontend)
+  let actualSearchQuery = ingredientName;
+
   // ── Primär: KI-Matching (mit Retry bei schlechten Suchergebnissen) ──
   try {
     const ai = getAIProvider({ simple: true });
     const result = await aiMatchProducts(ai, ingredientName, neededAmount, unit, withPrice);
 
     // Match gefunden → fertig
-    if (result?.product) return result;
+    if (result?.product) return { ...result, searchQuery: actualSearchQuery };
 
     // KI sagt "kein passendes Produkt" → alternative Suche mit breiterem Begriff
     if (result?.alternativeSearch) {
@@ -337,8 +340,9 @@ async function findBestProduct(ingredientName, neededAmount, unit, options = {})
       if (altWithPrice.length) {
         // Alternativ-Produkte werden zur neuen Basis für KI + Fallback
         withPrice = altWithPrice;
+        actualSearchQuery = altQuery;
         const altResult = await aiMatchProducts(ai, ingredientName, neededAmount, unit, altWithPrice, { forceMatch: true });
-        if (altResult?.product) return altResult;
+        if (altResult?.product) return { ...altResult, searchQuery: actualSearchQuery };
         // altResult könnte undefined sein → Fallback mit altWithPrice (s.u.)
       }
     }
@@ -347,7 +351,8 @@ async function findBestProduct(ingredientName, neededAmount, unit, options = {})
   }
 
   // ── Fallback: Regelbasiertes Scoring (nutzt ggf. Alternativ-Produkte) ──
-  return findBestProductFallback(ingredientName, neededAmount, unit, withPrice);
+  const fallback = findBestProductFallback(ingredientName, neededAmount, unit, withPrice);
+  return fallback ? { ...fallback, searchQuery: actualSearchQuery } : null;
 }
 
 /**

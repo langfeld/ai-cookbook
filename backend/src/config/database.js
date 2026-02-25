@@ -586,6 +586,12 @@ function migrateDatabase() {
     console.log('  ↳ Migration: shopping_list_items.rewe_match_reason hinzugefügt');
   }
 
+  // Spalte 'rewe_search_query' in shopping_list_items hinzufügen (tatsächlich verwendeter Suchbegriff bei Alternativsuche)
+  if (!sliColsLatest.includes('rewe_search_query')) {
+    db.exec("ALTER TABLE shopping_list_items ADD COLUMN rewe_search_query TEXT");
+    console.log('  ↳ Migration: shopping_list_items.rewe_search_query hinzugefügt');
+  }
+
   // ingredient_conversions Tabelle entfernen (nicht mehr benötigt – KI-Aggregation ersetzt zutat-spezifische Umrechnungen)
   try {
     db.exec("DROP TABLE IF EXISTS ingredient_conversions");

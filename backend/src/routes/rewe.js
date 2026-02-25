@@ -150,7 +150,7 @@ export default async function reweRoutes(fastify) {
     // Ergebnisse in die Datenbank schreiben
     const updateStmt = db.prepare(`
       UPDATE shopping_list_items
-      SET rewe_product_id = ?, rewe_product_name = ?, rewe_price = ?, rewe_package_size = ?, rewe_quantity = ?, rewe_image_url = ?, rewe_matched_by = ?, rewe_match_reason = ?
+      SET rewe_product_id = ?, rewe_product_name = ?, rewe_price = ?, rewe_package_size = ?, rewe_quantity = ?, rewe_image_url = ?, rewe_matched_by = ?, rewe_match_reason = ?, rewe_search_query = ?
       WHERE shopping_list_id = ? AND ingredient_name = ?
     `);
 
@@ -167,6 +167,7 @@ export default async function reweRoutes(fastify) {
             match.product.imageUrl || null,
             match.matchedBy || null,
             match.matchReason || null,
+            match.searchQuery || null,
             listId,
             items[i].ingredient_name,
           );

@@ -138,6 +138,7 @@ export default async function shoppingRoutes(fastify) {
         imageUrl: item.rewe_image_url || null,
         matchedBy: item.rewe_matched_by || null,
         matchReason: item.rewe_match_reason || null,
+        searchQuery: item.rewe_search_query || null,
         url: buildReweProductUrl(item.rewe_product_name, item.rewe_product_id),
       } : null;
 
@@ -223,6 +224,7 @@ export default async function shoppingRoutes(fastify) {
         imageUrl: item.rewe_image_url || null,
         matchedBy: item.rewe_matched_by || null,
         matchReason: item.rewe_match_reason || null,
+        searchQuery: item.rewe_search_query || null,
         url: buildReweProductUrl(item.rewe_product_name, item.rewe_product_id),
       } : null;
 

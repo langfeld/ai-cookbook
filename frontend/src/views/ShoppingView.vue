@@ -2466,10 +2466,12 @@ function regenerateToken() {
 async function openProductPicker(item) {
   pickerItem.value = item;
   pickerProducts.value = [];
-  pickerSearch.value = item.ingredient_name;
+  // Bei Alternativsuche (z.B. "Linsen" statt "Belugalinsen") den tatsächlichen Suchbegriff verwenden
+  const searchTerm = item.rewe_product?.searchQuery || item.ingredient_name;
+  pickerSearch.value = searchTerm;
   pickerLoading.value = true;
   try {
-    const data = await shoppingStore.searchReweProducts(item.ingredient_name);
+    const data = await shoppingStore.searchReweProducts(searchTerm);
     pickerProducts.value = data.products || [];
   } catch {
     showError('REWE-Suche fehlgeschlagen.');
