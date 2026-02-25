@@ -125,7 +125,7 @@ export async function searchProducts(query, options = {}) {
       search: query,
       storeId: marketId,
       market: marketId,           // Beide nötig für Preise + Verfügbarkeit!
-      objectsPerPage: String(options.limit || 5),
+      objectsPerPage: String(options.limit || 15),
       page: String(options.page || 1),
       serviceTypes: 'PICKUP',
     });
@@ -358,12 +358,24 @@ async function findBestProduct(ingredientName, neededAmount, unit, options = {})
  *   - undefined wenn KI kein auswertbares Ergebnis liefert
  */
 async function aiMatchProducts(ai, ingredientName, neededAmount, unit, withPrice, { forceMatch = false } = {}) {
-  const productList = withPrice.slice(0, 8).map((p, i) => ({
-    index: i,
-    name: p.name,
-    price: formatPrice(p.price),
-    packageSize: p.packageSize || 'unbekannt',
-  }));
+  const productList = withPrice.slice(0, 12).map((p, i) => {
+    const entry = {
+      index: i,
+      name: p.name,
+      price: formatPrice(p.price),
+      packageSize: p.packageSize || 'unbekannt',
+    };
+    // Einheitspreis aus REWE-Grammage parsen (zuverlässiger als eigene Berechnung)
+    const grammagePrice = parseGrammagePrice(p.packageSize);
+    if (grammagePrice) {
+      entry[grammagePrice.label] = grammagePrice.formatted;
+    }
+    // Zusätzlich Stückpreis berechnen wenn Stückzahl im Titel
+    if (p.price && p.parsedAmount && (p.parsedUnit === 'stück' || p.parsedUnit === 'stk' || p.parsedUnit === 'st')) {
+      entry.pricePerStück = formatPrice(Math.round(p.price / p.parsedAmount));
+    }
+    return entry;
+  });
 
   const noMatchBlock = forceMatch
     ? `\nWICHTIG: Du MUSST eines der Produkte wählen – "noMatch" ist KEINE Option. Dies ist bereits eine Alternativsuche. Wähle das am besten passende Produkt.`
@@ -392,6 +404,10 @@ Regeln:
 - "Tomatensauce" ist KEIN Ersatz für "Tomaten". → noMatch + alternativeSearch: "Tomaten frisch"
 - Wenn KEIN passendes Produkt in der Ergebnisliste ist, antworte mit noMatch und schlage einen breiteren/alternativen Suchbegriff vor (z.B. "Linsen" statt "Belugalinsen", "Petersilie" statt "Blattpetersilie").
 - quantity = Anzahl Packungen die benötigt werden
+- PREIS-LEISTUNG ist das WICHTIGSTE Kriterium bei gleichwertigen Produkten!
+  pricePerKg bzw. pricePerLiter (aus der REWE-Grammage) und pricePerStück sind vorberechnet.
+  Vergleiche diese direkt! Wähle IMMER das Produkt mit dem niedrigsten Einheitspreis, wenn mehrere gleichwertig passen.
+  Eigenmarken (ja!, REWE Beste Wahl) sind oft günstiger als Markenprodukte – bevorzuge sie bei gleichem Produkt.
 - PREISVERGLEICH bei Stückzahlen vs. Netze/Beutel: Wenn z.B. 4 Zwiebeln benötigt werden, rechne um!
   Ein Zwiebelnetz 1kg enthält ca. 6-8 Zwiebeln (1 Zwiebel ≈ 120-150g), ein Kartoffelnetz 2kg ca. 12-15 Kartoffeln (1 Kartoffel ≈ 130-170g), etc.
   Vergleiche: Ist 1× Netz günstiger als 4× Einzelzwiebel? Dann wähle das Netz mit quantity=1.
@@ -421,7 +437,8 @@ Regeln:
   }
 
   // KI hat ein Produkt gewählt
-  if (aiResult && typeof aiResult.index === 'number' && aiResult.index >= 0 && aiResult.index < withPrice.length) {
+  const maxIndex = Math.min(withPrice.length, 12);
+  if (aiResult && typeof aiResult.index === 'number' && aiResult.index >= 0 && aiResult.index < maxIndex) {
     const best = withPrice[aiResult.index];
     const qty = Math.max(1, aiResult.quantity || 1);
     const totalPrice = best.price * qty;
@@ -573,6 +590,49 @@ function parsePieceCountFromName(name) {
   // → "2 Stk Zwiebel" + "500g im Netz" → ceil(2/3) = 1 Netz ✓
   // → "5 Stk Kartoffeln" + "2kg im Netz" → ceil(5/3) = 2 Netze ✓
   if (/\b(netz|im\s+netz|sack|schale|korb)\b/.test(low)) return 3;
+
+  return null;
+}
+
+/**
+ * Extrahiert den Einheitspreis aus der REWE-Grammage-Angabe.
+ * z.B. "300g (1 kg = 3,30 €)" → { label: "pricePerKg", formatted: "3,30 €/kg" }
+ * z.B. "750ml (1 l = 2,65 €)" → { label: "pricePerLiter", formatted: "2,65 €/l" }
+ * z.B. "250g (100 g = 1,20 €)" → { label: "pricePerKg", formatted: "12,00 €/kg" }
+ */
+function parseGrammagePrice(packageSize) {
+  if (!packageSize) return null;
+
+  // Muster: "(1 kg = 3,30 €)" oder "(100 g = 1,20 €)" oder "(1 l = 2,65 €)" oder "(100 ml = 0,53 €)"
+  const match = packageSize.match(/\((\d+)\s*(g|kg|ml|l)\s*=\s*([\d.,]+)\s*€\)/i);
+  if (!match) return null;
+
+  const refAmount = parseInt(match[1], 10);
+  const refUnit = match[2].toLowerCase();
+  const refPrice = parseFloat(match[3].replace(',', '.'));
+
+  if (isNaN(refPrice) || refPrice <= 0) return null;
+
+  // Auf Standard-Einheit (kg / l) normalisieren
+  if (refUnit === 'kg' || refUnit === 'g') {
+    // "1 kg = X €" → direkt, "100 g = X €" → × 10
+    const perKg = refUnit === 'kg'
+      ? refPrice / refAmount
+      : (refPrice / refAmount) * 1000;
+    return {
+      label: 'pricePerKg',
+      formatted: perKg.toFixed(2).replace('.', ',') + ' €/kg',
+    };
+  }
+  if (refUnit === 'l' || refUnit === 'ml') {
+    const perLiter = refUnit === 'l'
+      ? refPrice / refAmount
+      : (refPrice / refAmount) * 1000;
+    return {
+      label: 'pricePerLiter',
+      formatted: perLiter.toFixed(2).replace('.', ',') + ' €/l',
+    };
+  }
 
   return null;
 }
