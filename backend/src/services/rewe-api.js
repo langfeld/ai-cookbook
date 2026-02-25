@@ -319,55 +319,25 @@ async function findBestProduct(ingredientName, neededAmount, unit, options = {})
     return null;
   }
 
-  // ── Primär: KI-Matching ──
+  // ── Primär: KI-Matching (mit Retry bei schlechten Suchergebnissen) ──
   try {
     const ai = getAIProvider({ simple: true });
+    const result = await aiMatchProducts(ai, ingredientName, neededAmount, unit, withPrice);
 
-    const productList = withPrice.slice(0, 8).map((p, i) => ({
-      index: i,
-      name: p.name,
-      price: formatPrice(p.price),
-      packageSize: p.packageSize || 'unbekannt',
-    }));
+    // Match gefunden → fertig
+    if (result?.product) return result;
 
-    const prompt = `Wähle das beste REWE-Produkt für diese Zutat:
+    // KI sagt "kein passendes Produkt" → alternative Suche mit breiterem Begriff
+    if (result?.alternativeSearch) {
+      const altQuery = result.alternativeSearch;
+      console.log(`  🔄 ${ingredientName}: Kein passendes Produkt → Alternativsuche "${altQuery}"…`);
 
-Benötigt: ${neededAmount || '?'} ${unit || 'Stück'} ${ingredientName}
-
-Verfügbare Produkte:
-${JSON.stringify(productList, null, 2)}
-
-Antworte als JSON:
-{
-  "index": 0,
-  "quantity": 1,
-  "reason": "Kurze Begründung"
-}
-
-Regeln:
-- Wähle das Produkt, das am besten zur Zutat passt (kein aromatisiertes Produkt, kein Getränk wenn Obst gesucht)
-- quantity = Anzahl Packungen die benötigt werden
-- Bevorzuge größere Packungen wenn günstiger pro Einheit
-- Bei zählbaren Zutaten (z.B. 2 Zwiebeln): Netz/Beutel bevorzugen wenn verfügbar`;
-
-    const aiResult = await ai.chatJSON(prompt, { temperature: 0.1, maxTokens: 256 });
-
-    if (aiResult && typeof aiResult.index === 'number' && aiResult.index < withPrice.length) {
-      const best = withPrice[aiResult.index];
-      const qty = Math.max(1, aiResult.quantity || 1);
-      const totalPrice = best.price * qty;
-
-      return {
-        product: best,
-        neededAmount,
-        unit,
-        packageAmount: best.parsedAmount,
-        packagesNeeded: qty,
-        totalPrice,
-        matchedBy: 'ai',
-        surplus: 0,
-        surplusForPantry: null,
-      };
+      const { products: altProducts } = await searchProducts(altQuery, options);
+      const altWithPrice = altProducts.filter(p => p.price);
+      if (altWithPrice.length) {
+        const altResult = await aiMatchProducts(ai, ingredientName, neededAmount, unit, altWithPrice);
+        if (altResult?.product) return altResult;
+      }
     }
   } catch (err) {
     console.warn(`⚠️ KI-REWE-Matching für "${ingredientName}" fehlgeschlagen, nutze Fallback:`, err.message);
@@ -375,6 +345,87 @@ Regeln:
 
   // ── Fallback: Regelbasiertes Scoring ──
   return findBestProductFallback(ingredientName, neededAmount, unit, withPrice);
+}
+
+/**
+ * KI-Produktauswahl aus einer Produktliste.
+ * Gibt zurück:
+ *   - Match-Objekt mit { product, ... } bei Treffer
+ *   - { alternativeSearch: "..." } wenn kein passendes Produkt (KI schlägt Alternativsuche vor)
+ *   - undefined wenn KI kein auswertbares Ergebnis liefert
+ */
+async function aiMatchProducts(ai, ingredientName, neededAmount, unit, withPrice) {
+  const productList = withPrice.slice(0, 8).map((p, i) => ({
+    index: i,
+    name: p.name,
+    price: formatPrice(p.price),
+    packageSize: p.packageSize || 'unbekannt',
+  }));
+
+  const prompt = `Wähle das beste REWE-Produkt für diese Zutat:
+
+Benötigt: ${neededAmount || '?'} ${unit || 'Stück'} ${ingredientName}
+
+Verfügbare Produkte:
+${JSON.stringify(productList, null, 2)}
+
+Antworte als JSON – entweder Treffer oder kein passendes Produkt:
+
+Treffer:
+{
+  "index": 0,
+  "quantity": 1,
+  "reason": "Kurze Begründung"
+}
+
+Kein passendes Produkt (ALLE sind in der falschen Kategorie):
+{
+  "noMatch": true,
+  "alternativeSearch": "breiterer Suchbegriff",
+  "reason": "Warum keines passt"
+}
+
+Regeln:
+- WICHTIG: Wähle das Produkt in der richtigen Produktkategorie! Wenn eine Zutat gesucht wird (z.B. "Belugalinsen"), wähle das Grundnahrungsmittel (Hülsenfrüchte, Reis, Nudeln etc.) – NIEMALS Brotaufstriche, Saucen, Fertiggerichte, Suppen o.ä. die die Zutat nur als Geschmack enthalten.
+- "Streichcreme Belugalinse" / "Brotaufstrich Belugalinse" ist KEIN Ersatz für "Belugalinsen". → noMatch + alternativeSearch: "Linsen"
+- "Tomatensauce" ist KEIN Ersatz für "Tomaten". → noMatch + alternativeSearch: "Tomaten frisch"
+- Wenn KEIN passendes Produkt in der Ergebnisliste ist, antworte mit noMatch und schlage einen breiteren/alternativen Suchbegriff vor (z.B. "Linsen" statt "Belugalinsen", "Petersilie" statt "Blattpetersilie").
+- quantity = Anzahl Packungen die benötigt werden
+- PREISVERGLEICH bei Stückzahlen vs. Netze/Beutel: Wenn z.B. 4 Zwiebeln benötigt werden, rechne um!
+  Ein Zwiebelnetz 1kg enthält ca. 6-8 Zwiebeln (1 Zwiebel ≈ 120-150g), ein Kartoffelnetz 2kg ca. 12-15 Kartoffeln (1 Kartoffel ≈ 130-170g), etc.
+  Vergleiche: Ist 1× Netz günstiger als 4× Einzelzwiebel? Dann wähle das Netz mit quantity=1.
+  Typische Stückgewichte: Zwiebel ≈ 120g, Kartoffel ≈ 150g, Tomate ≈ 130g, Paprika ≈ 170g, Apfel ≈ 180g, Zitrone ≈ 100g, Orange ≈ 200g, Karotte ≈ 80g, Knoblauch ≈ 40g
+- Bevorzuge größere Packungen wenn günstiger pro Einheit
+- Bei Gewichtsangaben (z.B. 500g Kartoffeln): Netz/Sack bevorzugen wenn verfügbar
+- Bevorzuge unverarbeitete Varianten: frisch > tiefgekühlt > Konserve (es sei denn explizit anders gewünscht)`;
+
+  const aiResult = await ai.chatJSON(prompt, { temperature: 0.1, maxTokens: 256 });
+
+  // KI sagt: kein passendes Produkt → Alternativsuche signalisieren
+  if (aiResult?.noMatch && aiResult.alternativeSearch) {
+    return { alternativeSearch: aiResult.alternativeSearch, reason: aiResult.reason };
+  }
+
+  if (aiResult && typeof aiResult.index === 'number' && aiResult.index < withPrice.length) {
+    const best = withPrice[aiResult.index];
+    const qty = Math.max(1, aiResult.quantity || 1);
+    const totalPrice = best.price * qty;
+
+    return {
+      product: best,
+      neededAmount,
+      unit,
+      packageAmount: best.parsedAmount,
+      packagesNeeded: qty,
+      totalPrice,
+      matchedBy: 'ai',
+      matchReason: aiResult.reason || null,
+      surplus: 0,
+      surplusForPantry: null,
+    };
+  }
+
+  return undefined; // Kein auswertbares Ergebnis (Fallback nutzen)
 }
 
 /**

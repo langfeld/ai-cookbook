@@ -538,9 +538,15 @@
                       </p>
                       <p v-if="item.rewe_product.packageSize" class="mt-0.5 text-stone-500 dark:text-stone-400 text-xs">
                         {{ item.rewe_product.packageSize }}
-                        <span v-if="item.rewe_product.matchedBy" class="ml-1" :title="matchedByLabel(item.rewe_product.matchedBy)">
+                        <button
+                          v-if="item.rewe_product.matchedBy"
+                          type="button"
+                          class="ml-1 hover:scale-110 transition-transform cursor-pointer"
+                          :title="matchedByLabel(item.rewe_product.matchedBy)"
+                          @click.stop="openMatchReason($event, item)"
+                        >
                           {{ matchedByIcon(item.rewe_product.matchedBy) }}
-                        </span>
+                        </button>
                       </p>
                     </div>
                     <!-- Preis -->
@@ -1738,11 +1744,47 @@
       </Transition>
     </Teleport>
 
+    <!-- KI-Matching-Begründung Popover (Teleport, damit es nicht von overflow-hidden abgeschnitten wird) -->
+    <Teleport to="body">
+      <Transition
+        enter-active-class="transition ease-out duration-150"
+        enter-from-class="opacity-0 scale-95"
+        enter-to-class="opacity-100 scale-100"
+        leave-active-class="transition ease-in duration-100"
+        leave-from-class="opacity-100 scale-100"
+        leave-to-class="opacity-0 scale-95"
+      >
+        <div
+          v-if="activeMatchReason"
+          class="z-9999 fixed bg-white dark:bg-stone-800 shadow-xl p-3 border border-stone-200 dark:border-stone-600 rounded-xl w-60 text-stone-700 dark:text-stone-300 text-xs"
+          :style="{
+            left: activeMatchReason.x + 'px',
+            top: activeMatchReason.y + 'px',
+            transform: 'translate(-50%, calc(-100% - 10px))',
+          }"
+          @click.stop
+        >
+          <div class="mb-1.5 font-semibold text-stone-900 dark:text-stone-100">
+            {{ matchedByIcon(activeMatchReason.matchedBy) }} {{ matchedByLabel(activeMatchReason.matchedBy) }}
+          </div>
+          <div v-if="activeMatchReason.matchReason" class="leading-relaxed">
+            {{ activeMatchReason.matchReason }}
+          </div>
+          <div v-else class="text-stone-400 dark:text-stone-500 italic">
+            Keine Begründung verfügbar
+          </div>
+          <!-- Pfeil -->
+          <div class="top-full absolute -mt-px border-x-[7px] border-x-transparent border-t-[7px] border-t-stone-200 dark:border-t-stone-600 w-0 h-0" :style="{ left: 'calc(50% + ' + (activeMatchReason.arrowX || 0) + 'px)', transform: 'translateX(-50%)' }"></div>
+          <div class="top-full absolute -mt-0.5 border-x-[6px] border-x-transparent border-t-[6px] border-t-white dark:border-t-stone-800 w-0 h-0" :style="{ left: 'calc(50% + ' + (activeMatchReason.arrowX || 0) + 'px)', transform: 'translateX(-50%)' }"></div>
+        </div>
+      </Transition>
+    </Teleport>
+
   </div>
 </template>
 
 <script setup>
-import { computed, ref, onMounted, watch, nextTick } from 'vue';
+import { computed, ref, onMounted, onUnmounted, watch, nextTick } from 'vue';
 import { useShoppingStore } from '@/stores/shopping.js';
 import { useMealPlanStore } from '@/stores/mealplan.js';
 import { useIngredientAliasStore } from '@/stores/ingredient-aliases.js';
@@ -1974,6 +2016,40 @@ const mergeMode = ref(false);
 const mergeSelection = ref([]);  // Ausgewählte Items
 const showMergeDialog = ref(false);
 const mergeName = ref('');       // Gewählter Name für das zusammengefasste Item
+
+// KI-Matching-Begründung Popover
+const activeMatchReason = ref(null); // { id, matchedBy, matchReason, x, y, arrowX }
+
+const POPOVER_WIDTH = 240; // w-60 = 15rem = 240px
+const POPOVER_MARGIN = 8; // Abstand zum Bildschirmrand
+
+function openMatchReason(event, item) {
+  if (activeMatchReason.value?.id === item.id) {
+    activeMatchReason.value = null;
+    return;
+  }
+  const rect = event.target.getBoundingClientRect();
+  const centerX = rect.left + rect.width / 2;
+  const vw = window.innerWidth;
+
+  // Popover-Left so clampen, dass es im Viewport bleibt
+  const half = POPOVER_WIDTH / 2;
+  const minLeft = POPOVER_MARGIN + half;
+  const maxLeft = vw - POPOVER_MARGIN - half;
+  const clampedX = Math.max(minLeft, Math.min(maxLeft, centerX));
+
+  // Pfeil-Offset: wie weit der Pfeil vom Center abweicht (in px)
+  const arrowX = centerX - clampedX;
+
+  activeMatchReason.value = {
+    id: item.id,
+    matchedBy: item.rewe_product.matchedBy,
+    matchReason: item.rewe_product.matchReason,
+    x: clampedX,
+    y: rect.top,
+    arrowX,
+  };
+}
 
 // Blockier-Modus – Multi-Select
 const blockMode = ref(false);
@@ -2445,7 +2521,17 @@ onMounted(async () => {
   shoppingStore.fetchListHistory();
   // REWE-Status prüfen (reweEnabled)
   loadReweMarketSettings();
+  // Click-Outside: Matching-Begründung schließen
+  document.addEventListener('click', closeMatchReason);
 });
+
+onUnmounted(() => {
+  document.removeEventListener('click', closeMatchReason);
+});
+
+function closeMatchReason() {
+  activeMatchReason.value = null;
+}
 
 // ============================================
 // Einstellungen (zentrales Modal)
