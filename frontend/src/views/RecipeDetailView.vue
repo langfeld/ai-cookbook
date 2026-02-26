@@ -35,7 +35,7 @@
             <span class="meta-badge"><Clock class="w-3.5 h-3.5" /> {{ recipe.total_time }} Min.</span>
             <span class="meta-badge"><Users class="w-3.5 h-3.5" /> {{ recipe.servings }} Port.</span>
             <span class="meta-badge" :class="difficultyColor">{{ difficultyEmoji }} {{ recipe.difficulty }}</span>
-            <button v-if="recipe.times_cooked" @click="showHistoryPopup = true" class="meta-badge cursor-pointer hover:bg-stone-200 dark:hover:bg-stone-700 transition-colors"><ChefHat class="w-3.5 h-3.5" /> {{ recipe.times_cooked }}×</button>
+            <button v-if="recipe.times_cooked" @click="showHistoryPopup = true" class="hover:bg-stone-200 dark:hover:bg-stone-700 transition-colors cursor-pointer meta-badge"><ChefHat class="w-3.5 h-3.5" /> {{ recipe.times_cooked }}×</button>
           </div>
 
           <!-- Kategorien -->
@@ -222,7 +222,7 @@
                 <X class="w-5 h-5 text-stone-500" />
               </button>
             </div>
-            <div class="p-5 max-h-72 overflow-y-auto space-y-2.5">
+            <div class="space-y-2.5 p-5 max-h-72 overflow-y-auto">
               <div v-if="recipe?.history?.length" v-for="entry in recipe.history" :key="entry.id"
                 class="flex items-center gap-3 text-stone-600 dark:text-stone-400 text-sm">
                 <span class="shrink-0">{{ formatDate(entry.cooked_at) }}</span>
