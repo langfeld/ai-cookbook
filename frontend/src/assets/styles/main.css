@@ -119,16 +119,7 @@ html {
  * Dezente Inline-Hervorhebung ohne Border
  * ============================================ */
 .ingredient-highlight {
-  padding-inline: calc(var(--spacing) * 0.5);
-  border-radius: var(--radius-sm);
-  background-color: color-mix(in oklab, var(--color-primary-200) 50%, transparent);
-  color: var(--color-primary-800);
-  font-weight: 500;
-}
-
-:is(.dark .ingredient-highlight) {
-  background-color: color-mix(in oklab, var(--color-primary-800) 35%, transparent);
-  color: var(--color-primary-300);
+  font-weight: 700;
 }
 
 /* ============================================

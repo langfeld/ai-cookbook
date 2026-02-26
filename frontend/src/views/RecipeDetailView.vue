@@ -11,309 +11,134 @@
 <template>
   <div>
     <!-- Rezept-Inhalt -->
-    <div v-if="recipe" class="space-y-6 mx-auto max-w-4xl animate-fade-in">
-      <!-- Header -->
+    <div v-if="recipe" class="space-y-6 animate-fade-in">
+
+      <!-- ═══════ HEADER ═══════ -->
       <div class="flex md:flex-row flex-col gap-6">
         <!-- Bild -->
-        <div class="bg-stone-100 dark:bg-stone-800 rounded-2xl w-full md:w-80 aspect-video md:aspect-square overflow-hidden shrink-0">
+        <div class="bg-stone-100 dark:bg-stone-800 rounded-xl w-full md:w-72 lg:w-80 aspect-video md:aspect-4/3 overflow-hidden shrink-0">
           <img v-if="recipe.image_url" :src="recipe.image_url" :alt="recipe.title" class="w-full h-full object-cover" />
-          <div v-else class="flex justify-center items-center w-full h-full text-6xl">🍽️</div>
+          <div v-else class="flex justify-center items-center w-full h-full text-5xl">🍽️</div>
         </div>
-
         <!-- Info -->
-        <div class="flex-1">
+        <div class="flex-1 min-w-0">
           <div class="flex justify-between items-start gap-2">
-            <h1 class="font-display font-bold text-stone-800 dark:text-stone-100 text-2xl sm:text-3xl">{{ recipe.title }}</h1>
-            <button
-              @click="recipesStore.toggleFavorite(recipe.id)"
-              class="hover:bg-stone-100 dark:hover:bg-stone-800 p-2 rounded-lg"
-            >
-              <Star class="w-6 h-6" :class="recipe.is_favorite ? 'fill-amber-400 text-amber-400' : 'text-stone-300'" />
+            <h1 class="font-display font-bold text-stone-800 dark:text-stone-100 text-xl sm:text-2xl leading-tight">{{ recipe.title }}</h1>
+            <button @click="recipesStore.toggleFavorite(recipe.id)" class="hover:bg-stone-100 dark:hover:bg-stone-800 p-1.5 rounded-lg shrink-0">
+              <Star class="w-5 h-5" :class="recipe.is_favorite ? 'fill-amber-400 text-amber-400' : 'text-stone-300'" />
             </button>
           </div>
-          <p class="mt-2 text-stone-500 dark:text-stone-400">{{ recipe.description }}</p>
+          <p v-if="recipe.description" class="mt-1.5 text-stone-500 dark:text-stone-400 text-sm line-clamp-2">{{ recipe.description }}</p>
 
-          <!-- Meta-Badges -->
-          <div class="flex flex-wrap gap-3 mt-4">
-            <span class="meta-badge">
-              <Clock class="w-4 h-4" />
-              {{ recipe.total_time }} Min.
-            </span>
-            <span class="meta-badge">
-              <Users class="w-4 h-4" />
-              {{ recipe.servings }} Portionen
-            </span>
-            <span class="meta-badge" :class="difficultyColor">
-              {{ difficultyEmoji }} {{ recipe.difficulty }}
-            </span>
-            <span v-if="recipe.times_cooked" class="meta-badge">
-              <ChefHat class="w-4 h-4" />
-              {{ recipe.times_cooked }}x gekocht
-            </span>
+          <!-- Meta -->
+          <div class="flex flex-wrap items-center gap-2 mt-4">
+            <span class="meta-badge"><Clock class="w-3.5 h-3.5" /> {{ recipe.total_time }} Min.</span>
+            <span class="meta-badge"><Users class="w-3.5 h-3.5" /> {{ recipe.servings }} Port.</span>
+            <span class="meta-badge" :class="difficultyColor">{{ difficultyEmoji }} {{ recipe.difficulty }}</span>
+            <span v-if="recipe.times_cooked" class="meta-badge"><ChefHat class="w-3.5 h-3.5" /> {{ recipe.times_cooked }}×</span>
           </div>
 
           <!-- Kategorien -->
-          <div v-if="recipe.categories?.length" class="flex flex-wrap gap-2 mt-4">
-            <span
-              v-for="cat in recipe.categories"
-              :key="cat.id"
+          <div v-if="recipe.categories?.length" class="flex flex-wrap gap-1.5 mt-2.5">
+            <span v-for="cat in recipe.categories" :key="cat.id"
               :style="{ borderColor: cat.color + '60', backgroundColor: cat.color + '15' }"
-              class="px-3 py-1 border rounded-full text-sm"
-            >
+              class="px-2.5 py-0.5 border rounded-full text-xs">
               {{ cat.icon }} {{ cat.name }}
             </span>
           </div>
 
           <!-- Aktionen -->
-          <div class="space-y-2 mt-6">
-            <!-- Haupt-Aktionen: Kochen & Planen -->
-            <div class="sm:flex sm:flex-wrap gap-2 grid grid-cols-2">
-              <button
-                v-if="recipe.steps?.length"
-                @click="showCookingMode = true"
-                class="flex justify-center items-center gap-2 bg-stone-800 hover:bg-stone-700 dark:bg-stone-700 dark:hover:bg-stone-600 px-4 py-2.5 rounded-lg font-medium text-white text-sm transition-colors"
-              >
-                <Maximize class="w-4 h-4" />
-                Kochmodus
-              </button>
-              <button
-                @click="markCooked"
-                class="flex justify-center items-center gap-2 px-4 py-2.5 rounded-lg font-medium text-white text-sm transition-colors bg-accent-600 hover:bg-accent-700"
-              >
-                <ChefHat class="w-4 h-4" />
-                <span class="hidden sm:inline">Als gekocht markieren</span>
-                <span class="sm:hidden">Gekocht ✓</span>
-              </button>
-              <button
-                @click="plannerServings = adjustedServings; showPlannerModal = true"
-                class="flex justify-center items-center gap-2 bg-primary-600 hover:bg-primary-700 px-4 py-2.5 rounded-lg font-medium text-white text-sm transition-colors"
-              >
-                <CalendarPlus class="w-4 h-4" />
-                Zum Planer
-              </button>
-            </div>
-            <!-- Sekundäre Aktionen: Verwalten -->
-            <div class="flex flex-wrap gap-1.5">
-              <AddToCollection v-if="recipe?.id" :recipe-id="recipe.id" />
-              <router-link
-                :to="'/recipes/new?edit=' + recipe.id"
-                class="flex items-center gap-1.5 hover:bg-stone-100 dark:hover:bg-stone-800 px-3 py-1.5 rounded-lg text-stone-500 dark:text-stone-400 text-sm transition-colors"
-              >
-                <Pencil class="w-3.5 h-3.5" />
-                Bearbeiten
-              </router-link>
-              <button
-                @click="showDeleteDialog = true"
-                class="flex items-center gap-1.5 hover:bg-red-50 dark:hover:bg-red-900/20 px-3 py-1.5 rounded-lg text-stone-400 hover:text-red-600 dark:hover:text-red-400 dark:text-stone-500 text-sm transition-colors"
-              >
-                <Trash2 class="w-3.5 h-3.5" />
-                Löschen
-              </button>
-            </div>
+          <div class="flex flex-wrap items-center gap-2 mt-4">
+            <button v-if="recipe.steps?.length" @click="showCookingMode = true"
+              class="flex items-center gap-1.5 bg-stone-800 hover:bg-stone-700 dark:bg-stone-700 dark:hover:bg-stone-600 px-3 py-1.5 rounded-lg font-medium text-white text-sm transition-colors">
+              <Maximize class="w-3.5 h-3.5" /> Kochmodus
+            </button>
+            <button @click="markCooked"
+              class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-medium text-white text-sm transition-colors bg-accent-600 hover:bg-accent-700">
+              <ChefHat class="w-3.5 h-3.5" /> Gekocht ✓
+            </button>
+            <button @click="plannerServings = adjustedServings; showPlannerModal = true"
+              class="flex items-center gap-1.5 bg-primary-600 hover:bg-primary-700 px-3 py-1.5 rounded-lg font-medium text-white text-sm transition-colors">
+              <CalendarPlus class="w-3.5 h-3.5" /> Planer
+            </button>
+            <AddToCollection v-if="recipe?.id" :recipe-id="recipe.id" />
+            <router-link :to="'/recipes/new?edit=' + recipe.id"
+              class="flex items-center gap-1 hover:bg-stone-100 dark:hover:bg-stone-800 px-2.5 py-1.5 rounded-lg text-stone-500 dark:text-stone-400 text-xs transition-colors">
+              <Pencil class="w-3 h-3" /> Bearbeiten
+            </router-link>
+            <button @click="showDeleteDialog = true"
+              class="flex items-center gap-1 hover:bg-red-50 dark:hover:bg-red-900/20 px-2.5 py-1.5 rounded-lg text-stone-400 hover:text-red-600 dark:hover:text-red-400 dark:text-stone-500 text-xs transition-colors">
+              <Trash2 class="w-3 h-3" /> Löschen
+            </button>
           </div>
         </div>
       </div>
 
-      <!-- Portionsrechner + Zutaten -->
-      <div class="bg-white dark:bg-stone-900 p-4 sm:p-6 border border-stone-200 dark:border-stone-800 rounded-xl">
-        <div class="flex sm:flex-row flex-col sm:justify-between sm:items-center gap-3 mb-4">
-          <h2 class="font-semibold text-stone-800 dark:text-stone-100 text-lg">
-            🥕 Zutaten
-          </h2>
-          <div class="flex flex-wrap items-center gap-3">
-            <!-- Ansichts-Toggle (nur bei echten Gruppen) -->
-            <div v-if="hasGroups" class="flex bg-stone-100 dark:bg-stone-800 p-0.5 rounded-lg">
-              <button
-                @click="ingredientView = 'all'"
-                :class="[
-                  'flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-colors',
-                  ingredientView === 'all'
-                    ? 'bg-white dark:bg-stone-700 text-stone-800 dark:text-stone-100 shadow-sm'
-                    : 'text-stone-500 dark:text-stone-400 hover:text-stone-700 dark:hover:text-stone-300'
-                ]"
-                title="Alle Zutaten"
-              >
-                <List class="w-3.5 h-3.5" />
-                Alle
+      <!-- ═══════ ZWEI-SPALTEN: ZUTATEN + ZUBEREITUNG ═══════ -->
+      <div class="lg:items-stretch lg:gap-6 space-y-6 lg:space-y-0 lg:grid lg:grid-cols-[minmax(272px,320px)_1fr]">
+
+        <!-- ── ZUTATEN (links, sticky auf Desktop) ── -->
+        <div class="lg:top-4 lg:sticky lg:self-stretch bg-white dark:bg-stone-900 p-4 border border-stone-200 dark:border-stone-800 rounded-xl">
+          <h2 class="mb-3 font-semibold text-stone-800 dark:text-stone-100 text-base">🥕 Zutaten</h2>
+
+          <!-- Portionsrechner -->
+          <div class="flex flex-wrap items-center gap-2 mb-3 pb-3 border-stone-100 dark:border-stone-800 border-b">
+            <div class="flex items-center gap-1.5">
+              <button @click="adjustedServings = Math.max(1, adjustedServings - 1)"
+                class="flex justify-center items-center bg-stone-100 hover:bg-stone-200 dark:bg-stone-800 dark:hover:bg-stone-700 rounded-full w-7 h-7 text-stone-600 dark:text-stone-400">
+                <Minus class="w-3.5 h-3.5" />
               </button>
-              <button
-                @click="ingredientView = 'grouped'"
-                :class="[
-                  'flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium transition-colors',
-                  ingredientView === 'grouped'
-                    ? 'bg-white dark:bg-stone-700 text-stone-800 dark:text-stone-100 shadow-sm'
-                    : 'text-stone-500 dark:text-stone-400 hover:text-stone-700 dark:hover:text-stone-300'
-                ]"
-                title="Nach Schritten gruppiert"
-              >
-                <Layers class="w-3.5 h-3.5" />
-                Gruppiert
+              <span class="w-14 font-medium text-stone-700 dark:text-stone-300 text-sm text-center">{{ adjustedServings }} Port.</span>
+              <button @click="adjustedServings++"
+                class="flex justify-center items-center bg-stone-100 hover:bg-stone-200 dark:bg-stone-800 dark:hover:bg-stone-700 rounded-full w-7 h-7 text-stone-600 dark:text-stone-400">
+                <Plus class="w-3.5 h-3.5" />
               </button>
             </div>
-            <!-- Portionsrechner -->
-            <div class="flex items-center gap-2">
-              <button
-                @click="adjustedServings = Math.max(1, adjustedServings - 1)"
-                class="flex justify-center items-center bg-stone-100 hover:bg-stone-200 dark:bg-stone-800 dark:hover:bg-stone-700 rounded-full w-8 h-8 text-stone-600 dark:text-stone-400"
-              >
-                <Minus class="w-4 h-4" />
-              </button>
-              <span class="w-20 font-medium text-stone-700 dark:text-stone-300 text-sm text-center">
-                {{ adjustedServings }} Port.
-              </span>
-              <button
-                @click="adjustedServings++"
-                class="flex justify-center items-center bg-stone-100 hover:bg-stone-200 dark:bg-stone-800 dark:hover:bg-stone-700 rounded-full w-8 h-8 text-stone-600 dark:text-stone-400"
-              >
-                <Plus class="w-4 h-4" />
-              </button>
-            </div>
-            <!-- Anpassungsmodus-Toggle -->
-            <button
-              @click="toggleAdjustmentMode"
+            <button @click="toggleAdjustmentMode"
               :class="[
-                'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors',
+                'flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium transition-colors',
                 adjustmentMode
                   ? 'bg-primary-100 dark:bg-primary-900/50 text-primary-700 dark:text-primary-300'
                   : 'bg-stone-100 dark:bg-stone-800 text-stone-500 dark:text-stone-400 hover:text-stone-700 dark:hover:text-stone-300'
               ]"
-              :title="adjustmentMode ? 'Mengen-Anpassung deaktivieren' : 'Einzelne Mengen anpassen'"
-            >
-              <Warehouse class="w-3.5 h-3.5" />
-              {{ adjustmentMode ? 'Anpassung aktiv' : 'Mengen anpassen' }}
+              :title="adjustmentMode ? 'Mengen-Anpassung deaktivieren' : 'Einzelne Mengen anpassen'">
+              <Warehouse class="w-3 h-3" />
+              {{ adjustmentMode ? 'Aktiv' : 'Anpassen' }}
+            </button>
+            <button v-if="adjustmentMode && overrideCount > 0" @click="resetAllOverrides"
+              class="flex items-center gap-1 text-stone-400 hover:text-stone-600 dark:hover:text-stone-300 text-xs transition-colors">
+              <RotateCcw class="w-3 h-3" /> Reset ({{ overrideCount }})
             </button>
           </div>
-        </div>
 
-        <!-- Hinweis + Alle-zurücksetzen (nur im Anpassungsmodus) -->
-        <div v-if="adjustmentMode" class="flex flex-wrap justify-between items-center gap-2 mb-3">
-          <p class="text-stone-400 dark:text-stone-500 text-xs">
-            Klicke auf eine Menge, um sie individuell anzupassen. Rechts siehst du den verfügbaren Vorrat.
-          </p>
-          <button
-            v-if="overrideCount > 0"
-            @click="resetAllOverrides"
-            class="flex items-center gap-1 text-stone-400 hover:text-stone-600 dark:hover:text-stone-300 text-xs transition-colors"
-          >
-            <RotateCcw class="w-3 h-3" />
-            Alle zurücksetzen ({{ overrideCount }})
-          </button>
-        </div>
+          <!-- Zutaten-Liste -->
+          <ul class="space-y-0.5">
+            <li v-for="ing in flatIngredients" :key="ing.id"
+              class="flex items-center gap-2 hover:bg-stone-50 dark:hover:bg-stone-800/50 px-1.5 py-1 rounded-md transition-colors"
+              :class="adjustmentMode ? 'flex-wrap' : ''">
+              <span class="w-5 text-sm text-center shrink-0" :title="ing.name">{{ getEmoji(ing.name) || '•' }}</span>
 
-        <!-- Zutaten-Liste: Alle (flach, zusammengeführt) -->
-        <ul v-if="ingredientView === 'all' || !hasGroups" class="space-y-2">
-          <li
-            v-for="ing in flatIngredients"
-            :key="ing.id"
-            class="flex items-center gap-2 sm:gap-3 hover:bg-stone-50 dark:hover:bg-stone-800/50 px-2 sm:px-3 py-1.5 rounded-lg transition-colors"
-            :class="adjustmentMode ? 'flex-wrap' : ''"
-          >
-            <span class="w-5 text-base text-center shrink-0" :title="ing.name">{{ getEmoji(ing.name) || '•' }}</span>
+              <!-- Normal -->
+              <template v-if="!adjustmentMode">
+                <span class="font-medium text-stone-800 dark:text-stone-200 text-sm text-right shrink-0"
+                  :class="ing.amounts.length > 1 ? 'min-w-16' : 'w-16'">
+                  <template v-for="(a, i) in ing.amounts" :key="i">
+                    <template v-if="i > 0">, </template>
+                    {{ scaleAmount(a.amount) }}&nbsp;{{ a.unit }}
+                  </template>
+                </span>
+              </template>
 
-            <!-- Mengen: Normalansicht -->
-            <template v-if="!adjustmentMode">
-              <span
-                class="font-medium text-stone-800 dark:text-stone-200 text-sm text-right shrink-0"
-                :class="ing.amounts.length > 1 ? 'min-w-20' : 'w-20'"
-              >
-                <template v-for="(a, i) in ing.amounts" :key="i">
-                  <template v-if="i > 0">, </template>
-                  {{ scaleAmount(a.amount) }}&nbsp;{{ a.unit }}
-                </template>
-              </span>
-            </template>
-
-            <!-- Mengen: Anpassungsmodus -->
-            <template v-else>
-              <span class="flex items-center gap-1.5 shrink-0">
-                <template v-if="ing.amounts.length === 1">
-                  <input
-                    type="number"
-                    :value="hasOverride(ing.name) ? ingredientOverrides[ing.name.toLowerCase().trim()] : Math.round(scaleAmountRaw(ing.amounts[0].amount) * 100) / 100"
-                    @change="setIngredientOverride(ing.name.toLowerCase().trim(), $event.target.value)"
-                    step="any"
-                    min="0"
-                    class="bg-white dark:bg-stone-800 py-0.5 pr-1 pl-2 border border-stone-300 focus:border-primary-400 dark:border-stone-600 rounded focus:outline-none focus:ring-1 focus:ring-primary-400 w-16 font-medium text-stone-800 dark:text-stone-200 text-sm text-right ingredient-number-input"
-                    :class="hasOverride(ing.name) ? 'ring-1 ring-primary-300 dark:ring-primary-600 border-primary-300 dark:border-primary-600' : ''"
-                  />
-                  <!-- Vorratsanzeige: [input] / vorrat einheit -->
-                  <span v-if="getPantryInfo(ing.name)" class="tabular-nums text-xs whitespace-nowrap"
-                    :class="
-                      getPantryInfo(ing.name).isPermanent
-                        ? 'text-stone-400 dark:text-stone-500'
-                        : getPantryInfo(ing.name).amount >= getEffectiveAmount(ing)
-                          ? 'text-stone-400 dark:text-stone-500'
-                          : getPantryInfo(ing.name).amount > 0
-                            ? 'text-amber-500 dark:text-amber-400'
-                            : 'text-red-400 dark:text-red-400'
-                    "
-                  >/ <template v-if="getPantryInfo(ing.name).isPermanent">∞</template><template v-else>{{ getPantryInfo(ing.name).amount ? formatAmount(getPantryInfo(ing.name).amount) : '0' }}</template></span>
-                  <span class="text-stone-500 dark:text-stone-400 text-xs">{{ ing.amounts[0].unit }}</span>
-                </template>
-                <template v-else>
-                  <span class="font-medium text-stone-800 dark:text-stone-200 text-sm text-right">
-                    <template v-for="(a, i) in ing.amounts" :key="i">
-                      <template v-if="i > 0">, </template>
-                      {{ scaleAmount(a.amount) }}&nbsp;{{ a.unit }}
-                    </template>
-                  </span>
-                </template>
-                <!-- Reset pro Zutat -->
-                <button
-                  v-if="hasOverride(ing.name)"
-                  @click="resetIngredientOverride(ing.name.toLowerCase().trim())"
-                  class="text-stone-400 hover:text-stone-600 dark:hover:text-stone-300 transition-colors"
-                  title="Zurücksetzen"
-                >
-                  <RotateCcw class="w-3 h-3" />
-                </button>
-              </span>
-            </template>
-
-            <span class="text-stone-700 dark:text-stone-300 text-sm" :class="adjustmentMode ? 'basis-full sm:basis-auto sm:flex-1 pl-7 sm:pl-0 -mt-1 sm:mt-0' : 'flex-1'">
-              {{ ing.name }}
-              <span v-if="ing.is_optional" class="ml-1 text-stone-400 text-xs">(optional)</span>
-              <span v-if="ing.notes" class="ml-1 text-stone-400 text-xs">– {{ ing.notes }}</span>
-            </span>
-
-          </li>
-        </ul>
-
-        <!-- Zutaten-Liste: Gruppiert nach Schritten -->
-        <div v-else class="space-y-4">
-          <div v-for="(group, groupName) in groupedIngredients" :key="groupName">
-            <h3 v-if="groupName !== 'default'" class="mb-2 font-medium text-stone-500 dark:text-stone-400 text-sm">
-              {{ groupName }}
-            </h3>
-            <ul class="space-y-2">
-              <li
-                v-for="ing in group"
-                :key="ing.id"
-                class="flex items-center gap-2 sm:gap-3 hover:bg-stone-50 dark:hover:bg-stone-800/50 px-2 sm:px-3 py-1.5 rounded-lg transition-colors"
-                :class="adjustmentMode ? 'flex-wrap' : ''"
-              >
-                <span class="w-5 text-base text-center shrink-0" :title="ing.name">{{ getEmoji(ing.name) || '•' }}</span>
-
-                <!-- Mengen: Normalansicht -->
-                <template v-if="!adjustmentMode">
-                  <span class="w-20 font-medium text-stone-800 dark:text-stone-200 text-sm text-right">
-                    {{ scaleAmount(ing.amount) }} {{ ing.unit }}
-                  </span>
-                </template>
-
-                <!-- Mengen: Anpassungsmodus -->
-                <template v-else>
-                  <span class="flex items-center gap-1.5 shrink-0">
-                    <input
-                      type="number"
-                      :value="hasOverride(ing.name) ? ingredientOverrides[ing.name.toLowerCase().trim()] : Math.round(scaleAmountRaw(ing.amount) * 100) / 100"
+              <!-- Anpassungsmodus -->
+              <template v-else>
+                <span class="flex items-center gap-1 shrink-0">
+                  <template v-if="ing.amounts.length === 1">
+                    <input type="number"
+                      :value="hasOverride(ing.name) ? ingredientOverrides[ing.name.toLowerCase().trim()] : Math.round(scaleAmountRaw(ing.amounts[0].amount) * 100) / 100"
                       @change="setIngredientOverride(ing.name.toLowerCase().trim(), $event.target.value)"
-                      step="any"
-                      min="0"
-                      class="bg-white dark:bg-stone-800 py-0.5 pr-1 pl-2 border border-stone-300 focus:border-primary-400 dark:border-stone-600 rounded focus:outline-none focus:ring-1 focus:ring-primary-400 w-16 font-medium text-stone-800 dark:text-stone-200 text-sm text-right ingredient-number-input"
-                      :class="hasOverride(ing.name) ? 'ring-1 ring-primary-300 dark:ring-primary-600 border-primary-300 dark:border-primary-600' : ''"
-                    />
-                    <!-- Vorratsanzeige: [input] / vorrat einheit -->
+                      step="any" min="0"
+                      class="bg-white dark:bg-stone-800 py-0.5 pr-1 pl-1.5 border border-stone-300 focus:border-primary-400 dark:border-stone-600 rounded focus:outline-none focus:ring-1 focus:ring-primary-400 w-14 font-medium text-stone-800 dark:text-stone-200 text-sm text-right ingredient-number-input"
+                      :class="hasOverride(ing.name) ? 'ring-1 ring-primary-300 dark:ring-primary-600 border-primary-300 dark:border-primary-600' : ''" />
                     <span v-if="getPantryInfo(ing.name)" class="tabular-nums text-xs whitespace-nowrap"
                       :class="
                         getPantryInfo(ing.name).isPermanent
@@ -325,71 +150,67 @@
                               : 'text-red-400 dark:text-red-400'
                       "
                     >/ <template v-if="getPantryInfo(ing.name).isPermanent">∞</template><template v-else>{{ getPantryInfo(ing.name).amount ? formatAmount(getPantryInfo(ing.name).amount) : '0' }}</template></span>
-                    <span class="text-stone-500 dark:text-stone-400 text-xs">{{ ing.unit }}</span>
-                    <button
-                      v-if="hasOverride(ing.name)"
-                      @click="resetIngredientOverride(ing.name.toLowerCase().trim())"
-                      class="text-stone-400 hover:text-stone-600 dark:hover:text-stone-300 transition-colors"
-                      title="Zurücksetzen"
-                    >
-                      <RotateCcw class="w-3 h-3" />
-                    </button>
-                  </span>
-                </template>
-
-                <span class="text-stone-700 dark:text-stone-300 text-sm" :class="adjustmentMode ? 'basis-full sm:basis-auto sm:flex-1 pl-7 sm:pl-0 -mt-1 sm:mt-0' : 'flex-1'">
-                  {{ ing.name }}
-                  <span v-if="ing.is_optional" class="ml-1 text-stone-400 text-xs">(optional)</span>
-                  <span v-if="ing.notes" class="ml-1 text-stone-400 text-xs">– {{ ing.notes }}</span>
+                    <span class="text-stone-500 dark:text-stone-400 text-xs">{{ ing.amounts[0].unit }}</span>
+                  </template>
+                  <template v-else>
+                    <span class="font-medium text-stone-800 dark:text-stone-200 text-sm text-right">
+                      <template v-for="(a, i) in ing.amounts" :key="i">
+                        <template v-if="i > 0">, </template>
+                        {{ scaleAmount(a.amount) }}&nbsp;{{ a.unit }}
+                      </template>
+                    </span>
+                  </template>
+                  <button v-if="hasOverride(ing.name)"
+                    @click="resetIngredientOverride(ing.name.toLowerCase().trim())"
+                    class="text-stone-400 hover:text-stone-600 dark:hover:text-stone-300 transition-colors" title="Zurücksetzen">
+                    <RotateCcw class="w-3 h-3" />
+                  </button>
                 </span>
+              </template>
 
-              </li>
-            </ul>
-          </div>
+              <span class="text-stone-700 dark:text-stone-300 text-sm" :class="adjustmentMode ? 'basis-full sm:basis-auto sm:flex-1 pl-7 sm:pl-0 -mt-1 sm:mt-0' : 'flex-1'">
+                {{ ing.name }}
+                <span v-if="ing.is_optional" class="ml-1 text-stone-400 text-xs">(optional)</span>
+                <span v-if="ing.notes" class="ml-1 text-stone-400 text-xs">– {{ ing.notes }}</span>
+              </span>
+            </li>
+          </ul>
         </div>
-      </div>
 
-      <!-- Kochschritte -->
-      <div class="bg-white dark:bg-stone-900 p-4 sm:p-6 border border-stone-200 dark:border-stone-800 rounded-xl">
-        <h2 class="mb-6 font-semibold text-stone-800 dark:text-stone-100 text-lg">
-          👨‍🍳 Zubereitung
-        </h2>
-        <div class="space-y-6">
-          <div
-            v-for="step in recipe.steps"
-            :key="step.id"
-            class="flex gap-4"
-          >
-            <div class="flex justify-center items-center bg-primary-100 dark:bg-primary-900/50 rounded-full w-8 h-8 shrink-0">
-              <span class="font-bold text-primary-700 dark:text-primary-300 text-sm">{{ step.step_number }}</span>
-            </div>
-            <div class="flex-1">
-              <div class="flex items-center gap-2 mb-1">
-                <h3 v-if="step.title" class="font-medium text-stone-800 dark:text-stone-200">{{ step.title }}</h3>
-                <span v-if="step.duration_minutes" class="flex items-center gap-1 text-stone-400 text-xs">
-                  <Clock class="w-3 h-3" /> {{ step.duration_minutes }} Min.
-                </span>
+        <!-- ── ZUBEREITUNG + HISTORIE (rechts) ── -->
+        <div class="flex flex-col gap-6">
+          <!-- Zubereitung -->
+          <div class="flex-1 bg-white dark:bg-stone-900 p-5 border border-stone-200 dark:border-stone-800 rounded-xl">
+            <h2 class="mb-5 font-semibold text-stone-800 dark:text-stone-100 text-base">👨‍🍳 Zubereitung</h2>
+            <div class="space-y-8">
+              <div v-for="step in recipe.steps" :key="step.id" class="flex gap-3">
+                <div class="flex justify-center items-center bg-primary-100 dark:bg-primary-900/50 mt-0.5 rounded-full w-7 h-7 shrink-0">
+                  <span class="font-bold text-primary-700 dark:text-primary-300 text-xs">{{ step.step_number }}</span>
+                </div>
+                <div class="flex-1 min-w-0">
+                  <div class="flex items-center gap-2 mb-0.5">
+                    <h3 v-if="step.title" class="font-medium text-stone-800 dark:text-stone-200 text-sm">{{ step.title }}</h3>
+                    <span v-if="step.duration_minutes" class="flex items-center gap-1 text-stone-400 text-xs whitespace-nowrap shrink-0">
+                      <Clock class="w-3 h-3" /> {{ step.duration_minutes }} Min.
+                    </span>
+                  </div>
+                  <p class="text-stone-600 dark:text-stone-400 text-sm leading-relaxed" v-html="highlightIngredients(step.instruction)" />
+                </div>
               </div>
-              <p class="text-stone-600 dark:text-stone-400 text-sm leading-relaxed" v-html="highlightIngredients(step.instruction)" />
             </div>
           </div>
-        </div>
-      </div>
 
-      <!-- Kochhistorie -->
-      <div v-if="recipe.history?.length" class="bg-white dark:bg-stone-900 p-4 sm:p-6 border border-stone-200 dark:border-stone-800 rounded-xl">
-        <h2 class="mb-4 font-semibold text-stone-800 dark:text-stone-100 text-lg">
-          📊 Kochhistorie
-        </h2>
-        <div class="space-y-2">
-          <div
-            v-for="entry in recipe.history"
-            :key="entry.id"
-            class="flex items-center gap-3 text-stone-600 dark:text-stone-400 text-sm"
-          >
-            <span>{{ formatDate(entry.cooked_at) }}</span>
-            <span v-if="entry.rating" class="text-amber-400">{{ '⭐'.repeat(entry.rating) }}</span>
-            <span v-if="entry.notes" class="text-stone-400">– {{ entry.notes }}</span>
+          <!-- Kochhistorie -->
+          <div v-if="recipe.history?.length" class="bg-white dark:bg-stone-900 p-4 border border-stone-200 dark:border-stone-800 rounded-xl">
+            <h2 class="mb-3 font-semibold text-stone-800 dark:text-stone-100 text-base">📊 Kochhistorie</h2>
+            <div class="space-y-1.5">
+              <div v-for="entry in recipe.history" :key="entry.id"
+                class="flex items-center gap-3 text-stone-600 dark:text-stone-400 text-sm">
+                <span>{{ formatDate(entry.cooked_at) }}</span>
+                <span v-if="entry.rating" class="text-amber-400">{{ '⭐'.repeat(entry.rating) }}</span>
+                <span v-if="entry.notes" class="text-stone-400">– {{ entry.notes }}</span>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -539,7 +360,7 @@ import { useRecipesStore } from '@/stores/recipes.js';
 import { useMealPlanStore } from '@/stores/mealplan.js';
 import { usePantryStore } from '@/stores/pantry.js';
 import { useNotification } from '@/composables/useNotification.js';
-import { Star, Clock, Users, ChefHat, Pencil, Plus, Minus, Trash2, List, Layers, CalendarPlus, X, ChevronLeft, ChevronRight, Maximize, Warehouse, RotateCcw } from 'lucide-vue-next';
+import { Star, Clock, Users, ChefHat, Pencil, Plus, Minus, Trash2, CalendarPlus, X, ChevronLeft, ChevronRight, Maximize, Warehouse, RotateCcw } from 'lucide-vue-next';
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue';
 import AddToCollection from '@/components/collections/AddToCollection.vue';
 import CookingMode from '@/components/recipes/CookingMode.vue';
@@ -561,7 +382,6 @@ const showDeleteDialog = ref(false);
 const deleting = ref(false);
 const showMealPlanSwapDialog = ref(false);
 const pendingSwapData = ref(null);
-const ingredientView = ref('all');
 const showCookingMode = ref(false);
 
 // ─── Zutaten-Anpassungsmodus ───
@@ -701,23 +521,6 @@ const difficultyColor = computed(() => ({
   mittel: 'text-amber-700 dark:text-amber-400',
   schwer: 'text-red-700 dark:text-red-400',
 })[recipe.value?.difficulty] || '');
-
-// Zutaten nach Gruppe sortieren
-const groupedIngredients = computed(() => {
-  const groups = {};
-  for (const ing of recipe.value?.ingredients || []) {
-    const group = ing.group_name || 'default';
-    if (!groups[group]) groups[group] = [];
-    groups[group].push(ing);
-  }
-  return groups;
-});
-
-// Gibt es echte Gruppen? (Toggle nur anzeigen wenn ja)
-const hasGroups = computed(() => {
-  const keys = Object.keys(groupedIngredients.value);
-  return keys.length > 1 || (keys.length === 1 && keys[0] !== 'default');
-});
 
 // ── Einheiten-Konvertierung (analog zu backend/utils/helpers.js) ──
 

@@ -26,6 +26,7 @@ const INGREDIENT_RULES = `
   Richtig: { "name": "Burger-Brötchen", "amount": 4, "unit": "" }
   Falsch: { "name": "Burger-Brötchen", "amount": 240, "unit": "g" }
 - unit darf leer sein ("") — das bedeutet implizit "Stück"
+- group_name jeder Zutat MUSS exakt einem step.title entsprechen (case-sensitive), damit Zutaten dem richtigen Zubereitungsschritt zugeordnet werden. Falls eine Zutat in mehreren Schritten vorkommt, den Schritt wählen in dem sie zuerst verwendet wird.
 - Erlaubte Einheiten: g, kg, ml, l, TL, EL, Bund, Dose, Becher, Pkg, Prise, Scheibe, Zehe, Knolle, Stange, Kopf, Zweig, Handvoll, Ring, Blatt, Rispe oder "" (leer = Stück)`;
 
 const JSON_FORMAT = `{
@@ -42,7 +43,7 @@ const JSON_FORMAT = `{
       "name": "Zutatename",
       "amount": 2,
       "unit": "",
-      "group_name": null,
+      "group_name": "Titel des Zubereitungsschritts, in dem die Zutat verwendet wird (exakt wie in steps[].title)",
       "is_optional": false,
       "notes": ""
     }
