@@ -9,9 +9,9 @@
   <div class="relative">
     <button
       @click="toggle"
-      class="flex items-center gap-1.5 hover:bg-stone-50 dark:hover:bg-stone-800 px-2.5 py-1.5 border border-stone-300 dark:border-stone-600 rounded-lg text-stone-700 dark:text-stone-300 text-xs transition-colors"
+      class="flex items-center gap-1.5 hover:bg-stone-50 dark:hover:bg-stone-800 px-2.5 py-2 border border-stone-300 dark:border-stone-600 rounded-lg text-stone-700 dark:text-stone-300 text-xs transition-colors"
     >
-      <FolderPlus class="w-3.5 h-3.5" />
+      <FolderPlus class="w-4 h-4" />
       <span class="hidden sm:inline">Sammlung</span>
     </button>
 
