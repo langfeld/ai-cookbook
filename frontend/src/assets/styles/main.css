@@ -90,8 +90,9 @@
  * Basis-Styles
  * ============================================ */
 
-/* Smooth Scrolling */
+/* Basis-Schriftgröße: 17px statt 16px für bessere Lesbarkeit */
 html {
+  font-size: 17px;
   scroll-behavior: smooth;
 }
 

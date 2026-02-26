@@ -35,7 +35,7 @@
             <span class="meta-badge"><Clock class="w-3.5 h-3.5" /> {{ recipe.total_time }} Min.</span>
             <span class="meta-badge"><Users class="w-3.5 h-3.5" /> {{ recipe.servings }} Port.</span>
             <span class="meta-badge" :class="difficultyColor">{{ difficultyEmoji }} {{ recipe.difficulty }}</span>
-            <span v-if="recipe.times_cooked" class="meta-badge"><ChefHat class="w-3.5 h-3.5" /> {{ recipe.times_cooked }}×</span>
+            <button v-if="recipe.times_cooked" @click="showHistoryPopup = true" class="meta-badge cursor-pointer hover:bg-stone-200 dark:hover:bg-stone-700 transition-colors"><ChefHat class="w-3.5 h-3.5" /> {{ recipe.times_cooked }}×</button>
           </div>
 
           <!-- Kategorien -->
@@ -200,18 +200,7 @@
             </div>
           </div>
 
-          <!-- Kochhistorie -->
-          <div v-if="recipe.history?.length" class="bg-white dark:bg-stone-900 p-4 border border-stone-200 dark:border-stone-800 rounded-xl">
-            <h2 class="mb-3 font-semibold text-stone-800 dark:text-stone-100 text-base">📊 Kochhistorie</h2>
-            <div class="space-y-1.5">
-              <div v-for="entry in recipe.history" :key="entry.id"
-                class="flex items-center gap-3 text-stone-600 dark:text-stone-400 text-sm">
-                <span>{{ formatDate(entry.cooked_at) }}</span>
-                <span v-if="entry.rating" class="text-amber-400">{{ '⭐'.repeat(entry.rating) }}</span>
-                <span v-if="entry.notes" class="text-stone-400">– {{ entry.notes }}</span>
-              </div>
-            </div>
-          </div>
+
         </div>
       </div>
     </div>
@@ -220,6 +209,32 @@
     <div v-else class="flex justify-center py-16">
       <div class="border-2 border-primary-200 border-t-primary-600 rounded-full w-8 h-8 animate-spin" />
     </div>
+
+    <!-- ═══════════════════ KOCHHISTORIE POPUP ═══════════════════ -->
+    <Teleport to="body">
+      <Transition name="fade">
+        <div v-if="showHistoryPopup" class="z-50 fixed inset-0 flex justify-center items-center bg-black/40 p-4" @click.self="showHistoryPopup = false">
+          <div class="bg-white dark:bg-stone-900 shadow-2xl border border-stone-200 dark:border-stone-700 rounded-2xl w-full max-w-sm overflow-hidden">
+            <div class="flex justify-between items-center p-5 border-stone-200 dark:border-stone-700 border-b">
+              <h3 class="font-bold text-stone-800 dark:text-stone-100 text-lg">📊 Kochhistorie</h3>
+              <button @click="showHistoryPopup = false"
+                class="hover:bg-stone-100 dark:hover:bg-stone-800 p-1.5 rounded-full transition-colors">
+                <X class="w-5 h-5 text-stone-500" />
+              </button>
+            </div>
+            <div class="p-5 max-h-72 overflow-y-auto space-y-2.5">
+              <div v-if="recipe?.history?.length" v-for="entry in recipe.history" :key="entry.id"
+                class="flex items-center gap-3 text-stone-600 dark:text-stone-400 text-sm">
+                <span class="shrink-0">{{ formatDate(entry.cooked_at) }}</span>
+                <span v-if="entry.rating" class="text-amber-400 shrink-0">{{ '⭐'.repeat(entry.rating) }}</span>
+                <span v-if="entry.notes" class="text-stone-400 truncate">– {{ entry.notes }}</span>
+              </div>
+              <p v-else class="text-stone-400 text-sm">Noch keine Einträge.</p>
+            </div>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
 
     <!-- ═══════════════════ WOCHENPLANER MODAL ═══════════════════ -->
     <Teleport to="body">
@@ -379,6 +394,7 @@ const { loadIcons, getEmoji } = useIngredientIcons();
 const recipe = computed(() => recipesStore.currentRecipe);
 const adjustedServings = ref(4);
 const showDeleteDialog = ref(false);
+const showHistoryPopup = ref(false);
 const deleting = ref(false);
 const showMealPlanSwapDialog = ref(false);
 const pendingSwapData = ref(null);
