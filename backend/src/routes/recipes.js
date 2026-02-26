@@ -26,6 +26,62 @@ import { generateId, safePath, getWeekStart, scaleIngredient, convertToBaseUnit,
 
 const ALLOWED_MIMES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/heic', 'image/heif']);
 
+/**
+ * Vorräte für ein Rezept abziehen.
+ * Wird sowohl beim „Als gekocht markieren" als auch potenziell vom Mealplan verwendet.
+ *
+ * @param {number} userId - Der Benutzer, dessen Vorräte angepasst werden
+ * @param {number} recipeId - Das Rezept, dessen Zutaten abgezogen werden
+ * @param {number} originalServings - Original-Portionszahl des Rezepts
+ * @param {number} targetServings - Ziel-Portionszahl
+ * @param {Object} [ingredientOverrides] - Optionale Map: Zutatname (lowercase) → absolute Menge (in Originaleinheit)
+ * @returns {number} Anzahl der aktualisierten Pantry-Items
+ */
+function deductPantryForRecipe(userId, recipeId, originalServings, targetServings, ingredientOverrides = null) {
+  let pantryUpdated = 0;
+  const ingredients = db.prepare('SELECT * FROM ingredients WHERE recipe_id = ?').all(recipeId);
+
+  for (const ing of ingredients) {
+    if (ing.is_optional) continue;
+
+    const overrideKey = ing.name.toLowerCase().trim();
+    let scaledAmount;
+
+    if (ingredientOverrides && overrideKey in ingredientOverrides) {
+      // Override: Wert ist bereits die endgültige Menge in der Originaleinheit der Zutat
+      scaledAmount = ingredientOverrides[overrideKey];
+    } else {
+      // Standard-Skalierung nach Portionen
+      scaledAmount = ing.amount
+        ? scaleIngredient(ing.amount, originalServings, targetServings)
+        : null;
+    }
+
+    if (!scaledAmount || scaledAmount <= 0) continue;
+
+    const normalized = convertToBaseUnit(scaledAmount, ing.unit);
+
+    const pantryItem = db.prepare(
+      'SELECT * FROM pantry WHERE user_id = ? AND LOWER(ingredient_name) = LOWER(?)'
+    ).get(userId, ing.name);
+
+    if (!pantryItem) continue;
+    if (pantryItem.is_permanent) continue;
+
+    const pantryNormalized = convertToBaseUnit(pantryItem.amount, pantryItem.unit);
+    const compat = unitsCompatible(pantryNormalized.unit, normalized.unit);
+    if (!compat.compatible) continue;
+
+    const adjustedAmount = normalized.amount * compat.factor;
+    const newAmount = Math.max(0, pantryNormalized.amount - adjustedAmount);
+    db.prepare('UPDATE pantry SET amount = ?, unit = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
+      .run(newAmount, pantryNormalized.unit, pantryItem.id);
+    pantryUpdated++;
+  }
+
+  return pantryUpdated;
+}
+
 export default async function recipesRoutes(fastify) {
   // Alle Rezept-Routen erfordern Authentifizierung
   fastify.addHook('onRequest', fastify.authenticate);
@@ -759,6 +815,8 @@ export default async function recipesRoutes(fastify) {
   /**
    * POST /api/recipes/:id/cooked
    * Als gekocht markieren (für Kochhistorie)
+   * Unterstützt individuelle Zutatenmengen-Overrides (ingredientOverrides).
+   * Pantry-Abzug findet IMMER statt – nicht nur bei Wochenplan-Einträgen.
    */
   fastify.post('/:id/cooked', {
     schema: {
@@ -771,13 +829,18 @@ export default async function recipesRoutes(fastify) {
           servings: { type: 'integer' },
           rating: { type: 'integer', minimum: 1, maximum: 5 },
           notes: { type: 'string' },
+          ingredientOverrides: {
+            type: 'object',
+            description: 'Map von Zutatname (lowercase) → angepasste Menge (skaliert, in Originaleinheit)',
+            additionalProperties: { type: 'number' },
+          },
         },
       },
     },
   }, async (request) => {
     const userId = request.user.id;
     const recipeId = request.params.id;
-    const { servings, rating, notes } = request.body || {};
+    const { servings, rating, notes, ingredientOverrides } = request.body || {};
 
     // Kochhistorie eintragen
     db.prepare(
@@ -789,9 +852,13 @@ export default async function recipesRoutes(fastify) {
       'UPDATE recipes SET times_cooked = times_cooked + 1, last_cooked_at = CURRENT_TIMESTAMP WHERE id = ?'
     ).run(recipeId);
 
+    // Rezept-Originalportionen laden
+    const recipeRow = db.prepare('SELECT servings FROM recipes WHERE id = ?').get(recipeId);
+    const originalServings = recipeRow?.servings || servings || 4;
+    const targetServings = servings || originalServings;
+
     // ── Wochenplan-Sync: Wenn das Rezept heute im Plan steht → auch dort als gekocht markieren ──
     let mealPlanUpdated = false;
-    let pantryUpdated = 0;
 
     const currentWeekStart = getWeekStart();
     const now = new Date();
@@ -813,40 +880,10 @@ export default async function recipesRoutes(fastify) {
       // Eintrag als gekocht markieren
       db.prepare('UPDATE meal_plan_entries SET is_cooked = 1 WHERE id = ?').run(mealPlanEntry.id);
       mealPlanUpdated = true;
-
-      // Vorräte abziehen (gleiche Logik wie im Mealplan-Endpoint)
-      const mealServings = mealPlanEntry.servings || mealPlanEntry.original_servings;
-      const ingredients = db.prepare('SELECT * FROM ingredients WHERE recipe_id = ?').all(recipeId);
-
-      for (const ing of ingredients) {
-        if (ing.is_optional) continue;
-
-        const scaledAmount = ing.amount
-          ? scaleIngredient(ing.amount, mealPlanEntry.original_servings, mealServings)
-          : null;
-
-        if (!scaledAmount || scaledAmount <= 0) continue;
-
-        const normalized = convertToBaseUnit(scaledAmount, ing.unit);
-
-        const pantryItem = db.prepare(
-          'SELECT * FROM pantry WHERE user_id = ? AND LOWER(ingredient_name) = LOWER(?)'
-        ).get(userId, ing.name);
-
-        if (!pantryItem) continue;
-        if (pantryItem.is_permanent) continue;
-
-        const pantryNormalized = convertToBaseUnit(pantryItem.amount, pantryItem.unit);
-        const compat = unitsCompatible(pantryNormalized.unit, normalized.unit);
-        if (!compat.compatible) continue;
-
-        const adjustedAmount = normalized.amount * compat.factor;
-        const newAmount = Math.max(0, pantryNormalized.amount - adjustedAmount);
-        db.prepare('UPDATE pantry SET amount = ?, unit = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
-          .run(newAmount, pantryNormalized.unit, pantryItem.id);
-        pantryUpdated++;
-      }
     }
+
+    // ── Vorräte IMMER abziehen (unabhängig vom Wochenplan) ──
+    const pantryUpdated = deductPantryForRecipe(userId, recipeId, originalServings, targetServings, ingredientOverrides);
 
     // ── Wenn nicht heute, aber an einem anderen Tag dieser Woche → Info zurückgeben ──
     let pendingMealPlanSync = null;

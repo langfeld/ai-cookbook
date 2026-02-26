@@ -23,6 +23,7 @@ Eine KI-gestützte Rezeptverwaltung mit intelligentem Wochenplaner (Score-Algori
 - **Zutaten-Icons** — Emoji-Zuordnungen für Zutaten (z. B. 🍅 Tomate, 🧄 Knoblauch). Über Admin-Bereich verwaltbar mit Emoji-Picker
 - **Farbige Zutatenerkennung** — Zutaten werden in Kochschritten farblich hervorgehoben
 - **Portionsrechner** — Zutatenmengen dynamisch umrechnen
+- **Mengenanpassung** — Im Anpassungsmodus einzelne Zutatenmengen editieren (z. B. mehr Soße). Direkt neben dem Eingabefeld wird der verfügbare Vorrat angezeigt (`[250] / 150 g`), farbkodiert nach Verfügbarkeit (grau = ausreichend, amber = teilweise, rot = leer). Änderungen gelten nur für die aktuelle Sitzung. Beim Kochen werden die angepassten Mengen aus dem Vorratsschrank abgezogen
 - **Kochhistorie** — Protokoll, wann welches Rezept zuletzt gekocht wurde
 - **Favoriten** — Lieblingsrezepte markieren und filtern
 - **Sammlungen** — Rezepte in frei erstellbare Sammlungen organisieren (mit Icon & Farbe). Ein Rezept kann mehreren Sammlungen angehören. Sammlungen lassen sich in der Rezeptübersicht als Filter verwenden
@@ -89,6 +90,7 @@ Eine KI-gestützte Rezeptverwaltung mit intelligentem Wochenplaner (Score-Algori
 - **Ablaufdaten** — MHD-Tracking mit Warnungen bei bald ablaufenden Artikeln (Badge in der Navigation)
 - **Verbrauchsfunktion** — Teilmengen entnehmen
 - **Automatischer Nachschub** — Überschüsse aus Einkäufen und verschobene Artikel werden erfasst
+- **Rezept-Integration** — Vorratsmengen direkt in der Rezept-Detailansicht sehen und beim Kochen automatisch abziehen (auch ohne Wochenplan)
 - **Export** — Vorräte als CSV oder JSON exportieren
 - **Import** — Vorräte aus CSV oder JSON importieren (mit Dateivorschau, Zusammenführung bestehender Einträge)
 
@@ -369,7 +371,7 @@ zauberjournal/
 | `POST` | `/import-text` | KI-Text-Import |
 | `POST` | `/:id/image` | Bild hochladen/ersetzen |
 | `POST` | `/:id/favorite` | Favorit togglen |
-| `POST` | `/:id/cooked` | Als gekocht markieren |
+| `POST` | `/:id/cooked` | Als gekocht markieren (mit optionalen `ingredientOverrides` für angepasste Mengen, Vorratsabzug) |
 | `GET` | `/export` | Eigene Rezepte als JSON exportieren (`?include_images=true` für Bilder) |
 | `POST` | `/import` | Rezepte aus JSON-Datei importieren (max. 100 pro Import) |
 
@@ -424,6 +426,7 @@ zauberjournal/
 | `PUT` | `/:id` | Vorrat bearbeiten |
 | `DELETE` | `/:id` | Vorrat entfernen |
 | `POST` | `/:id/use` | Menge verbrauchen |
+| `POST` | `/check` | Vorratsmengen für eine Zutatenliste prüfen (Alias-Auflösung, Einheiten-Konvertierung) |
 | `POST` | `/import` | Vorräte aus CSV/JSON importieren (Multipart-Upload) |
 
 ### REWE (`/api/rewe`)

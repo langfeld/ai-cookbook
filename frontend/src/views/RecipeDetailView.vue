@@ -120,7 +120,7 @@
           <h2 class="font-semibold text-stone-800 dark:text-stone-100 text-lg">
             🥕 Zutaten
           </h2>
-          <div class="flex items-center gap-3">
+          <div class="flex flex-wrap items-center gap-3">
             <!-- Ansichts-Toggle (nur bei echten Gruppen) -->
             <div v-if="hasGroups" class="flex bg-stone-100 dark:bg-stone-800 p-0.5 rounded-lg">
               <button
@@ -168,7 +168,36 @@
                 <Plus class="w-4 h-4" />
               </button>
             </div>
+            <!-- Anpassungsmodus-Toggle -->
+            <button
+              @click="toggleAdjustmentMode"
+              :class="[
+                'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors',
+                adjustmentMode
+                  ? 'bg-primary-100 dark:bg-primary-900/50 text-primary-700 dark:text-primary-300'
+                  : 'bg-stone-100 dark:bg-stone-800 text-stone-500 dark:text-stone-400 hover:text-stone-700 dark:hover:text-stone-300'
+              ]"
+              :title="adjustmentMode ? 'Mengen-Anpassung deaktivieren' : 'Einzelne Mengen anpassen'"
+            >
+              <Warehouse class="w-3.5 h-3.5" />
+              {{ adjustmentMode ? 'Anpassung aktiv' : 'Mengen anpassen' }}
+            </button>
           </div>
+        </div>
+
+        <!-- Hinweis + Alle-zurücksetzen (nur im Anpassungsmodus) -->
+        <div v-if="adjustmentMode" class="flex flex-wrap justify-between items-center gap-2 mb-3">
+          <p class="text-stone-400 dark:text-stone-500 text-xs">
+            Klicke auf eine Menge, um sie individuell anzupassen. Rechts siehst du den verfügbaren Vorrat.
+          </p>
+          <button
+            v-if="overrideCount > 0"
+            @click="resetAllOverrides"
+            class="flex items-center gap-1 text-stone-400 hover:text-stone-600 dark:hover:text-stone-300 text-xs transition-colors"
+          >
+            <RotateCcw class="w-3 h-3" />
+            Alle zurücksetzen ({{ overrideCount }})
+          </button>
         </div>
 
         <!-- Zutaten-Liste: Alle (flach, zusammengeführt) -->
@@ -179,20 +208,73 @@
             class="flex items-center gap-3 hover:bg-stone-50 dark:hover:bg-stone-800/50 px-3 py-1.5 rounded-lg transition-colors"
           >
             <span class="w-5 text-base text-center shrink-0" :title="ing.name">{{ getEmoji(ing.name) || '•' }}</span>
-            <span
-              class="font-medium text-stone-800 dark:text-stone-200 text-sm text-right shrink-0"
-              :class="ing.amounts.length > 1 ? 'min-w-20' : 'w-20'"
-            >
-              <template v-for="(a, i) in ing.amounts" :key="i">
-                <template v-if="i > 0">, </template>
-                {{ scaleAmount(a.amount) }}&nbsp;{{ a.unit }}
-              </template>
-            </span>
+
+            <!-- Mengen: Normalansicht -->
+            <template v-if="!adjustmentMode">
+              <span
+                class="font-medium text-stone-800 dark:text-stone-200 text-sm text-right shrink-0"
+                :class="ing.amounts.length > 1 ? 'min-w-20' : 'w-20'"
+              >
+                <template v-for="(a, i) in ing.amounts" :key="i">
+                  <template v-if="i > 0">, </template>
+                  {{ scaleAmount(a.amount) }}&nbsp;{{ a.unit }}
+                </template>
+              </span>
+            </template>
+
+            <!-- Mengen: Anpassungsmodus -->
+            <template v-else>
+              <span class="flex items-center gap-1.5 w-36 shrink-0">
+                <template v-if="ing.amounts.length === 1">
+                  <input
+                    type="number"
+                    :value="hasOverride(ing.name) ? ingredientOverrides[ing.name.toLowerCase().trim()] : Math.round(scaleAmountRaw(ing.amounts[0].amount) * 100) / 100"
+                    @change="setIngredientOverride(ing.name.toLowerCase().trim(), $event.target.value)"
+                    step="any"
+                    min="0"
+                    class="bg-white dark:bg-stone-800 py-0.5 pr-1 pl-2 border border-stone-300 focus:border-primary-400 dark:border-stone-600 rounded focus:outline-none focus:ring-1 focus:ring-primary-400 w-16 font-medium text-stone-800 dark:text-stone-200 text-sm text-right ingredient-number-input"
+                    :class="hasOverride(ing.name) ? 'ring-1 ring-primary-300 dark:ring-primary-600 border-primary-300 dark:border-primary-600' : ''"
+                  />
+                  <!-- Vorratsanzeige: [input] / vorrat einheit -->
+                  <span v-if="getPantryInfo(ing.name)" class="tabular-nums text-xs whitespace-nowrap"
+                    :class="
+                      getPantryInfo(ing.name).isPermanent
+                        ? 'text-stone-400 dark:text-stone-500'
+                        : getPantryInfo(ing.name).amount >= getEffectiveAmount(ing)
+                          ? 'text-stone-400 dark:text-stone-500'
+                          : getPantryInfo(ing.name).amount > 0
+                            ? 'text-amber-500 dark:text-amber-400'
+                            : 'text-red-400 dark:text-red-400'
+                    "
+                  >/ <template v-if="getPantryInfo(ing.name).isPermanent">∞</template><template v-else>{{ getPantryInfo(ing.name).amount ? formatAmount(getPantryInfo(ing.name).amount) : '0' }}</template></span>
+                  <span class="text-stone-500 dark:text-stone-400 text-xs">{{ ing.amounts[0].unit }}</span>
+                </template>
+                <template v-else>
+                  <span class="font-medium text-stone-800 dark:text-stone-200 text-sm text-right">
+                    <template v-for="(a, i) in ing.amounts" :key="i">
+                      <template v-if="i > 0">, </template>
+                      {{ scaleAmount(a.amount) }}&nbsp;{{ a.unit }}
+                    </template>
+                  </span>
+                </template>
+                <!-- Reset pro Zutat -->
+                <button
+                  v-if="hasOverride(ing.name)"
+                  @click="resetIngredientOverride(ing.name.toLowerCase().trim())"
+                  class="text-stone-400 hover:text-stone-600 dark:hover:text-stone-300 transition-colors"
+                  title="Zurücksetzen"
+                >
+                  <RotateCcw class="w-3 h-3" />
+                </button>
+              </span>
+            </template>
+
             <span class="flex-1 text-stone-700 dark:text-stone-300 text-sm">
               {{ ing.name }}
               <span v-if="ing.is_optional" class="ml-1 text-stone-400 text-xs">(optional)</span>
               <span v-if="ing.notes" class="ml-1 text-stone-400 text-xs">– {{ ing.notes }}</span>
             </span>
+
           </li>
         </ul>
 
@@ -209,14 +291,56 @@
                 class="flex items-center gap-3 hover:bg-stone-50 dark:hover:bg-stone-800/50 px-3 py-1.5 rounded-lg transition-colors"
               >
                 <span class="w-5 text-base text-center shrink-0" :title="ing.name">{{ getEmoji(ing.name) || '•' }}</span>
-                <span class="w-20 font-medium text-stone-800 dark:text-stone-200 text-sm text-right">
-                  {{ scaleAmount(ing.amount) }} {{ ing.unit }}
-                </span>
+
+                <!-- Mengen: Normalansicht -->
+                <template v-if="!adjustmentMode">
+                  <span class="w-20 font-medium text-stone-800 dark:text-stone-200 text-sm text-right">
+                    {{ scaleAmount(ing.amount) }} {{ ing.unit }}
+                  </span>
+                </template>
+
+                <!-- Mengen: Anpassungsmodus -->
+                <template v-else>
+                  <span class="flex items-center gap-1.5 w-36 shrink-0">
+                    <input
+                      type="number"
+                      :value="hasOverride(ing.name) ? ingredientOverrides[ing.name.toLowerCase().trim()] : Math.round(scaleAmountRaw(ing.amount) * 100) / 100"
+                      @change="setIngredientOverride(ing.name.toLowerCase().trim(), $event.target.value)"
+                      step="any"
+                      min="0"
+                      class="bg-white dark:bg-stone-800 py-0.5 pr-1 pl-2 border border-stone-300 focus:border-primary-400 dark:border-stone-600 rounded focus:outline-none focus:ring-1 focus:ring-primary-400 w-16 font-medium text-stone-800 dark:text-stone-200 text-sm text-right ingredient-number-input"
+                      :class="hasOverride(ing.name) ? 'ring-1 ring-primary-300 dark:ring-primary-600 border-primary-300 dark:border-primary-600' : ''"
+                    />
+                    <!-- Vorratsanzeige: [input] / vorrat einheit -->
+                    <span v-if="getPantryInfo(ing.name)" class="tabular-nums text-xs whitespace-nowrap"
+                      :class="
+                        getPantryInfo(ing.name).isPermanent
+                          ? 'text-stone-400 dark:text-stone-500'
+                          : getPantryInfo(ing.name).amount >= getEffectiveAmount(ing)
+                            ? 'text-stone-400 dark:text-stone-500'
+                            : getPantryInfo(ing.name).amount > 0
+                              ? 'text-amber-500 dark:text-amber-400'
+                              : 'text-red-400 dark:text-red-400'
+                      "
+                    >/ <template v-if="getPantryInfo(ing.name).isPermanent">∞</template><template v-else>{{ getPantryInfo(ing.name).amount ? formatAmount(getPantryInfo(ing.name).amount) : '0' }}</template></span>
+                    <span class="text-stone-500 dark:text-stone-400 text-xs">{{ ing.unit }}</span>
+                    <button
+                      v-if="hasOverride(ing.name)"
+                      @click="resetIngredientOverride(ing.name.toLowerCase().trim())"
+                      class="text-stone-400 hover:text-stone-600 dark:hover:text-stone-300 transition-colors"
+                      title="Zurücksetzen"
+                    >
+                      <RotateCcw class="w-3 h-3" />
+                    </button>
+                  </span>
+                </template>
+
                 <span class="flex-1 text-stone-700 dark:text-stone-300 text-sm">
                   {{ ing.name }}
                   <span v-if="ing.is_optional" class="ml-1 text-stone-400 text-xs">(optional)</span>
                   <span v-if="ing.notes" class="ml-1 text-stone-400 text-xs">– {{ ing.notes }}</span>
                 </span>
+
               </li>
             </ul>
           </div>
@@ -407,12 +531,13 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue';
+import { ref, reactive, computed, onMounted, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useRecipesStore } from '@/stores/recipes.js';
 import { useMealPlanStore } from '@/stores/mealplan.js';
+import { usePantryStore } from '@/stores/pantry.js';
 import { useNotification } from '@/composables/useNotification.js';
-import { Star, Clock, Users, ChefHat, Pencil, Plus, Minus, Trash2, List, Layers, CalendarPlus, X, ChevronLeft, ChevronRight, Maximize } from 'lucide-vue-next';
+import { Star, Clock, Users, ChefHat, Pencil, Plus, Minus, Trash2, List, Layers, CalendarPlus, X, ChevronLeft, ChevronRight, Maximize, Warehouse, RotateCcw } from 'lucide-vue-next';
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue';
 import AddToCollection from '@/components/collections/AddToCollection.vue';
 import CookingMode from '@/components/recipes/CookingMode.vue';
@@ -424,6 +549,7 @@ const route = useRoute();
 const router = useRouter();
 const recipesStore = useRecipesStore();
 const mealPlanStore = useMealPlanStore();
+const pantryStore = usePantryStore();
 const { showSuccess } = useNotification();
 const { loadIcons, getEmoji } = useIngredientIcons();
 
@@ -435,6 +561,67 @@ const showMealPlanSwapDialog = ref(false);
 const pendingSwapData = ref(null);
 const ingredientView = ref('all');
 const showCookingMode = ref(false);
+
+// ─── Zutaten-Anpassungsmodus ───
+const adjustmentMode = ref(false);
+const ingredientOverrides = reactive({});
+
+/** Anzahl aktiver Overrides */
+const overrideCount = computed(() => Object.keys(ingredientOverrides).length);
+
+/** Anpassungsmodus aktivieren/deaktivieren */
+async function toggleAdjustmentMode() {
+  adjustmentMode.value = !adjustmentMode.value;
+  if (adjustmentMode.value) {
+    // Verfügbare Vorratsmengen laden
+    const ingredients = (recipe.value?.ingredients || []).map(ing => ({
+      name: ing.name,
+      amount: scaleAmountRaw(ing.amount),
+      unit: ing.unit,
+    }));
+    await pantryStore.checkIngredients(ingredients);
+  } else {
+    pantryStore.clearIngredientAvailability();
+  }
+}
+
+/** Override für eine Zutat setzen */
+function setIngredientOverride(key, value) {
+  const num = parseFloat(value);
+  if (isNaN(num) || num < 0) return;
+  ingredientOverrides[key] = num;
+}
+
+/** Override für eine Zutat zurücksetzen */
+function resetIngredientOverride(key) {
+  delete ingredientOverrides[key];
+}
+
+/** Alle Overrides zurücksetzen */
+function resetAllOverrides() {
+  for (const key of Object.keys(ingredientOverrides)) {
+    delete ingredientOverrides[key];
+  }
+}
+
+/** Effektive Menge einer Zutat (mit Override oder skaliert) */
+function getEffectiveAmount(ing) {
+  const key = ing.name.toLowerCase().trim();
+  if (key in ingredientOverrides) {
+    return ingredientOverrides[key];
+  }
+  return scaleAmountRaw(ing.amount);
+}
+
+/** Vorrats-Info für eine Zutat abrufen */
+function getPantryInfo(name) {
+  return pantryStore.ingredientAvailability.get(name.toLowerCase().trim()) || null;
+}
+
+/** Hat eine Zutat einen Override? */
+function hasOverride(name) {
+  return name.toLowerCase().trim() in ingredientOverrides;
+}
 
 // ─── Wochenplaner-Modal ───
 const showPlannerModal = ref(false);
@@ -682,14 +869,34 @@ const dayNames = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Sa
 const mealTypeLabels = { mittag: 'Mittagessen', abendessen: 'Abendessen' };
 
 async function markCooked() {
-  const data = await recipesStore.markAsCooked(recipe.value.id, { servings: adjustedServings.value });
+  // ingredientOverrides vorbereiten: nur Overrides senden, die vom skalierten Wert abweichen
+  const overrides = {};
+  if (Object.keys(ingredientOverrides).length) {
+    for (const [key, val] of Object.entries(ingredientOverrides)) {
+      overrides[key] = val;
+    }
+  }
+
+  const data = await recipesStore.markAsCooked(recipe.value.id, {
+    servings: adjustedServings.value,
+    ingredientOverrides: Object.keys(overrides).length ? overrides : undefined,
+  });
   let msg = 'Als gekocht markiert! 👨‍🍳';
-  if (data?.mealPlanUpdated) {
-    const pantryMsg = data.pantryUpdated ? ` (${data.pantryUpdated} Vorräte angepasst)` : '';
-    msg = `Als gekocht markiert & im Wochenplan erledigt! 👨‍🍳${pantryMsg}`;
+  if (data?.pantryUpdated) {
+    const pantryMsg = ` (${data.pantryUpdated} Vorräte angepasst)`;
+    msg = data?.mealPlanUpdated
+      ? `Als gekocht markiert & im Wochenplan erledigt! 👨‍🍳${pantryMsg}`
+      : `Als gekocht markiert! 👨‍🍳${pantryMsg}`;
+  } else if (data?.mealPlanUpdated) {
+    msg = 'Als gekocht markiert & im Wochenplan erledigt! 👨‍🍳';
   }
   showSuccess(msg);
   await recipesStore.fetchRecipe(recipe.value.id);
+
+  // Anpassungsmodus zurücksetzen
+  adjustmentMode.value = false;
+  resetAllOverrides();
+  pantryStore.clearIngredientAvailability();
 
   // Rezept steht an einem anderen Tag auf dem Wochenplan → Swap anbieten
   if (data?.pendingMealPlanSync) {
@@ -733,6 +940,13 @@ onMounted(async () => {
     adjustedServings.value = recipe.value.servings;
   }
 });
+
+// Bei Rezept-Wechsel: Anpassungsmodus zurücksetzen
+watch(() => route.params.id, () => {
+  adjustmentMode.value = false;
+  resetAllOverrides();
+  pantryStore.clearIngredientAvailability();
+});
 </script>
 
 <style scoped>
@@ -751,5 +965,14 @@ onMounted(async () => {
 :is(.dark .meta-badge) {
   background-color: var(--color-stone-800);
   color: var(--color-stone-400);
+}
+/* Nativer Number-Spinner: dezenter und mit Abstand zur Zahl */
+.ingredient-number-input::-webkit-inner-spin-button,
+.ingredient-number-input::-webkit-outer-spin-button {
+  opacity: 1;
+  margin-left: 6px;
+}
+.ingredient-number-input {
+  -moz-appearance: textfield;
 }
 </style>

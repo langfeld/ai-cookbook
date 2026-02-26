@@ -19,6 +19,9 @@ export const usePantryStore = defineStore('pantry', () => {
   const recipeViewLoading = ref(false);
   const selectedWeekStart = ref(null);
 
+  // Zutaten-Verfügbarkeit (für Rezept-Detailansicht)
+  const ingredientAvailability = ref(new Map());
+
   const api = useApi();
 
   // Items nach Kategorie gruppiert
@@ -92,6 +95,31 @@ export const usePantryStore = defineStore('pantry', () => {
     return data;
   }
 
+  /** Vorratsmengen für eine Liste von Zutaten prüfen (für Rezept-Detailansicht) */
+  async function checkIngredients(ingredients) {
+    try {
+      const data = await api.post('/pantry/check', { ingredients });
+      const availability = new Map();
+      for (const ing of data.ingredients) {
+        availability.set(ing.name.toLowerCase().trim(), {
+          amount: ing.pantryAmount,
+          unit: ing.pantryUnit,
+          available: ing.available,
+          isPermanent: ing.isPermanent,
+        });
+      }
+      ingredientAvailability.value = availability;
+      return data;
+    } catch {
+      ingredientAvailability.value = new Map();
+    }
+  }
+
+  /** Zutaten-Verfügbarkeit zurücksetzen */
+  function clearIngredientAvailability() {
+    ingredientAvailability.value = new Map();
+  }
+
   /** Rezept-Ansicht laden (gruppiert nach Wochenplan-Rezepten) */
   async function fetchRecipeView(weekStart = null) {
     recipeViewLoading.value = true;
@@ -130,6 +158,9 @@ export const usePantryStore = defineStore('pantry', () => {
   return {
     items, categories, expiringCount, loading, groupedItems,
     recipeViewData, recipeViewLoading, selectedWeekStart, recipeGroups, unassignedItems, availableWeeks,
-    fetchItems, addItem, updateItem, useAmount, removeItem, deleteItemsBatch, importItems, fetchRecipeView,
+    ingredientAvailability,
+    fetchItems, addItem, updateItem, useAmount, removeItem, deleteItemsBatch, importItems,
+    checkIngredients, clearIngredientAvailability,
+    fetchRecipeView,
   };
 });

@@ -717,4 +717,107 @@ export default async function pantryRoutes(fastify) {
 
     return { message: 'Menge entnommen', remaining: newAmount };
   });
+
+  /**
+   * POST /api/pantry/check
+   * Verfügbare Vorratsmengen für eine Liste von Zutaten abfragen.
+   * Wird in der Rezept-Ansicht verwendet, um Vorräte neben den Zutaten anzuzeigen.
+   */
+  fastify.post('/check', {
+    schema: {
+      description: 'Vorratsmengen für mehrere Zutaten prüfen',
+      tags: ['Vorratsschrank'],
+      security: [{ bearerAuth: [] }],
+      body: {
+        type: 'object',
+        required: ['ingredients'],
+        properties: {
+          ingredients: {
+            type: 'array',
+            items: {
+              type: 'object',
+              required: ['name'],
+              properties: {
+                name: { type: 'string' },
+                amount: { type: 'number' },
+                unit: { type: 'string' },
+              },
+            },
+          },
+        },
+      },
+    },
+  }, async (request) => {
+    const userId = request.user.id;
+    const { ingredients } = request.body;
+
+    // Alias-Tabelle laden
+    const aliasRows = db.prepare(
+      'SELECT alias_name, canonical_name FROM ingredient_aliases WHERE user_id = ?'
+    ).all(userId);
+    const aliasMap = new Map();
+    for (const row of aliasRows) {
+      aliasMap.set(row.alias_name.toLowerCase(), row.canonical_name.toLowerCase());
+    }
+
+    function resolveAlias(name) {
+      return aliasMap.get(name.toLowerCase()) || name.toLowerCase();
+    }
+
+    // Alle Pantry-Items des Users laden
+    const pantryItems = db.prepare(
+      'SELECT * FROM pantry WHERE user_id = ?'
+    ).all(userId);
+
+    // Pantry-Pool aufbauen (resolved name → item)
+    const pantryPool = {};
+    for (const item of pantryItems) {
+      const key = resolveAlias(item.ingredient_name);
+      if (!pantryPool[key]) {
+        const base = convertToBaseUnit(item.amount, item.unit);
+        pantryPool[key] = { amount: base.amount, unit: base.unit, isPermanent: !!item.is_permanent };
+      } else {
+        // Mehrere Einträge für gleiche Zutat zusammenführen
+        const base = convertToBaseUnit(item.amount, item.unit);
+        const existing = pantryPool[key];
+        const compat = unitsCompatible(existing.unit, base.unit);
+        if (compat.compatible) {
+          existing.amount += base.amount * compat.factor;
+        }
+      }
+    }
+
+    // Ergebnis pro angefragter Zutat
+    const result = ingredients.map(ing => {
+      const key = resolveAlias(ing.name);
+      const pantry = pantryPool[key];
+
+      if (!pantry) {
+        return { name: ing.name, pantryAmount: 0, pantryUnit: '', available: false, isPermanent: false };
+      }
+
+      // Prüfen ob angefragte Menge kompatibel ist
+      let displayAmount = pantry.amount;
+      let displayUnit = pantry.unit;
+
+      if (ing.amount && ing.unit) {
+        const reqBase = convertToBaseUnit(ing.amount, ing.unit);
+        const compat = unitsCompatible(pantry.unit, reqBase.unit);
+        if (compat.compatible) {
+          displayAmount = pantry.amount;
+          displayUnit = pantry.unit;
+        }
+      }
+
+      return {
+        name: ing.name,
+        pantryAmount: Math.round(displayAmount * 100) / 100,
+        pantryUnit: displayUnit,
+        available: pantry.amount > 0 || pantry.isPermanent,
+        isPermanent: pantry.isPermanent,
+      };
+    });
+
+    return { ingredients: result };
+  });
 }
