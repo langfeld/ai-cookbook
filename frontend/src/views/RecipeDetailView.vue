@@ -205,7 +205,8 @@
           <li
             v-for="ing in flatIngredients"
             :key="ing.id"
-            class="flex items-center gap-3 hover:bg-stone-50 dark:hover:bg-stone-800/50 px-3 py-1.5 rounded-lg transition-colors"
+            class="flex items-center gap-2 sm:gap-3 hover:bg-stone-50 dark:hover:bg-stone-800/50 px-2 sm:px-3 py-1.5 rounded-lg transition-colors"
+            :class="adjustmentMode ? 'flex-wrap' : ''"
           >
             <span class="w-5 text-base text-center shrink-0" :title="ing.name">{{ getEmoji(ing.name) || '•' }}</span>
 
@@ -224,7 +225,7 @@
 
             <!-- Mengen: Anpassungsmodus -->
             <template v-else>
-              <span class="flex items-center gap-1.5 w-36 shrink-0">
+              <span class="flex items-center gap-1.5 shrink-0">
                 <template v-if="ing.amounts.length === 1">
                   <input
                     type="number"
@@ -269,7 +270,7 @@
               </span>
             </template>
 
-            <span class="flex-1 text-stone-700 dark:text-stone-300 text-sm">
+            <span class="text-stone-700 dark:text-stone-300 text-sm" :class="adjustmentMode ? 'basis-full sm:basis-auto sm:flex-1 pl-7 sm:pl-0 -mt-1 sm:mt-0' : 'flex-1'">
               {{ ing.name }}
               <span v-if="ing.is_optional" class="ml-1 text-stone-400 text-xs">(optional)</span>
               <span v-if="ing.notes" class="ml-1 text-stone-400 text-xs">– {{ ing.notes }}</span>
@@ -288,7 +289,8 @@
               <li
                 v-for="ing in group"
                 :key="ing.id"
-                class="flex items-center gap-3 hover:bg-stone-50 dark:hover:bg-stone-800/50 px-3 py-1.5 rounded-lg transition-colors"
+                class="flex items-center gap-2 sm:gap-3 hover:bg-stone-50 dark:hover:bg-stone-800/50 px-2 sm:px-3 py-1.5 rounded-lg transition-colors"
+                :class="adjustmentMode ? 'flex-wrap' : ''"
               >
                 <span class="w-5 text-base text-center shrink-0" :title="ing.name">{{ getEmoji(ing.name) || '•' }}</span>
 
@@ -301,7 +303,7 @@
 
                 <!-- Mengen: Anpassungsmodus -->
                 <template v-else>
-                  <span class="flex items-center gap-1.5 w-36 shrink-0">
+                  <span class="flex items-center gap-1.5 shrink-0">
                     <input
                       type="number"
                       :value="hasOverride(ing.name) ? ingredientOverrides[ing.name.toLowerCase().trim()] : Math.round(scaleAmountRaw(ing.amount) * 100) / 100"
@@ -335,7 +337,7 @@
                   </span>
                 </template>
 
-                <span class="flex-1 text-stone-700 dark:text-stone-300 text-sm">
+                <span class="text-stone-700 dark:text-stone-300 text-sm" :class="adjustmentMode ? 'basis-full sm:basis-auto sm:flex-1 pl-7 sm:pl-0 -mt-1 sm:mt-0' : 'flex-1'">
                   {{ ing.name }}
                   <span v-if="ing.is_optional" class="ml-1 text-stone-400 text-xs">(optional)</span>
                   <span v-if="ing.notes" class="ml-1 text-stone-400 text-xs">– {{ ing.notes }}</span>
