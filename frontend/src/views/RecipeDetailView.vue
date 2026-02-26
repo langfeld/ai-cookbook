@@ -14,12 +14,13 @@
     <div v-if="recipe" class="space-y-6 animate-fade-in">
 
       <!-- ═══════ HEADER ═══════ -->
-      <div class="flex md:flex-row flex-col gap-6">
+      <div class="flex md:flex-row flex-col gap-6 lg:grid lg:grid-cols-[minmax(272px,320px)_1fr]">
         <!-- Bild -->
-        <div class="bg-stone-100 dark:bg-stone-800 rounded-xl w-full md:w-72 lg:w-80 aspect-video md:aspect-4/3 overflow-hidden shrink-0">
-          <img v-if="recipe.image_url" :src="recipe.image_url" :alt="recipe.title" class="w-full h-full object-cover" />
-          <div v-else class="flex justify-center items-center w-full h-full text-5xl">🍽️</div>
+        <div v-if="recipe.image_url"
+          class="bg-stone-100 dark:bg-stone-800 bg-cover bg-center rounded-xl w-full min-h-48 aspect-video lg:aspect-auto overflow-hidden"
+          :style="{ backgroundImage: `url(${recipe.image_url})` }">
         </div>
+        <div v-else class="flex justify-center items-center bg-stone-100 dark:bg-stone-800 rounded-xl w-full min-h-48 aspect-video lg:aspect-auto text-5xl">🍽️</div>
         <!-- Info -->
         <div class="flex-1 min-w-0">
           <div class="flex justify-between items-start gap-2">
@@ -28,10 +29,10 @@
               <Star class="w-5 h-5" :class="recipe.is_favorite ? 'fill-amber-400 text-amber-400' : 'text-stone-300'" />
             </button>
           </div>
-          <p v-if="recipe.description" class="mt-1.5 text-stone-500 dark:text-stone-400 text-sm line-clamp-2">{{ recipe.description }}</p>
+          <p v-if="recipe.description" class="mt-2.5 text-stone-500 dark:text-stone-400 text-sm line-clamp-2 leading-relaxed">{{ recipe.description }}</p>
 
           <!-- Meta -->
-          <div class="flex flex-wrap items-center gap-2 mt-4">
+          <div class="flex flex-wrap items-center gap-2.5 mt-5">
             <span class="meta-badge"><Clock class="w-3.5 h-3.5" /> {{ recipe.total_time }} Min.</span>
             <span class="meta-badge"><Users class="w-3.5 h-3.5" /> {{ recipe.servings }} Port.</span>
             <span class="meta-badge" :class="difficultyColor">{{ difficultyEmoji }} {{ recipe.difficulty }}</span>
@@ -39,7 +40,7 @@
           </div>
 
           <!-- Kategorien -->
-          <div v-if="recipe.categories?.length" class="flex flex-wrap gap-1.5 mt-2.5">
+          <div v-if="recipe.categories?.length" class="flex flex-wrap gap-2 mt-4">
             <span v-for="cat in recipe.categories" :key="cat.id"
               :style="{ borderColor: cat.color + '60', backgroundColor: cat.color + '15' }"
               class="px-2.5 py-0.5 border rounded-full text-xs">
@@ -48,7 +49,7 @@
           </div>
 
           <!-- Aktionen -->
-          <div class="flex flex-wrap items-center gap-2 mt-4">
+          <div class="flex flex-wrap items-center gap-2.5 mt-5">
             <button v-if="recipe.steps?.length" @click="showCookingMode = true"
               class="flex items-center gap-1.5 bg-stone-800 hover:bg-stone-700 dark:bg-stone-700 dark:hover:bg-stone-600 px-3 py-1.5 rounded-lg font-medium text-white text-sm transition-colors">
               <Maximize class="w-3.5 h-3.5" /> Kochmodus
@@ -112,9 +113,9 @@
           </div>
 
           <!-- Zutaten-Liste -->
-          <ul class="space-y-0.5">
+          <ul class="space-y-1">
             <li v-for="ing in flatIngredients" :key="ing.id"
-              class="flex items-center gap-2 hover:bg-stone-50 dark:hover:bg-stone-800/50 px-1.5 py-1 rounded-md transition-colors"
+              class="flex items-center gap-2 hover:bg-stone-50 dark:hover:bg-stone-800/50 px-1.5 py-1.5 rounded-md transition-colors"
               :class="adjustmentMode ? 'flex-wrap' : ''">
               <span class="w-5 text-sm text-center shrink-0" :title="ing.name">{{ getEmoji(ing.name) || '•' }}</span>
 
@@ -194,7 +195,7 @@
                       <Clock class="w-3 h-3" /> {{ step.duration_minutes }} Min.
                     </span>
                   </div>
-                  <p class="text-stone-600 dark:text-stone-400 text-sm leading-relaxed" v-html="highlightIngredients(step.instruction)" />
+                  <p class="text-stone-600 dark:text-stone-400 text-sm leading-loose" v-html="highlightIngredients(step.instruction)" />
                 </div>
               </div>
             </div>
