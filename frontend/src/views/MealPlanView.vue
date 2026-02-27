@@ -344,13 +344,40 @@
         </div>
 
         <!-- Karten-Grid -->
-        <div class="gap-4 grid grid-cols-2 xl:grid-cols-4"
+        <div class="gap-x-4 gap-y-8 grid grid-cols-2 xl:grid-cols-4"
           :class="mealTypes.length === 1 ? 'lg:grid-cols-4' : 'lg:grid-cols-3'">
 
           <div v-for="(day, dayIdx) in weekDays" :key="mt.key+'-lg-'+dayIdx"
+            class="space-y-2"
             @dragover.prevent="!isLocked && onDragOver(dayIdx, mt.key)"
             @dragleave="onDragLeave"
             @drop.prevent="!isLocked && onDrop(dayIdx, mt.key)">
+
+            <!-- Tag-Header (Kalender-Stil) -->
+            <div class="flex items-center gap-3">
+              <div class="flex justify-center items-center rounded-xl w-10 h-10 font-bold tabular-nums text-lg shrink-0"
+                :class="isToday(dayIdx)
+                  ? 'bg-primary-500 text-white shadow-sm'
+                  : isDayPast(dayIdx)
+                    ? 'bg-stone-100 dark:bg-stone-800 text-stone-400 dark:text-stone-500'
+                    : 'bg-stone-100 dark:bg-stone-800 text-stone-700 dark:text-stone-200'">
+                {{ day.dateObj.getDate() }}
+              </div>
+              <div class="min-w-0 leading-tight">
+                <div class="font-semibold text-sm truncate"
+                  :class="isToday(dayIdx)
+                    ? 'text-primary-600 dark:text-primary-400'
+                    : isDayPast(dayIdx)
+                      ? 'text-stone-400 dark:text-stone-500'
+                      : 'text-stone-700 dark:text-stone-200'">
+                  {{ day.dateObj.toLocaleDateString('de-DE', { weekday: 'long' }) }}
+                </div>
+                <div class="text-xs"
+                  :class="isToday(dayIdx) ? 'text-primary-500/70 dark:text-primary-400/60' : 'text-stone-400 dark:text-stone-500'">
+                  {{ day.dateObj.toLocaleDateString('de-DE', { month: 'long' }) }}
+                </div>
+              </div>
+            </div>
 
             <!-- Gefüllte Karte (RecipeCard-Design) -->
             <div v-if="getMeal(dayIdx, mt.key)"
@@ -369,11 +396,6 @@
                   class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                   loading="lazy" />
                 <div v-else class="flex justify-center items-center opacity-50 w-full h-full text-5xl">🍽️</div>
-
-                <!-- Tag-Badge (oben links) -->
-                <div class="top-2 left-2 absolute bg-black/60 backdrop-blur-sm px-2 py-0.5 rounded-full font-medium text-white text-xs">
-                  {{ weekDays[dayIdx].short }} {{ weekDays[dayIdx].date }}
-                </div>
 
                 <!-- Favorit-Button (oben rechts) -->
                 <button
@@ -444,7 +466,6 @@
               @dragover.prevent="!isLocked && onDragOver(dayIdx, mt.key)"
               @drop.prevent="!isLocked && onDrop(dayIdx, mt.key)">
               <div class="text-center">
-                <div class="mb-1 font-medium text-stone-400 dark:text-stone-500 text-xs">{{ weekDays[dayIdx].short }} {{ weekDays[dayIdx].date }}</div>
                 <Plus v-if="!isLocked" class="mx-auto w-6 h-6 text-stone-300 dark:text-stone-600" />
                 <Lock v-else class="mx-auto w-5 h-5 text-stone-300 dark:text-stone-600" />
               </div>
