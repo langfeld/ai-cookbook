@@ -603,16 +603,16 @@ export default async function pantryRoutes(fastify) {
     const transaction = db.transaction(() => {
       for (const item of items) {
         try {
-          const name = String(item.ingredient_name || item.name || '').trim();
+          const name = String(item.ingredient_name || item.name || '').trim().slice(0, 200);
           if (!name) { skipped++; continue; }
 
           const amount = parseFloat(item.amount) || 0;
           if (amount <= 0) { skipped++; errors.push(`Übersprungen: "${name}" (ungültige Menge)`); continue; }
 
-          const unit = String(item.unit || 'Stk').trim();
-          const category = String(item.category || 'Sonstiges').trim();
-          const expiry_date = item.expiry_date || null;
-          const notes = item.notes || null;
+          const unit = String(item.unit || 'Stk').trim().slice(0, 50);
+          const category = String(item.category || 'Sonstiges').trim().slice(0, 100);
+          const expiry_date = (item.expiry_date && /^\d{4}-\d{2}-\d{2}$/.test(item.expiry_date)) ? item.expiry_date : null;
+          const notes = item.notes ? String(item.notes).trim().slice(0, 500) : null;
           const isPermanent = item.is_permanent ? 1 : 0;
 
           const existing = findExisting.get(userId, name);

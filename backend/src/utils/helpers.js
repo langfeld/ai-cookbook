@@ -5,17 +5,85 @@
  */
 
 import { resolve, relative } from 'path';
+import { randomBytes } from 'crypto';
 
 /**
- * Generiert einen zufälligen String als ID
+ * Generiert einen kryptographisch sicheren zufälligen String als ID.
+ * Verwendet crypto.randomBytes statt Math.random() für Unvorhersagbarkeit.
  */
 export function generateId(length = 12) {
-  const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
-  let result = '';
-  for (let i = 0; i < length; i++) {
-    result += chars.charAt(Math.floor(Math.random() * chars.length));
+  return randomBytes(Math.ceil(length * 0.75))
+    .toString('base64url')
+    .slice(0, length);
+}
+
+/**
+ * Sanitiert einen String für die DB: trimmt, begrenzt Länge, entfernt Steuerzeichen.
+ * @param {*} value - Eingabewert (wird zu String konvertiert)
+ * @param {number} maxLen - Maximale Länge (default: 500)
+ * @returns {string} - Bereinigter String
+ */
+export function sanitize(value, maxLen = 500) {
+  if (value === null || value === undefined) return '';
+  return String(value)
+    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '') // Steuerzeichen entfernen (außer \t \n \r)
+    .trim()
+    .slice(0, maxLen);
+}
+
+/**
+ * Validiert ob ein String ein gültiges ISO-Datum ist (YYYY-MM-DD).
+ * @param {string} dateStr - Zu prüfendes Datum
+ * @returns {string|null} - Das Datum oder null wenn ungültig
+ */
+export function validateDate(dateStr) {
+  if (!dateStr || typeof dateStr !== 'string') return null;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return null;
+  const d = new Date(dateStr);
+  if (isNaN(d.getTime())) return null;
+  return dateStr;
+}
+
+/**
+ * Prüft ob eine URL auf eine private/interne Adresse zeigt (SSRF-Schutz).
+ * Blockiert localhost, private IP-Ranges, link-local, Metadata-Endpoints.
+ * @param {string} urlStr - Zu prüfende URL
+ * @returns {boolean} - true wenn die URL blockiert werden sollte
+ */
+export function isPrivateUrl(urlStr) {
+  try {
+    const parsed = new URL(urlStr);
+
+    // Nur http/https erlauben
+    if (!['http:', 'https:'].includes(parsed.protocol)) return true;
+
+    const host = parsed.hostname.toLowerCase();
+
+    // localhost
+    if (host === 'localhost' || host === '127.0.0.1' || host === '[::1]' || host === '::1') return true;
+
+    // IPv6 link-local
+    if (host.startsWith('[fe80:') || host.startsWith('fe80:')) return true;
+
+    // Private IPv4 Ranges
+    const ipv4Match = host.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+    if (ipv4Match) {
+      const [, a, b] = ipv4Match.map(Number);
+      if (a === 10) return true;                          // 10.0.0.0/8
+      if (a === 172 && b >= 16 && b <= 31) return true;   // 172.16.0.0/12
+      if (a === 192 && b === 168) return true;             // 192.168.0.0/16
+      if (a === 169 && b === 254) return true;             // 169.254.0.0/16 (link-local + AWS metadata)
+      if (a === 127) return true;                          // 127.0.0.0/8
+      if (a === 0) return true;                            // 0.0.0.0/8
+    }
+
+    // Docker internal
+    if (host.endsWith('.internal') || host.endsWith('.local')) return true;
+
+    return false;
+  } catch {
+    return true; // Bei Parse-Fehler blockieren
   }
-  return result;
 }
 
 /**

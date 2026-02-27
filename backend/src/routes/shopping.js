@@ -752,19 +752,21 @@ export default async function shoppingRoutes(fastify) {
 
     const transaction = db.transaction(() => {
       for (const list of importData.lists) {
-        const name = list.name || `Import ${new Date().toLocaleDateString('de-DE')}`;
+        const name = String(list.name || `Import ${new Date().toLocaleDateString('de-DE')}`).trim().slice(0, 200);
         const { lastInsertRowid } = insertList.run(userId, name, 0); // Importierte Listen immer inaktiv
         const listId = Number(lastInsertRowid);
         imported++;
 
         if (list.items?.length) {
-          for (const item of list.items) {
-            if (!item.ingredient_name) continue;
+          const items = list.items.slice(0, 500); // Max 500 items pro Liste
+          for (const item of items) {
+            const ingredientName = String(item.ingredient_name || '').trim().slice(0, 300);
+            if (!ingredientName) continue;
             insertItem.run(
               listId,
-              item.ingredient_name,
-              item.amount || null,
-              item.unit || null,
+              ingredientName,
+              typeof item.amount === 'number' ? Math.min(Math.max(item.amount, 0), 99999) : (parseFloat(item.amount) || null),
+              item.unit ? String(item.unit).trim().slice(0, 50) : null,
               item.is_checked ? 1 : 0
             );
             itemsImported++;

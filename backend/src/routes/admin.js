@@ -11,11 +11,11 @@
 
 import bcrypt from 'bcryptjs';
 import db from '../config/database.js';
-import { readdirSync, statSync, unlinkSync, readFileSync, writeFileSync, existsSync } from 'fs';
+import { readdirSync, statSync, unlinkSync, readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
 import { resolve, join } from 'path';
 import sharp from 'sharp';
 import { config } from '../config/env.js';
-import { safePath, generateId } from '../utils/helpers.js';
+import { safePath, generateId, sanitize, validateDate } from '../utils/helpers.js';
 import { resetProvider } from '../services/ai/provider.js';
 
 // Erlaubte Einstellungs-Keys (verhindert Injection beliebiger Keys)
@@ -80,6 +80,7 @@ export default async function adminRoutes(fastify) {
     const aliasCount = db.prepare('SELECT COUNT(*) as count FROM ingredient_aliases').get().count;
     const recipeBlockCount = db.prepare('SELECT COUNT(*) as count FROM recipe_blocks').get().count;
     const blockedIngredientCount = db.prepare('SELECT COUNT(*) as count FROM blocked_ingredients').get().count;
+    const collectionCount = db.prepare('SELECT COUNT(*) as count FROM collections').get().count;
 
     // Top 10 beliebteste Rezepte
     const popularRecipes = db.prepare(`
@@ -141,6 +142,7 @@ export default async function adminRoutes(fastify) {
       ingredient_aliases: aliasCount,
       blocked_ingredients: blockedIngredientCount,
       recipe_blocks: recipeBlockCount,
+      total_collections: collectionCount,
       storage_size: storageSize,
       db_size: dbSize?.size || 0,
       popular_recipes: popularRecipes,
@@ -668,28 +670,39 @@ export default async function adminRoutes(fastify) {
             continue;
           }
 
+          const VALID_DIFFICULTIES = new Set(['easy','medium','hard','einfach','mittel','schwer']);
+          const title = sanitize(recipe.title, 300);
+          const description = recipe.description ? sanitize(recipe.description, 5000) : null;
+          const servings = Math.min(Math.max(parseInt(recipe.servings) || 4, 1), 100);
+          const prepTime = Math.min(Math.max(parseInt(recipe.prep_time) || 0, 0), 10080);
+          const cookTime = Math.min(Math.max(parseInt(recipe.cook_time) || 0, 0), 10080);
+          const totalTime = Math.min(parseInt(recipe.total_time) || (prepTime + cookTime), 10080);
+          const difficulty = VALID_DIFFICULTIES.has(recipe.difficulty) ? recipe.difficulty : 'mittel';
+          const sourceUrl = recipe.source_url ? sanitize(recipe.source_url, 2000) : null;
+          const notes = recipe.notes ? sanitize(recipe.notes, 5000) : null;
+
           const recipeResult = db.prepare(`
             INSERT INTO recipes (user_id, title, description, servings, prep_time, cook_time, total_time, difficulty, source_url, is_favorite, notes, ai_generated)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           `).run(
             userId,
-            recipe.title,
-            recipe.description || null,
-            recipe.servings || 4,
-            recipe.prep_time || 0,
-            recipe.cook_time || 0,
-            recipe.total_time || (recipe.prep_time || 0) + (recipe.cook_time || 0),
-            recipe.difficulty || 'mittel',
-            recipe.source_url || null,
+            title,
+            description,
+            servings,
+            prepTime,
+            cookTime,
+            totalTime,
+            difficulty,
+            sourceUrl,
             recipe.is_favorite ? 1 : 0,
-            recipe.notes || null,
+            notes,
             recipe.ai_generated ? 1 : 0
           );
 
           const recipeId = recipeResult.lastInsertRowid;
 
           // Bild für spätere Verarbeitung vormerken (Sharp ist async)
-          if (recipe.image_base64) {
+          if (recipe.image_base64 && typeof recipe.image_base64 === 'string' && recipe.image_base64.length < 14 * 1024 * 1024) {
             try {
               const imgBuffer = Buffer.from(recipe.image_base64, 'base64');
               // Größenbegrenzung: max 10 MB raw
@@ -709,12 +722,14 @@ export default async function adminRoutes(fastify) {
               'INSERT OR IGNORE INTO recipe_categories (recipe_id, category_id) VALUES (?, ?)'
             );
             for (const cat of cats) {
-              const catName = typeof cat === 'string' ? cat : cat.name;
+              const catName = sanitize(typeof cat === 'string' ? cat : cat.name, 100);
               let catId = catMap.get(catName);
               if (!catId && catName) {
+                const catIcon = sanitize(typeof cat === 'object' && cat.icon ? cat.icon : '🍽️', 10);
+                const catColor = (typeof cat === 'object' && /^#[0-9a-fA-F]{6}$/.test(cat.color)) ? cat.color : '#6366f1';
                 const newCat = db.prepare(
                   'INSERT INTO categories (user_id, name, icon, color) VALUES (?, ?, ?, ?)'
-                ).run(userId, catName, cat.icon || '🍽️', cat.color || '#6366f1');
+                ).run(userId, catName, catIcon, catColor);
                 catId = newCat.lastInsertRowid;
                 catMap.set(catName, catId);
               }
@@ -749,7 +764,7 @@ export default async function adminRoutes(fastify) {
           imported++;
         } catch (err) {
           skipped++;
-          errors.push(`Fehler bei "${recipe.title || 'Unbenannt'}": ${err.message}`);
+          errors.push(`Fehler bei "${sanitize(recipe.title || 'Unbenannt', 50)}"`);
         }
       }
     });
@@ -914,16 +929,16 @@ export default async function adminRoutes(fastify) {
     const transaction = db.transaction(() => {
       for (const item of importData.items) {
         try {
-          const name = String(item.ingredient_name || item.name || '').trim();
+          const name = String(item.ingredient_name || item.name || '').trim().slice(0, 200);
           if (!name) { skipped++; continue; }
 
-          const amount = parseFloat(item.amount) || 0;
+          const amount = Math.min(Math.max(parseFloat(item.amount) || 0, 0), 99999);
           if (amount <= 0) { skipped++; continue; }
 
-          const unit = String(item.unit || 'Stk').trim();
-          const category = String(item.category || 'Sonstiges').trim();
-          const expiry_date = item.expiry_date || null;
-          const notes = item.notes || null;
+          const unit = String(item.unit || 'Stk').trim().slice(0, 50);
+          const category = String(item.category || 'Sonstiges').trim().slice(0, 100);
+          const expiry_date = (item.expiry_date && /^\d{4}-\d{2}-\d{2}$/.test(item.expiry_date)) ? item.expiry_date : null;
+          const notes = item.notes ? String(item.notes).trim().slice(0, 500) : null;
 
           const existing = findExisting.get(userId, name);
           if (existing) {
@@ -1094,16 +1109,16 @@ export default async function adminRoutes(fastify) {
     const transaction = db.transaction(() => {
       for (const pref of importData.preferences) {
         try {
-          const ingredientName = String(pref.ingredient_name || '').trim();
+          const ingredientName = String(pref.ingredient_name || '').trim().slice(0, 300);
           if (!ingredientName) { skipped++; continue; }
 
-          const productId = String(pref.rewe_product_id || '').trim();
+          const productId = String(pref.rewe_product_id || '').trim().slice(0, 100);
           if (!productId) { skipped++; continue; }
 
-          const productName = String(pref.rewe_product_name || '').trim();
-          const price = pref.rewe_price || null;
-          const packageSize = pref.rewe_package_size || null;
-          const timesSelected = parseInt(pref.times_selected) || 1;
+          const productName = String(pref.rewe_product_name || '').trim().slice(0, 500);
+          const price = typeof pref.rewe_price === 'number' ? Math.min(Math.max(pref.rewe_price, 0), 99999) : (parseFloat(pref.rewe_price) || null);
+          const packageSize = pref.rewe_package_size ? String(pref.rewe_package_size).trim().slice(0, 100) : null;
+          const timesSelected = Math.min(Math.max(parseInt(pref.times_selected) || 1, 1), 10000);
 
           const existing = findExisting.get(userId, ingredientName);
           upsertPref.run(userId, ingredientName, productId, productName, price, packageSize, timesSelected);
@@ -1246,12 +1261,26 @@ export default async function adminRoutes(fastify) {
     const transaction = db.transaction(() => {
       for (const user of importData.users) {
         try {
-          const username = String(user.username || '').trim();
-          const email = String(user.email || '').trim();
+          const username = String(user.username || '').trim().slice(0, 50);
+          const email = String(user.email || '').trim().slice(0, 255);
 
           if (!username || !email) {
             skipped++;
             errors.push(`Übersprungen: Benutzername oder E-Mail fehlt.`);
+            continue;
+          }
+
+          // Einfache E-Mail-Validierung
+          if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+            skipped++;
+            errors.push(`Ungültige E-Mail für "${username}".`);
+            continue;
+          }
+
+          // Benutzername: nur alphanumerisch + Bindestrich/Unterstrich
+          if (!/^[a-zA-Z0-9_-]+$/.test(username)) {
+            skipped++;
+            errors.push(`Ungültiger Benutzername "${username}".`);
             continue;
           }
 
@@ -1267,11 +1296,12 @@ export default async function adminRoutes(fastify) {
             continue;
           }
 
-          const displayName = user.display_name || username;
+          const displayName = String(user.display_name || username).trim().slice(0, 100);
           const role = (user.role === 'admin') ? 'admin' : 'user';
           const isActive = user.is_active !== undefined ? (user.is_active ? 1 : 0) : 1;
+          const createdAt = (user.created_at && /^\d{4}-\d{2}-\d{2}/.test(user.created_at)) ? String(user.created_at).slice(0, 30) : null;
 
-          insertUser.run(username, email, displayName, role, isActive, hashedTempPw, user.created_at || null);
+          insertUser.run(username, email, displayName, role, isActive, hashedTempPw, createdAt);
           imported++;
         } catch (err) {
           skipped++;
@@ -1456,8 +1486,8 @@ export default async function adminRoutes(fastify) {
       if (hasAliases) {
         for (const alias of importData.aliases) {
           try {
-            const canonicalName = String(alias.canonical_name || '').trim();
-            const aliasName = String(alias.alias_name || '').trim();
+            const canonicalName = String(alias.canonical_name || '').trim().slice(0, 300);
+            const aliasName = String(alias.alias_name || '').trim().slice(0, 300);
 
             if (!canonicalName || !aliasName) { skipped++; continue; }
 
@@ -1476,7 +1506,7 @@ export default async function adminRoutes(fastify) {
       if (hasBlocked) {
         for (const blocked of importData.blocked_ingredients) {
           try {
-            const ingredientName = String(blocked.ingredient_name || '').trim();
+            const ingredientName = String(blocked.ingredient_name || '').trim().slice(0, 300);
             if (!ingredientName) { blockedSkipped++; continue; }
 
             const result = upsertBlocked.run(userId, ingredientName);
@@ -1625,6 +1655,9 @@ export default async function adminRoutes(fastify) {
     if (!importData?.plans || !Array.isArray(importData.plans)) {
       return reply.status(400).send({ error: 'Ungültiges Export-Format. Erwartet: { plans: [...] }' });
     }
+    if (importData.plans.length > 500) {
+      return reply.status(400).send({ error: 'Maximal 500 Wochenpläne pro Import.' });
+    }
 
     const userId = targetUserId || request.user.id;
     const targetUser = db.prepare('SELECT id, username FROM users WHERE id = ?').get(userId);
@@ -1641,7 +1674,7 @@ export default async function adminRoutes(fastify) {
 
     const transaction = db.transaction(() => {
       for (const plan of importData.plans) {
-        if (!plan.week_start) { skipped++; continue; }
+        if (!plan.week_start || !/^\d{4}-\d{2}-\d{2}$/.test(plan.week_start)) { skipped++; continue; }
         if (existingPlan.get(userId, plan.week_start)) { skipped++; continue; }
 
         const { lastInsertRowid } = insertPlan.run(userId, plan.week_start);
@@ -1649,14 +1682,19 @@ export default async function adminRoutes(fastify) {
         imported++;
 
         if (plan.entries?.length) {
-          for (const entry of plan.entries) {
+          const validMealTypes = new Set(['fruehstueck', 'mittag', 'abendessen', 'snack']);
+          const entries = plan.entries.slice(0, 50);
+          for (const entry of entries) {
             let recipeId = entry.recipe_id;
             if (entry.recipe_title && !recipeId) {
               const recipe = findRecipe.get(userId, entry.recipe_title);
               if (recipe) recipeId = recipe.id;
             }
             if (!recipeId) continue;
-            insertEntry.run(planId, recipeId, entry.day_of_week ?? 0, entry.meal_type || 'mittag', entry.servings || 2, entry.is_cooked ? 1 : 0);
+            const dayOfWeek = Math.min(Math.max(parseInt(entry.day_of_week) || 0, 0), 6);
+            const mealType = validMealTypes.has(entry.meal_type) ? entry.meal_type : 'mittag';
+            const servings = Math.min(Math.max(parseInt(entry.servings) || 2, 1), 100);
+            insertEntry.run(planId, recipeId, dayOfWeek, mealType, servings, entry.is_cooked ? 1 : 0);
             entriesImported++;
           }
         }
@@ -1792,6 +1830,9 @@ export default async function adminRoutes(fastify) {
     if (!importData?.lists || !Array.isArray(importData.lists)) {
       return reply.status(400).send({ error: 'Ungültiges Export-Format. Erwartet: { lists: [...] }' });
     }
+    if (importData.lists.length > 500) {
+      return reply.status(400).send({ error: 'Maximal 500 Einkaufslisten pro Import.' });
+    }
 
     const userId = targetUserId || request.user.id;
     const targetUser = db.prepare('SELECT id, username FROM users WHERE id = ?').get(userId);
@@ -1806,15 +1847,19 @@ export default async function adminRoutes(fastify) {
 
     const transaction = db.transaction(() => {
       for (const list of importData.lists) {
-        const name = list.name || `Admin-Import ${new Date().toLocaleDateString('de-DE')}`;
+        const name = String(list.name || `Admin-Import ${new Date().toLocaleDateString('de-DE')}`).trim().slice(0, 200);
         const { lastInsertRowid } = insertList.run(userId, name, 0);
         const listId = Number(lastInsertRowid);
         imported++;
 
         if (list.items?.length) {
-          for (const item of list.items) {
-            if (!item.ingredient_name) continue;
-            insertItem.run(listId, item.ingredient_name, item.amount || null, item.unit || null, item.is_checked ? 1 : 0);
+          const items = list.items.slice(0, 500);
+          for (const item of items) {
+            const ingredientName = String(item.ingredient_name || '').trim().slice(0, 300);
+            if (!ingredientName) continue;
+            const amount = typeof item.amount === 'number' ? Math.min(Math.max(item.amount, 0), 99999) : (parseFloat(item.amount) || null);
+            const unit = item.unit ? String(item.unit).trim().slice(0, 50) : null;
+            insertItem.run(listId, ingredientName, amount, unit, item.is_checked ? 1 : 0);
             itemsImported++;
           }
         }
@@ -1930,6 +1975,9 @@ export default async function adminRoutes(fastify) {
     if (!importData?.blocks || !Array.isArray(importData.blocks)) {
       return reply.status(400).send({ error: 'Ungültiges Export-Format. Erwartet: { blocks: [...] }' });
     }
+    if (importData.blocks.length > 2000) {
+      return reply.status(400).send({ error: 'Maximal 2000 Rezept-Sperren pro Import.' });
+    }
 
     const userId = targetUserId || request.user.id;
     const targetUser = db.prepare('SELECT id, username FROM users WHERE id = ?').get(userId);
@@ -1949,14 +1997,16 @@ export default async function adminRoutes(fastify) {
           const recipe = findRecipe.get(userId, block.recipe_title);
           if (recipe) recipeId = recipe.id;
         }
-        if (!recipeId || !block.blocked_until) { skipped++; continue; }
+        if (!recipeId || !block.blocked_until || !/^\d{4}-\d{2}-\d{2}/.test(block.blocked_until)) { skipped++; continue; }
 
+        const blockedUntil = String(block.blocked_until).slice(0, 30);
+        const reason = block.reason ? String(block.reason).trim().slice(0, 500) : null;
         const existing = findExisting.get(userId, recipeId);
         if (existing) {
-          updateBlock.run(block.blocked_until, block.reason || null, existing.id);
+          updateBlock.run(blockedUntil, reason, existing.id);
           updated++;
         } else {
-          insertBlock.run(userId, recipeId, block.blocked_until, block.reason || null);
+          insertBlock.run(userId, recipeId, blockedUntil, reason);
           imported++;
         }
       }
@@ -1971,6 +2021,596 @@ export default async function adminRoutes(fastify) {
       updated,
       skipped,
       target_user: targetUser.username,
+    };
+  });
+
+  // ============================================
+  // Sammlungen Export/Import (Admin)
+  // ============================================
+
+  /**
+   * GET /api/admin/export/collections
+   * Alle Sammlungen exportieren (optional per User)
+   */
+  fastify.get('/export/collections', {
+    schema: {
+      description: 'Sammlungen aller Benutzer als JSON exportieren (Admin)',
+      tags: ['Admin'],
+      security: [{ bearerAuth: [] }],
+      querystring: {
+        type: 'object',
+        properties: {
+          user_id: { type: 'integer' },
+        },
+      },
+    },
+  }, async (request, reply) => {
+    const filterUserId = request.query.user_id;
+    let query = `
+      SELECT c.*, u.username as owner
+      FROM collections c
+      JOIN users u ON c.user_id = u.id
+    `;
+    const params = [];
+    if (filterUserId) {
+      query += ' WHERE c.user_id = ?';
+      params.push(filterUserId);
+    }
+    query += ' ORDER BY c.user_id, c.sort_order ASC, c.name ASC';
+
+    const collections = db.prepare(query).all(...params);
+
+    const exportData = {
+      version: '1.0',
+      exported_at: new Date().toISOString(),
+      source: 'Zauberjournal',
+      type: 'collections',
+      collection_count: collections.length,
+      collections: collections.map(col => {
+        const recipeTitles = db.prepare(`
+          SELECT r.title FROM recipes r
+          JOIN recipe_collections rc ON r.id = rc.recipe_id
+          WHERE rc.collection_id = ?
+        `).all(col.id).map(r => r.title);
+
+        return {
+          name: col.name,
+          icon: col.icon,
+          color: col.color,
+          sort_order: col.sort_order,
+          owner: col.owner,
+          recipe_titles: recipeTitles,
+        };
+      }),
+    };
+
+    reply.header('Content-Type', 'application/json');
+    reply.header('Content-Disposition', `attachment; filename="sammlungen-admin-export-${new Date().toISOString().split('T')[0]}.json"`);
+    return exportData;
+  });
+
+  /**
+   * POST /api/admin/import/collections
+   * Sammlungen für einen bestimmten User importieren
+   */
+  fastify.post('/import/collections', {
+    schema: {
+      description: 'Sammlungen für einen User importieren (Admin)',
+      tags: ['Admin'],
+      security: [{ bearerAuth: [] }],
+    },
+  }, async (request, reply) => {
+    let importData;
+    let targetUserId;
+
+    if (request.isMultipart()) {
+      const parts = {};
+      for await (const part of request.parts()) {
+        if (part.file) {
+          const buffer = await part.toBuffer();
+          parts.file = buffer.toString('utf-8').replace(/^\uFEFF/, '').trim();
+        } else {
+          parts[part.fieldname] = part.value;
+        }
+      }
+      if (!parts.file) return reply.status(400).send({ error: 'Keine Datei hochgeladen.' });
+      try { importData = JSON.parse(parts.file); } catch { return reply.status(400).send({ error: 'Ungültiges JSON.' }); }
+      targetUserId = parseInt(parts.user_id);
+    } else {
+      importData = request.body;
+      targetUserId = importData?.user_id;
+    }
+
+    if (!targetUserId) return reply.status(400).send({ error: 'user_id ist erforderlich.' });
+
+    const targetUser = db.prepare('SELECT id, username FROM users WHERE id = ?').get(targetUserId);
+    if (!targetUser) return reply.status(404).send({ error: 'Benutzer nicht gefunden.' });
+
+    if (!importData || !Array.isArray(importData.collections)) {
+      return reply.status(400).send({ error: 'Ungültiges Format: "collections"-Array erwartet.' });
+    }
+    if (importData.collections.length > 500) {
+      return reply.status(400).send({ error: 'Maximal 500 Sammlungen.' });
+    }
+
+    let imported = 0, updated = 0, skipped = 0, recipesLinked = 0;
+
+    const userRecipes = db.prepare('SELECT id, title FROM recipes WHERE user_id = ?').all(targetUserId);
+    const recipeTitleMap = new Map(userRecipes.map(r => [r.title.toLowerCase(), r.id]));
+
+    const transaction = db.transaction(() => {
+      for (const col of importData.collections) {
+        if (!col.name || typeof col.name !== 'string') { skipped++; continue; }
+
+        const name = col.name.trim().slice(0, 100);
+        const icon = (col.icon || '📁').slice(0, 10);
+        const color = /^#[0-9a-fA-F]{6}$/.test(col.color) ? col.color : '#6366f1';
+        const sortOrder = typeof col.sort_order === 'number' ? Math.min(Math.max(Math.floor(col.sort_order), 0), 9999) : 0;
+
+        const existing = db.prepare(
+          'SELECT id FROM collections WHERE user_id = ? AND name = ? COLLATE NOCASE'
+        ).get(targetUserId, name);
+
+        let collectionId;
+        if (existing) {
+          db.prepare('UPDATE collections SET icon = ?, color = ?, sort_order = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
+            .run(icon, color, sortOrder, existing.id);
+          collectionId = existing.id;
+          updated++;
+        } else {
+          const res = db.prepare('INSERT INTO collections (user_id, name, icon, color, sort_order) VALUES (?, ?, ?, ?, ?)')
+            .run(targetUserId, name, icon, color, sortOrder);
+          collectionId = res.lastInsertRowid;
+          imported++;
+        }
+
+        if (Array.isArray(col.recipe_titles)) {
+          const titles = col.recipe_titles.slice(0, 200);
+          for (const title of titles) {
+            if (typeof title !== 'string') continue;
+            const recipeId = recipeTitleMap.get(title.toLowerCase());
+            if (recipeId) {
+              const res = db.prepare('INSERT OR IGNORE INTO recipe_collections (recipe_id, collection_id) VALUES (?, ?)').run(recipeId, collectionId);
+              if (res.changes > 0) recipesLinked++;
+            }
+          }
+        }
+      }
+    });
+    transaction();
+
+    logAdminAction(request.user.id, 'Sammlungen importiert', `${imported} neu, ${updated} aktualisiert für ${targetUser.username}`);
+
+    return {
+      message: `${imported} neu, ${updated} aktualisiert, ${skipped} übersprungen. ${recipesLinked} Rezept-Zuordnungen.`,
+      imported, updated, skipped, recipes_linked: recipesLinked,
+      target_user: targetUser.username,
+    };
+  });
+
+  // ============================================
+  // Komplett-Backup als JSON (Admin)
+  // ============================================
+
+  /**
+   * GET /api/admin/backup/export-json
+   * Alle Daten aller (oder eines) Benutzer(s) als JSON exportieren
+   */
+  fastify.get('/backup/export-json', {
+    schema: {
+      description: 'Kompletter JSON-Export aller Benutzerdaten (Admin)',
+      tags: ['Admin'],
+      security: [{ bearerAuth: [] }],
+      querystring: {
+        type: 'object',
+        properties: {
+          user_id: { type: 'integer' },
+          include_images: { type: 'boolean', default: false },
+        },
+      },
+    },
+  }, async (request, reply) => {
+    const filterUserId = request.query.user_id;
+    const includeImages = request.query.include_images === true || request.query.include_images === 'true';
+
+    // Benutzer ermitteln
+    const users = filterUserId
+      ? db.prepare('SELECT id, username, display_name, email, role, is_active, created_at FROM users WHERE id = ?').all(filterUserId)
+      : db.prepare('SELECT id, username, display_name, email, role, is_active, created_at FROM users').all();
+
+    const exportData = {
+      version: '1.0',
+      exported_at: new Date().toISOString(),
+      source: 'Zauberjournal',
+      type: 'admin_full_backup',
+      user_count: users.length,
+      users: [],
+    };
+
+    for (const user of users) {
+      const userId = user.id;
+
+      // Rezepte
+      const recipes = db.prepare('SELECT * FROM recipes WHERE user_id = ?').all(userId);
+      const exportedRecipes = [];
+      for (const recipe of recipes) {
+        const categories = db.prepare(`
+          SELECT c.name, c.icon, c.color FROM categories c
+          JOIN recipe_categories rc ON c.id = rc.category_id WHERE rc.recipe_id = ?
+        `).all(recipe.id);
+        const ingredients = db.prepare(
+          'SELECT name, amount, unit, group_name, sort_order, is_optional, notes FROM ingredients WHERE recipe_id = ? ORDER BY group_name, sort_order'
+        ).all(recipe.id);
+        const steps = db.prepare(
+          'SELECT step_number, title, instruction, duration_minutes FROM cooking_steps WHERE recipe_id = ? ORDER BY step_number'
+        ).all(recipe.id);
+
+        const recipeExport = {
+          title: recipe.title, description: recipe.description, servings: recipe.servings,
+          prep_time: recipe.prep_time, cook_time: recipe.cook_time, total_time: recipe.total_time,
+          difficulty: recipe.difficulty, source_url: recipe.source_url, is_favorite: recipe.is_favorite,
+          notes: recipe.notes, ai_generated: recipe.ai_generated, times_cooked: recipe.times_cooked,
+          last_cooked_at: recipe.last_cooked_at, created_at: recipe.created_at,
+          categories, ingredients, steps,
+        };
+        if (includeImages && recipe.image_url) {
+          try {
+            const relPath = recipe.image_url.replace('/api/uploads/', '');
+            const imgPath = safePath(config.upload.path, relPath);
+            if (imgPath && existsSync(imgPath)) {
+              recipeExport.image_base64 = readFileSync(imgPath).toString('base64');
+              recipeExport.image_mime = 'image/webp';
+            }
+          } catch { /* skip */ }
+        }
+        exportedRecipes.push(recipeExport);
+      }
+
+      // Sammlungen
+      const collections = db.prepare('SELECT * FROM collections WHERE user_id = ? ORDER BY sort_order, name').all(userId);
+      const exportedCollections = collections.map(col => {
+        const recipeTitles = db.prepare(`
+          SELECT r.title FROM recipes r JOIN recipe_collections rc ON r.id = rc.recipe_id WHERE rc.collection_id = ?
+        `).all(col.id).map(r => r.title);
+        return { name: col.name, icon: col.icon, color: col.color, sort_order: col.sort_order, recipe_titles: recipeTitles };
+      });
+
+      // Pantry
+      const pantryItems = db.prepare(
+        'SELECT ingredient_name, amount, unit, category, expiry_date, notes, is_permanent FROM pantry WHERE user_id = ?'
+      ).all(userId);
+
+      // Meal Plans
+      const mealPlans = db.prepare('SELECT * FROM meal_plans WHERE user_id = ?').all(userId);
+      const exportedMealPlans = mealPlans.map(plan => {
+        const entries = db.prepare(`
+          SELECT mpe.day_of_week, mpe.meal_type, mpe.servings, mpe.is_cooked, r.title as recipe_title
+          FROM meal_plan_entries mpe LEFT JOIN recipes r ON mpe.recipe_id = r.id WHERE mpe.meal_plan_id = ?
+        `).all(plan.id);
+        return { week_start: plan.week_start, created_at: plan.created_at, entries };
+      });
+
+      // Shopping Lists
+      const shoppingLists = db.prepare('SELECT * FROM shopping_lists WHERE user_id = ?').all(userId);
+      const exportedShoppingLists = shoppingLists.map(list => {
+        const items = db.prepare(`
+          SELECT sli.ingredient_name, sli.amount, sli.unit, sli.is_checked, r.title as recipe_title, sli.rewe_product_name, sli.rewe_price
+          FROM shopping_list_items sli LEFT JOIN recipes r ON sli.recipe_id = r.id WHERE sli.shopping_list_id = ?
+        `).all(list.id);
+        return { name: list.name, is_active: list.is_active, created_at: list.created_at, items };
+      });
+
+      // Recipe Blocks
+      const recipeBlocks = db.prepare(`
+        SELECT rb.blocked_until, rb.reason, rb.created_at, r.title as recipe_title
+        FROM recipe_blocks rb JOIN recipes r ON rb.recipe_id = r.id WHERE rb.user_id = ?
+      `).all(userId);
+
+      // Ingredient Aliases
+      const ingredientAliases = db.prepare(
+        'SELECT canonical_name, alias_name FROM ingredient_aliases WHERE user_id = ?'
+      ).all(userId);
+
+      const blockedIngredients = db.prepare(
+        'SELECT ingredient_name FROM blocked_ingredients WHERE user_id = ?'
+      ).all(userId).map(b => b.ingredient_name);
+
+      exportData.users.push({
+        user: {
+          username: user.username,
+          display_name: user.display_name,
+          email: user.email,
+          role: user.role,
+          is_active: user.is_active,
+          created_at: user.created_at,
+        },
+        data: {
+          recipes: exportedRecipes,
+          collections: exportedCollections,
+          pantry: pantryItems,
+          meal_plans: exportedMealPlans,
+          shopping_lists: exportedShoppingLists,
+          recipe_blocks: recipeBlocks,
+          ingredient_aliases: ingredientAliases,
+          blocked_ingredients: blockedIngredients,
+        },
+      });
+    }
+
+    logAdminAction(request.user.id, 'JSON-Komplett-Export', `${users.length} Benutzer exportiert`);
+
+    reply.header('Content-Type', 'application/json');
+    reply.header('Content-Disposition', `attachment; filename="zauberjournal-admin-backup-${new Date().toISOString().split('T')[0]}.json"`);
+    return exportData;
+  });
+
+  /**
+   * POST /api/admin/backup/import-json
+   * Kompletter JSON-Import für einen Ziel-Benutzer
+   */
+  fastify.post('/backup/import-json', {
+    schema: {
+      description: 'Kompletter JSON-Import für einen Benutzer (Admin)',
+      tags: ['Admin'],
+      security: [{ bearerAuth: [] }],
+    },
+  }, async (request, reply) => {
+    let importData;
+    let targetUserId;
+
+    if (request.isMultipart()) {
+      const parts = {};
+      for await (const part of request.parts()) {
+        if (part.file) {
+          const buffer = await part.toBuffer();
+          parts.file = buffer.toString('utf-8').replace(/^\uFEFF/, '').trim();
+        } else {
+          parts[part.fieldname] = part.value;
+        }
+      }
+      if (!parts.file) return reply.status(400).send({ error: 'Keine Datei hochgeladen.' });
+      try { importData = JSON.parse(parts.file); } catch { return reply.status(400).send({ error: 'Ungültiges JSON.' }); }
+      targetUserId = parseInt(parts.user_id);
+    } else {
+      importData = request.body;
+      targetUserId = importData?.user_id;
+    }
+
+    if (!targetUserId) return reply.status(400).send({ error: 'user_id ist erforderlich.' });
+    const targetUser = db.prepare('SELECT id, username FROM users WHERE id = ?').get(targetUserId);
+    if (!targetUser) return reply.status(404).send({ error: 'Benutzer nicht gefunden.' });
+
+    if (!importData || importData.source !== 'Zauberjournal') {
+      return reply.status(400).send({ error: 'Ungültige Quelle — nur Zauberjournal-Backups.' });
+    }
+
+    // Unterstütze sowohl full_backup als auch admin_full_backup
+    let data;
+    if (importData.type === 'full_backup') {
+      data = importData.data;
+    } else if (importData.type === 'admin_full_backup') {
+      // Erste User-Sektion verwenden (oder passenden User finden)
+      if (Array.isArray(importData.users) && importData.users.length > 0) {
+        data = importData.users[0].data;
+      }
+    }
+    if (!data || typeof data !== 'object') {
+      return reply.status(400).send({ error: 'Keine gültigen Daten im Backup.' });
+    }
+
+    // Delegiere an die Backup-Import-Logik (gleiche Logik wie User-Backup)
+    // Wir re-implementieren hier nicht alles, sondern leiten auf /api/backup/import um
+    // indem wir die Daten in das erwartete Format bringen
+    const backupPayload = {
+      version: importData.version || '1.0',
+      exported_at: importData.exported_at,
+      source: 'Zauberjournal',
+      type: 'full_backup',
+      data,
+    };
+
+    // Wegen dem Ziel-User simulieren wir den Import direkt hier
+    // mit der gleichen Logik wie backup.js aber für den targetUserId
+    const userId = targetUserId;
+    const LIMITS = { recipes: 500, collections: 200, pantry: 2000, mealPlans: 200, shoppingLists: 500, recipeBlocks: 500, ingredientAliases: 5000, blockedIngredients: 5000, maxCategoriesPerRecipe: 20, maxIngredientsPerRecipe: 200, maxStepsPerRecipe: 100 };
+
+    function sanitize(val, maxLen = 10000) {
+      if (typeof val !== 'string') return typeof val === 'number' ? val : '';
+      return val.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '').trim().slice(0, maxLen);
+    }
+
+    const VALID_DIFFICULTIES = new Set(['easy','medium','hard','einfach','mittel','schwer']);
+
+    const recipes = Array.isArray(data.recipes) ? data.recipes.slice(0, LIMITS.recipes) : [];
+    const collections = Array.isArray(data.collections) ? data.collections.slice(0, LIMITS.collections) : [];
+    const pantry = Array.isArray(data.pantry) ? data.pantry.slice(0, LIMITS.pantry) : [];
+    const mealPlans = Array.isArray(data.meal_plans) ? data.meal_plans.slice(0, LIMITS.mealPlans) : [];
+    const shoppingLists = Array.isArray(data.shopping_lists) ? data.shopping_lists.slice(0, LIMITS.shoppingLists) : [];
+    const recipeBlocks = Array.isArray(data.recipe_blocks) ? data.recipe_blocks.slice(0, LIMITS.recipeBlocks) : [];
+    const ingredientAliases = Array.isArray(data.ingredient_aliases) ? data.ingredient_aliases.slice(0, LIMITS.ingredientAliases) : [];
+    const blockedIngredients = Array.isArray(data.blocked_ingredients) ? data.blocked_ingredients.slice(0, LIMITS.blockedIngredients) : [];
+
+    const result = {
+      recipes: { imported: 0, skipped: 0 },
+      collections: { imported: 0, updated: 0, skipped: 0, recipes_linked: 0 },
+      pantry: { imported: 0, updated: 0, skipped: 0 },
+      meal_plans: { imported: 0, skipped: 0, entries_imported: 0 },
+      shopping_lists: { imported: 0, items_imported: 0 },
+      recipe_blocks: { imported: 0, updated: 0, skipped: 0 },
+      ingredient_aliases: { imported: 0, updated: 0, skipped: 0 },
+      blocked_ingredients: { imported: 0, skipped: 0 },
+    };
+
+    const pendingImages = [];
+    const catMap = new Map();
+    const existingCats = db.prepare('SELECT id, name FROM categories WHERE user_id = ?').all(userId);
+    for (const c of existingCats) catMap.set(c.name.toLowerCase(), c.id);
+
+    function getOrCreateCategory(cat) {
+      const key = cat.name.toLowerCase();
+      if (catMap.has(key)) return catMap.get(key);
+      const res = db.prepare('INSERT INTO categories (user_id, name, icon, color) VALUES (?, ?, ?, ?)').run(userId, cat.name, cat.icon || '📁', cat.color || '#6366f1');
+      catMap.set(key, res.lastInsertRowid);
+      return res.lastInsertRowid;
+    }
+
+    const importedRecipeMap = new Map();
+    const existingRecipes = db.prepare('SELECT id, title FROM recipes WHERE user_id = ?').all(userId);
+    for (const r of existingRecipes) importedRecipeMap.set(r.title.toLowerCase(), r.id);
+
+    const transaction = db.transaction(() => {
+      // 1. Rezepte
+      for (const recipe of recipes) {
+        if (!recipe.title || typeof recipe.title !== 'string') { result.recipes.skipped++; continue; }
+        const title = sanitize(recipe.title, 200);
+        const existing = db.prepare('SELECT id FROM recipes WHERE user_id = ? AND LOWER(title) = LOWER(?)').get(userId, title);
+        if (existing) { importedRecipeMap.set(title.toLowerCase(), existing.id); result.recipes.skipped++; continue; }
+
+        const res = db.prepare(`INSERT INTO recipes (user_id, title, description, servings, prep_time, cook_time, total_time, difficulty, source_url, is_favorite, notes, ai_generated, times_cooked, last_cooked_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+          .run(userId, title, sanitize(recipe.description || '', 5000), Math.min(Math.max(1, parseInt(recipe.servings) || 4), 100), Math.min(parseInt(recipe.prep_time) || 0, 10080), Math.min(parseInt(recipe.cook_time) || 0, 10080), Math.min(parseInt(recipe.total_time) || 0, 10080), VALID_DIFFICULTIES.has(recipe.difficulty) ? recipe.difficulty : 'mittel', sanitize(recipe.source_url || '', 2000), recipe.is_favorite ? 1 : 0, sanitize(recipe.notes || '', 5000), recipe.ai_generated ? 1 : 0, Math.min(parseInt(recipe.times_cooked) || 0, 99999), recipe.last_cooked_at || null);
+        const newId = res.lastInsertRowid;
+        importedRecipeMap.set(title.toLowerCase(), newId);
+
+        if (Array.isArray(recipe.categories)) {
+          for (const cat of recipe.categories.slice(0, LIMITS.maxCategoriesPerRecipe)) {
+            if (!cat.name) continue;
+            db.prepare('INSERT OR IGNORE INTO recipe_categories (recipe_id, category_id) VALUES (?, ?)').run(newId, getOrCreateCategory(cat));
+          }
+        }
+        if (Array.isArray(recipe.ingredients)) {
+          for (const ing of recipe.ingredients.slice(0, LIMITS.maxIngredientsPerRecipe)) {
+            if (!ing.name) continue;
+            db.prepare('INSERT INTO ingredients (recipe_id, name, amount, unit, group_name, sort_order, is_optional, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(newId, sanitize(ing.name, 200), parseFloat(ing.amount) || null, sanitize(ing.unit || '', 50), sanitize(ing.group_name || '', 100), parseInt(ing.sort_order) || 0, ing.is_optional ? 1 : 0, sanitize(ing.notes || '', 500));
+          }
+        }
+        if (Array.isArray(recipe.steps)) {
+          for (const step of recipe.steps.slice(0, LIMITS.maxStepsPerRecipe)) {
+            if (!step.instruction) continue;
+            db.prepare('INSERT INTO cooking_steps (recipe_id, step_number, title, instruction, duration_minutes) VALUES (?, ?, ?, ?, ?)').run(newId, parseInt(step.step_number) || 0, sanitize(step.title || '', 200), sanitize(step.instruction, 5000), parseInt(step.duration_minutes) || null);
+          }
+        }
+        if (recipe.image_base64 && recipe.image_mime && typeof recipe.image_base64 === 'string' && recipe.image_base64.length < 14 * 1024 * 1024) pendingImages.push({ recipeId: newId, base64: recipe.image_base64 });
+        result.recipes.imported++;
+      }
+
+      // 2. Sammlungen
+      for (const col of collections) {
+        if (!col.name || typeof col.name !== 'string') { result.collections.skipped++; continue; }
+        const name = sanitize(col.name, 100);
+        const icon = sanitize(col.icon || '📁', 10);
+        const color = /^#[0-9a-fA-F]{6}$/.test(col.color) ? col.color : '#6366f1';
+        const sortOrder = typeof col.sort_order === 'number' ? col.sort_order : 0;
+        const existing = db.prepare('SELECT id FROM collections WHERE user_id = ? AND name = ? COLLATE NOCASE').get(userId, name);
+        let colId;
+        if (existing) { db.prepare('UPDATE collections SET icon = ?, color = ?, sort_order = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(icon, color, sortOrder, existing.id); colId = existing.id; result.collections.updated++; }
+        else { const r = db.prepare('INSERT INTO collections (user_id, name, icon, color, sort_order) VALUES (?, ?, ?, ?, ?)').run(userId, name, icon, color, sortOrder); colId = r.lastInsertRowid; result.collections.imported++; }
+        if (Array.isArray(col.recipe_titles)) {
+          for (const t of col.recipe_titles) { if (typeof t !== 'string') continue; const rid = importedRecipeMap.get(t.toLowerCase()); if (rid) { const r2 = db.prepare('INSERT OR IGNORE INTO recipe_collections (recipe_id, collection_id) VALUES (?, ?)').run(rid, colId); if (r2.changes > 0) result.collections.recipes_linked++; } }
+        }
+      }
+
+      // 3. Pantry
+      for (const item of pantry) {
+        if (!item.ingredient_name || typeof item.ingredient_name !== 'string') { result.pantry.skipped++; continue; }
+        const name = sanitize(item.ingredient_name, 200);
+        const ex = db.prepare('SELECT id FROM pantry WHERE user_id = ? AND LOWER(ingredient_name) = LOWER(?)').get(userId, name);
+        const amount = Math.min(Math.max(parseFloat(item.amount) || 1, 0), 99999);
+        const expiryDate = (item.expiry_date && /^\d{4}-\d{2}-\d{2}$/.test(item.expiry_date)) ? item.expiry_date : null;
+        if (ex) { db.prepare('UPDATE pantry SET amount = amount + ? WHERE id = ?').run(amount, ex.id); result.pantry.updated++; }
+        else { db.prepare('INSERT INTO pantry (user_id, ingredient_name, amount, unit, category, expiry_date, notes, is_permanent) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(userId, name, amount, sanitize(item.unit || 'Stk', 50), sanitize(item.category || 'Sonstiges', 100), expiryDate, sanitize(item.notes || '', 500), item.is_permanent ? 1 : 0); result.pantry.imported++; }
+      }
+
+      // 4. Wochenpläne
+      const validMealTypes = new Set(['fruehstueck', 'mittag', 'abendessen', 'snack', 'dinner', 'lunch', 'breakfast']);
+      for (const plan of mealPlans) {
+        if (!plan.week_start || !/^\d{4}-\d{2}-\d{2}$/.test(plan.week_start)) { result.meal_plans.skipped++; continue; }
+        const ex = db.prepare('SELECT id FROM meal_plans WHERE user_id = ? AND week_start = ?').get(userId, plan.week_start);
+        if (ex) { result.meal_plans.skipped++; continue; }
+        const pr = db.prepare('INSERT INTO meal_plans (user_id, week_start) VALUES (?, ?)').run(userId, plan.week_start);
+        result.meal_plans.imported++;
+        if (Array.isArray(plan.entries)) {
+          for (const e of plan.entries.slice(0, 50)) {
+            let rid = null;
+            if (e.recipe_title) rid = importedRecipeMap.get(e.recipe_title.toLowerCase()) || null;
+            if (!rid && e.recipe_id) { const c = db.prepare('SELECT id FROM recipes WHERE id = ? AND user_id = ?').get(e.recipe_id, userId); if (c) rid = c.id; }
+            if (!rid) continue;
+            const dayOfWeek = Math.min(Math.max(parseInt(e.day_of_week) || 0, 0), 6);
+            const mealType = validMealTypes.has(e.meal_type) ? e.meal_type : 'mittag';
+            const servings = Math.min(Math.max(parseInt(e.servings) || 2, 1), 100);
+            db.prepare('INSERT INTO meal_plan_entries (meal_plan_id, recipe_id, day_of_week, meal_type, servings, is_cooked) VALUES (?, ?, ?, ?, ?, ?)').run(pr.lastInsertRowid, rid, dayOfWeek, mealType, servings, e.is_cooked ? 1 : 0);
+            result.meal_plans.entries_imported++;
+          }
+        }
+      }
+
+      // 5. Einkaufslisten
+      for (const list of shoppingLists) {
+        const lr = db.prepare('INSERT INTO shopping_lists (user_id, name, is_active) VALUES (?, ?, 0)').run(userId, sanitize(list.name || 'Import', 200));
+        result.shopping_lists.imported++;
+        if (Array.isArray(list.items)) {
+          for (const item of list.items.slice(0, 500)) {
+            if (!item.ingredient_name) continue;
+            let rid = null;
+            if (item.recipe_title) rid = importedRecipeMap.get(item.recipe_title.toLowerCase()) || null;
+            const amount = typeof item.amount === 'number' ? Math.min(Math.max(item.amount, 0), 99999) : (parseFloat(item.amount) || 1);
+            db.prepare('INSERT INTO shopping_list_items (shopping_list_id, ingredient_name, amount, unit, is_checked, recipe_id) VALUES (?, ?, ?, ?, ?, ?)').run(lr.lastInsertRowid, sanitize(item.ingredient_name, 300), amount, sanitize(item.unit || '', 50), item.is_checked ? 1 : 0, rid);
+            result.shopping_lists.items_imported++;
+          }
+        }
+      }
+
+      // 6. Rezept-Sperren
+      for (const block of recipeBlocks) {
+        if (!block.recipe_title) { result.recipe_blocks.skipped++; continue; }
+        const rid = importedRecipeMap.get(block.recipe_title.toLowerCase());
+        if (!rid) { result.recipe_blocks.skipped++; continue; }
+        const ex = db.prepare('SELECT id FROM recipe_blocks WHERE user_id = ? AND recipe_id = ?').get(userId, rid);
+        if (ex) { db.prepare('UPDATE recipe_blocks SET blocked_until = ?, reason = ? WHERE id = ?').run(block.blocked_until || null, sanitize(block.reason || '', 500), ex.id); result.recipe_blocks.updated++; }
+        else { db.prepare('INSERT INTO recipe_blocks (user_id, recipe_id, blocked_until, reason) VALUES (?, ?, ?, ?)').run(userId, rid, block.blocked_until || null, sanitize(block.reason || '', 500)); result.recipe_blocks.imported++; }
+      }
+
+      // 7. Zutaten-Aliase
+      for (const alias of ingredientAliases) {
+        if (!alias.canonical_name || !alias.alias_name) { result.ingredient_aliases.skipped++; continue; }
+        const ex = db.prepare('SELECT id FROM ingredient_aliases WHERE user_id = ? AND alias_name = ? COLLATE NOCASE').get(userId, alias.alias_name);
+        if (ex) { db.prepare('UPDATE ingredient_aliases SET canonical_name = ? WHERE id = ?').run(sanitize(alias.canonical_name, 200), ex.id); result.ingredient_aliases.updated++; }
+        else { db.prepare('INSERT INTO ingredient_aliases (user_id, canonical_name, alias_name) VALUES (?, ?, ?)').run(userId, sanitize(alias.canonical_name, 200), sanitize(alias.alias_name, 200)); result.ingredient_aliases.imported++; }
+      }
+
+      // 8. Geblockte Zutaten
+      for (const name of blockedIngredients) {
+        if (typeof name !== 'string' || !name.trim()) { result.blocked_ingredients.skipped++; continue; }
+        const r = db.prepare('INSERT OR IGNORE INTO blocked_ingredients (user_id, ingredient_name) VALUES (?, ?)').run(userId, sanitize(name, 200));
+        if (r.changes > 0) result.blocked_ingredients.imported++; else result.blocked_ingredients.skipped++;
+      }
+    });
+    transaction();
+
+    // Bilder async verarbeiten
+    if (pendingImages.length > 0) {
+      const uploadsDir = resolve(config.upload.path, 'recipes');
+      if (!existsSync(uploadsDir)) mkdirSync(uploadsDir, { recursive: true });
+      for (const { recipeId, base64 } of pendingImages) {
+        try {
+          const imgBuffer = Buffer.from(base64, 'base64');
+          const filename = `${generateId()}.webp`;
+          const filePath = join(uploadsDir, filename);
+          const processed = await sharp(imgBuffer).resize(1200, 1200, { fit: 'inside', withoutEnlargement: true }).webp({ quality: 82 }).toBuffer();
+          writeFileSync(filePath, processed);
+          db.prepare('UPDATE recipes SET image_url = ? WHERE id = ?').run(`/api/uploads/recipes/${filename}`, recipeId);
+        } catch { /* skip */ }
+      }
+    }
+
+    logAdminAction(request.user.id, 'JSON-Komplett-Import', `Import für ${targetUser.username}`);
+
+    const totalImported = Object.values(result).reduce((sum, r) => sum + (r.imported || 0), 0);
+    const totalSkipped = Object.values(result).reduce((sum, r) => sum + (r.skipped || 0), 0);
+
+    return {
+      message: `Backup-Import für "${targetUser.username}" abgeschlossen: ${totalImported} importiert, ${totalSkipped} übersprungen.`,
+      target_user: targetUser.username,
+      details: result,
     };
   });
 

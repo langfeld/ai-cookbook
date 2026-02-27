@@ -22,9 +22,48 @@ import { config } from '../config/env.js';
 import { writeFileSync, readFileSync, existsSync } from 'fs';
 import { resolve, join } from 'path';
 import sharp from 'sharp';
-import { generateId, safePath, getWeekStart, scaleIngredient, convertToBaseUnit, unitsCompatible } from '../utils/helpers.js';
+import { generateId, safePath, getWeekStart, scaleIngredient, convertToBaseUnit, unitsCompatible, sanitize, isPrivateUrl, validateDate } from '../utils/helpers.js';
 
 const ALLOWED_MIMES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/heic', 'image/heif']);
+const VALID_DIFFICULTIES = new Set(['easy', 'medium', 'hard', 'einfach', 'mittel', 'schwer']);
+
+/**
+ * Sanitiert KI-Output bevor er in die DB geschrieben wird.
+ * Begrenzt Längen, validiert Typen, verhindert Injection.
+ */
+function sanitizeAiRecipe(parsed) {
+  return {
+    title: sanitize(parsed.title, 300) || 'Unbenanntes Rezept',
+    description: sanitize(parsed.description, 2000) || null,
+    servings: Math.min(Math.max(parseInt(parsed.servings) || 4, 1), 100),
+    prep_time: Math.min(Math.max(parseInt(parsed.prep_time) || 0, 0), 1440),
+    cook_time: Math.min(Math.max(parseInt(parsed.cook_time) || 0, 0), 1440),
+    total_time: Math.min(Math.max(parseInt(parsed.total_time) || 0, 0), 2880),
+    difficulty: VALID_DIFFICULTIES.has(parsed.difficulty) ? parsed.difficulty : 'mittel',
+    suggested_categories: Array.isArray(parsed.suggested_categories)
+      ? parsed.suggested_categories.slice(0, 20).map(c => sanitize(c, 100)).filter(Boolean)
+      : [],
+    ingredients: Array.isArray(parsed.ingredients)
+      ? parsed.ingredients.slice(0, 200).map((ing, idx) => ({
+        name: sanitize(ing.name, 300),
+        amount: typeof ing.amount === 'number' ? Math.min(Math.max(ing.amount, 0), 99999) : (parseFloat(ing.amount) || null),
+        unit: sanitize(ing.unit, 50),
+        group_name: sanitize(ing.group_name, 200) || null,
+        sort_order: idx,
+        is_optional: ing.is_optional ? 1 : 0,
+        notes: sanitize(ing.notes, 500) || null,
+      })).filter(i => i.name)
+      : [],
+    steps: Array.isArray(parsed.steps)
+      ? parsed.steps.slice(0, 100).map((step, idx) => ({
+        step_number: parseInt(step.step_number) || idx + 1,
+        title: sanitize(step.title, 300) || null,
+        instruction: sanitize(step.instruction, 5000),
+        duration_minutes: Math.min(Math.max(parseInt(step.duration_minutes) || 0, 0), 1440),
+      })).filter(s => s.instruction)
+      : [],
+  };
+}
 
 /**
  * Vorräte für ein Rezept abziehen.
@@ -349,7 +388,8 @@ export default async function recipesRoutes(fastify) {
     const categoryNames = categories.map(c => c.name);
 
     // KI-Rezepterkennung starten (ein oder mehrere Bilder)
-    const parsedRecipe = await parseRecipeFromImage(imageBuffers, categoryNames);
+    const rawParsed = await parseRecipeFromImage(imageBuffers, categoryNames);
+    const parsedRecipe = sanitizeAiRecipe(rawParsed);
 
     // Rezept in Datenbank speichern
     const transaction = db.transaction(() => {
@@ -360,11 +400,11 @@ export default async function recipesRoutes(fastify) {
         userId,
         parsedRecipe.title,
         parsedRecipe.description,
-        parsedRecipe.servings || 4,
-        parsedRecipe.prep_time || 0,
-        parsedRecipe.cook_time || 0,
-        parsedRecipe.total_time || 0,
-        parsedRecipe.difficulty || 'mittel',
+        parsedRecipe.servings,
+        parsedRecipe.prep_time,
+        parsedRecipe.cook_time,
+        parsedRecipe.total_time,
+        parsedRecipe.difficulty,
         `/api/uploads/${firstImagePath}`
       );
 
@@ -386,9 +426,9 @@ export default async function recipesRoutes(fastify) {
           INSERT INTO ingredients (recipe_id, name, amount, unit, group_name, sort_order, is_optional, notes)
           VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         `);
-        parsedRecipe.ingredients.forEach((ing, idx) => {
-          insertIng.run(recipeId, ing.name, ing.amount, ing.unit, ing.group_name, idx, ing.is_optional ? 1 : 0, ing.notes);
-        });
+        for (const ing of parsedRecipe.ingredients) {
+          insertIng.run(recipeId, ing.name, ing.amount, ing.unit, ing.group_name, ing.sort_order, ing.is_optional, ing.notes);
+        }
       }
 
       // Kochschritte einfügen
@@ -397,9 +437,9 @@ export default async function recipesRoutes(fastify) {
           INSERT INTO cooking_steps (recipe_id, step_number, title, instruction, duration_minutes)
           VALUES (?, ?, ?, ?, ?)
         `);
-        parsedRecipe.steps.forEach((step) => {
+        for (const step of parsedRecipe.steps) {
           insertStep.run(recipeId, step.step_number, step.title, step.instruction, step.duration_minutes);
-        });
+        }
       }
 
       return recipeId;
@@ -427,7 +467,7 @@ export default async function recipesRoutes(fastify) {
         type: 'object',
         required: ['text'],
         properties: {
-          text: { type: 'string', minLength: 10 },
+          text: { type: 'string', minLength: 10, maxLength: 50000 },
         },
       },
     },
@@ -436,7 +476,8 @@ export default async function recipesRoutes(fastify) {
     const { text } = request.body;
 
     const categories = db.prepare('SELECT name FROM categories WHERE user_id = ?').all(userId);
-    const parsedRecipe = await parseRecipeFromText(text, categories.map(c => c.name));
+    const rawParsed = await parseRecipeFromText(text, categories.map(c => c.name));
+    const parsedRecipe = sanitizeAiRecipe(rawParsed);
 
     // Gleiche Speicher-Logik wie bei Foto-Import (ohne Bild)
     const transaction = db.transaction(() => {
@@ -447,11 +488,11 @@ export default async function recipesRoutes(fastify) {
         userId,
         parsedRecipe.title,
         parsedRecipe.description,
-        parsedRecipe.servings || 4,
-        parsedRecipe.prep_time || 0,
-        parsedRecipe.cook_time || 0,
-        parsedRecipe.total_time || 0,
-        parsedRecipe.difficulty || 'mittel'
+        parsedRecipe.servings,
+        parsedRecipe.prep_time,
+        parsedRecipe.cook_time,
+        parsedRecipe.total_time,
+        parsedRecipe.difficulty
       );
 
       const recipeId = recipeResult.lastInsertRowid;
@@ -469,18 +510,18 @@ export default async function recipesRoutes(fastify) {
         const insertIng = db.prepare(
           'INSERT INTO ingredients (recipe_id, name, amount, unit, group_name, sort_order, is_optional, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
         );
-        parsedRecipe.ingredients.forEach((ing, idx) => {
-          insertIng.run(recipeId, ing.name, ing.amount, ing.unit, ing.group_name, idx, ing.is_optional ? 1 : 0, ing.notes);
-        });
+        for (const ing of parsedRecipe.ingredients) {
+          insertIng.run(recipeId, ing.name, ing.amount, ing.unit, ing.group_name, ing.sort_order, ing.is_optional, ing.notes);
+        }
       }
 
       if (parsedRecipe.steps?.length) {
         const insertStep = db.prepare(
           'INSERT INTO cooking_steps (recipe_id, step_number, title, instruction, duration_minutes) VALUES (?, ?, ?, ?, ?)'
         );
-        parsedRecipe.steps.forEach((step) => {
+        for (const step of parsedRecipe.steps) {
           insertStep.run(recipeId, step.step_number, step.title, step.instruction, step.duration_minutes);
-        });
+        }
       }
 
       return recipeId;
@@ -511,12 +552,18 @@ export default async function recipesRoutes(fastify) {
     const userId = request.user.id;
     const { url } = request.body;
 
+    // SSRF-Schutz: Keine internen URLs erlauben
+    if (isPrivateUrl(url)) {
+      return reply.status(400).send({ error: 'URLs zu internen/privaten Adressen sind nicht erlaubt.' });
+    }
+
     const categories = db.prepare('SELECT name FROM categories WHERE user_id = ?').all(userId);
-    const { recipe: parsedRecipe, imageUrl: sourceImageUrl } = await parseRecipeFromUrl(url, categories.map(c => c.name));
+    const { recipe: rawParsed, imageUrl: sourceImageUrl } = await parseRecipeFromUrl(url, categories.map(c => c.name));
+    const parsedRecipe = sanitizeAiRecipe(rawParsed);
 
     // Rezeptbild von der Quellseite herunterladen und lokal speichern
     let localImagePath = null;
-    if (sourceImageUrl) {
+    if (sourceImageUrl && !isPrivateUrl(sourceImageUrl)) {
       try {
         const imgResponse = await fetch(sourceImageUrl, {
           headers: {
@@ -531,6 +578,8 @@ export default async function recipesRoutes(fastify) {
           const contentType = imgResponse.headers.get('content-type') || '';
           if (contentType.startsWith('image/')) {
             const imgBuffer = Buffer.from(await imgResponse.arrayBuffer());
+            // Bild-Größenlimit: max 15 MB
+            if (imgBuffer.length > 15 * 1024 * 1024) throw new Error('Bild zu groß');
             const imageId = generateId();
             localImagePath = `recipes/${imageId}.webp`;
             const fullPath = resolve(config.upload.path, localImagePath);
@@ -555,14 +604,14 @@ export default async function recipesRoutes(fastify) {
         userId,
         parsedRecipe.title,
         parsedRecipe.description,
-        parsedRecipe.servings || 4,
-        parsedRecipe.prep_time || 0,
-        parsedRecipe.cook_time || 0,
-        parsedRecipe.total_time || 0,
-        parsedRecipe.difficulty || 'mittel',
+        parsedRecipe.servings,
+        parsedRecipe.prep_time,
+        parsedRecipe.cook_time,
+        parsedRecipe.total_time,
+        parsedRecipe.difficulty,
         localImagePath ? `/api/uploads/${localImagePath}` : null,
-        url,
-        `Importiert von: ${url}`
+        sanitize(url, 2000),
+        `Importiert von: ${sanitize(url, 2000)}`
       );
 
       const recipeId = recipeResult.lastInsertRowid;
@@ -580,18 +629,18 @@ export default async function recipesRoutes(fastify) {
         const insertIng = db.prepare(
           'INSERT INTO ingredients (recipe_id, name, amount, unit, group_name, sort_order, is_optional, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
         );
-        parsedRecipe.ingredients.forEach((ing, idx) => {
-          insertIng.run(recipeId, ing.name, ing.amount, ing.unit, ing.group_name, idx, ing.is_optional ? 1 : 0, ing.notes);
-        });
+        for (const ing of parsedRecipe.ingredients) {
+          insertIng.run(recipeId, ing.name, ing.amount, ing.unit, ing.group_name, ing.sort_order, ing.is_optional, ing.notes);
+        }
       }
 
       if (parsedRecipe.steps?.length) {
         const insertStep = db.prepare(
           'INSERT INTO cooking_steps (recipe_id, step_number, title, instruction, duration_minutes) VALUES (?, ?, ?, ?, ?)'
         );
-        parsedRecipe.steps.forEach((step) => {
+        for (const step of parsedRecipe.steps) {
           insertStep.run(recipeId, step.step_number, step.title, step.instruction, step.duration_minutes);
-        });
+        }
       }
 
       return recipeId;
@@ -1081,6 +1130,11 @@ export default async function recipesRoutes(fastify) {
       return reply.status(400).send({ error: 'Ungültiges Export-Format. Erwartet: { recipes: [...] }' });
     }
 
+    // Source-Check (empfohlen, aber nicht strikt für Kompatibilität)
+    if (importData.source && importData.source !== 'Zauberjournal') {
+      return reply.status(400).send({ error: 'Unbekannte Quelle. Nur Zauberjournal-Exporte werden unterstützt.' });
+    }
+
     if (importData.recipes.length === 0) {
       return reply.status(400).send({ error: 'Keine Rezepte zum Importieren gefunden.' });
     }
@@ -1088,6 +1142,13 @@ export default async function recipesRoutes(fastify) {
     // Max. 100 Rezepte pro Import
     if (importData.recipes.length > 100) {
       return reply.status(400).send({ error: 'Maximal 100 Rezepte pro Import erlaubt.' });
+    }
+
+    // Base64-Bilder Vorabprüfung: max ~14 MB Base64-String pro Bild (=10 MB raw)
+    for (const recipe of importData.recipes) {
+      if (recipe.image_base64 && typeof recipe.image_base64 === 'string' && recipe.image_base64.length > 14 * 1024 * 1024) {
+        recipe.image_base64 = null; // Zu groß, Bild verwerfen statt Absturz
+      }
     }
 
     // Kategorien des Users laden
@@ -1119,21 +1180,22 @@ export default async function recipesRoutes(fastify) {
           }
 
           // Rezept einfügen
+          const title = sanitize(recipe.title, 300);
           const recipeResult = db.prepare(`
             INSERT INTO recipes (user_id, title, description, servings, prep_time, cook_time, total_time, difficulty, source_url, is_favorite, notes, ai_generated)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           `).run(
             userId,
-            recipe.title,
-            recipe.description || null,
-            recipe.servings || 4,
-            recipe.prep_time || 0,
-            recipe.cook_time || 0,
-            recipe.total_time || (recipe.prep_time || 0) + (recipe.cook_time || 0),
-            recipe.difficulty || 'mittel',
-            recipe.source_url || null,
+            title,
+            sanitize(recipe.description, 2000) || null,
+            Math.min(Math.max(parseInt(recipe.servings) || 4, 1), 100),
+            Math.min(Math.max(parseInt(recipe.prep_time) || 0, 0), 1440),
+            Math.min(Math.max(parseInt(recipe.cook_time) || 0, 0), 1440),
+            Math.min(Math.max(parseInt(recipe.total_time) || (parseInt(recipe.prep_time) || 0) + (parseInt(recipe.cook_time) || 0), 0), 2880),
+            VALID_DIFFICULTIES.has(recipe.difficulty) ? recipe.difficulty : 'mittel',
+            sanitize(recipe.source_url, 2000) || null,
             recipe.is_favorite ? 1 : 0,
-            recipe.notes || null,
+            sanitize(recipe.notes, 2000) || null,
             recipe.ai_generated ? 1 : 0
           );
 
@@ -1202,9 +1264,9 @@ export default async function recipesRoutes(fastify) {
           }
 
           imported++;
-        } catch (err) {
+        } catch {
           skipped++;
-          errors.push(`Fehler bei "${recipe.title || 'Unbenannt'}": ${err.message}`);
+          errors.push(`Fehler bei "${sanitize(recipe.title || 'Unbenannt', 50)}"`);
         }
       }
     });

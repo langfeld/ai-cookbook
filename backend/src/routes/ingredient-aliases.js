@@ -393,6 +393,14 @@ export default async function ingredientAliasRoutes(fastify) {
       return reply.status(400).send({ error: 'Ungültiges Export-Format. Erwartet: { aliases: [...] } und/oder { blocked_ingredients: [...] }' });
     }
 
+    // Count-Limits
+    if (hasAliases && importData.aliases.length > 5000) {
+      return reply.status(400).send({ error: 'Maximal 5000 Aliase pro Import erlaubt.' });
+    }
+    if (hasBlocked && importData.blocked_ingredients.length > 5000) {
+      return reply.status(400).send({ error: 'Maximal 5000 geblockte Zutaten pro Import erlaubt.' });
+    }
+
     let aliasImported = 0, aliasUpdated = 0, aliasSkipped = 0;
     let blockedImported = 0, blockedSkipped = 0;
 
@@ -416,8 +424,8 @@ export default async function ingredientAliasRoutes(fastify) {
       if (hasAliases) {
         for (const alias of importData.aliases) {
           try {
-            const canonicalName = String(alias.canonical_name || '').trim();
-            const aliasName = String(alias.alias_name || '').trim();
+            const canonicalName = String(alias.canonical_name || '').trim().slice(0, 300);
+            const aliasName = String(alias.alias_name || '').trim().slice(0, 300);
             if (!canonicalName || !aliasName) { aliasSkipped++; continue; }
 
             const existing = findExistingAlias.get(userId, aliasName);
@@ -433,7 +441,7 @@ export default async function ingredientAliasRoutes(fastify) {
       if (hasBlocked) {
         for (const item of importData.blocked_ingredients) {
           try {
-            const name = String(item.ingredient_name || '').trim();
+            const name = String(item.ingredient_name || '').trim().slice(0, 300);
             if (!name) { blockedSkipped++; continue; }
 
             const result = insertBlocked.run(userId, name);

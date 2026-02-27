@@ -23,6 +23,32 @@
     </div>
 
     <template v-else>
+      <!-- Komplett-Backup Sektion -->
+      <div class="bg-linear-to-r from-primary-50 dark:from-primary-900/20 to-amber-50 dark:to-amber-900/10 mb-6 sm:mb-8 p-5 sm:p-6 border border-primary-200 dark:border-primary-800/50 rounded-2xl">
+        <div class="flex sm:flex-row flex-col sm:items-center gap-4">
+          <div class="flex flex-1 items-center gap-3">
+            <div class="flex justify-center items-center bg-primary-100 dark:bg-primary-900/40 rounded-xl w-12 h-12 shrink-0">
+              <HardDrive class="w-6 h-6 text-primary-600 dark:text-primary-400" />
+            </div>
+            <div>
+              <h2 class="font-display font-bold text-stone-800 dark:text-stone-100 text-lg">
+                💾 Komplett-Backup
+              </h2>
+              <p class="text-stone-500 dark:text-stone-400 text-sm">
+                Alle deine Daten auf einmal als JSON exportieren oder importieren.
+              </p>
+            </div>
+          </div>
+          <button
+            @click="activeModal = 'full-backup'"
+            class="flex justify-center items-center gap-2 bg-primary-600 hover:bg-primary-700 px-5 py-3 rounded-xl font-medium text-white text-sm transition-colors shrink-0"
+          >
+            <ArrowDownUp class="w-4 h-4" />
+            Backup öffnen
+          </button>
+        </div>
+      </div>
+
       <!-- Datentypen-Grid -->
       <div class="gap-4 sm:gap-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
         <div
@@ -116,6 +142,20 @@
       @close="activeModal = null"
       @imported="handleImported"
     />
+
+    <CollectionsImportExportModal
+      v-if="activeModal === 'collections'"
+      :is-admin="false"
+      @close="activeModal = null"
+      @imported="handleImported"
+    />
+
+    <FullBackupImportExportModal
+      v-if="activeModal === 'full-backup'"
+      :is-admin="false"
+      @close="activeModal = null"
+      @imported="handleImported"
+    />
   </div>
 </template>
 
@@ -130,6 +170,8 @@ import MealPlanImportExportModal from '@/components/mealplan/MealPlanImportExpor
 import ShoppingListImportExportModal from '@/components/shopping/ShoppingListImportExportModal.vue';
 import RecipeBlocksImportExportModal from '@/components/recipes/RecipeBlocksImportExportModal.vue';
 import IngredientSettingsImportExportModal from '@/components/shopping/IngredientSettingsImportExportModal.vue';
+import CollectionsImportExportModal from '@/components/collections/CollectionsImportExportModal.vue';
+import FullBackupImportExportModal from '@/components/ui/FullBackupImportExportModal.vue';
 
 import {
   BookOpen,
@@ -140,6 +182,8 @@ import {
   ArrowDownUp,
   Info,
   Link2,
+  HardDrive,
+  FolderOpen,
 } from 'lucide-vue-next';
 
 const api = useApi();
@@ -155,6 +199,7 @@ const counts = ref({
   shoppingLists: 0,
   recipeBlocks: 0,
   ingredientSettings: 0,
+  collections: 0,
 });
 
 const dataCategories = computed(() => [
@@ -224,6 +269,17 @@ const dataCategories = computed(() => [
     count: counts.value.ingredientSettings,
     action: () => { activeModal.value = 'ingredient-settings'; },
   },
+  {
+    key: 'collections',
+    emoji: '📂',
+    label: 'Sammlungen',
+    description: 'Deine Rezept-Sammlungen inkl. Zuordnungen exportieren/importieren.',
+    icon: FolderOpen,
+    bgClass: 'bg-amber-50 dark:bg-amber-900/30',
+    iconClass: 'text-amber-600 dark:text-amber-400',
+    count: counts.value.collections,
+    action: () => { activeModal.value = 'collections'; },
+  },
 ]);
 
 function handleImported() {
@@ -233,13 +289,14 @@ function handleImported() {
 
 async function fetchCounts() {
   try {
-    const [pantryData, mealPlanData, shoppingData, blocksData, aliasData, blockedData] = await Promise.all([
+    const [pantryData, mealPlanData, shoppingData, blocksData, aliasData, blockedData, collectionsData] = await Promise.all([
       api.get('/pantry').catch(() => ({ items: [] })),
       api.get('/mealplan/history').catch(() => ({ plans: [] })),
       api.get('/shopping/lists').catch(() => ({ lists: [] })),
       api.get('/recipe-blocks?includeExpired=true').catch(() => ({ blocks: [] })),
       api.get('/ingredient-aliases').catch(() => ({ aliases: [] })),
       api.get('/ingredient-aliases/blocked').catch(() => ({ blocked: [] })),
+      api.get('/collections').catch(() => ({ collections: [] })),
     ]);
 
     counts.value = {
@@ -249,6 +306,7 @@ async function fetchCounts() {
       shoppingLists: shoppingData.lists?.length || 0,
       recipeBlocks: blocksData.blocks?.length || 0,
       ingredientSettings: (aliasData.aliases?.length || 0) + (blockedData.blocked?.length || 0),
+      collections: collectionsData.collections?.length || 0,
     };
   } catch {
     // Ignorieren

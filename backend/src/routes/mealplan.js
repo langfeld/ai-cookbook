@@ -248,8 +248,8 @@ export default async function mealplanRoutes(fastify) {
     const { recipe_id, day_of_week, meal_type, week_start, servings = 4 } = request.body;
     const userId = request.user.id;
 
-    // Rezept prüfen
-    const recipe = db.prepare('SELECT id, title FROM recipes WHERE id = ?').get(recipe_id);
+    // Rezept prüfen (muss dem User gehören)
+    const recipe = db.prepare('SELECT id, title FROM recipes WHERE id = ? AND user_id = ?').get(recipe_id, userId);
     if (!recipe) return reply.status(404).send({ error: 'Rezept nicht gefunden' });
 
     // Plan für die Woche suchen oder erstellen
@@ -735,7 +735,7 @@ export default async function mealplanRoutes(fastify) {
 
     const transaction = db.transaction(() => {
       for (const plan of importData.plans) {
-        if (!plan.week_start) { skipped++; continue; }
+        if (!plan.week_start || !/^\d{4}-\d{2}-\d{2}$/.test(plan.week_start)) { skipped++; continue; }
 
         // Prüfen ob Plan für diese Woche bereits existiert
         const existing = existingPlan.get(userId, plan.week_start);
@@ -746,7 +746,9 @@ export default async function mealplanRoutes(fastify) {
         imported++;
 
         if (plan.entries?.length) {
-          for (const entry of plan.entries) {
+          const validMealTypes = new Set(['fruehstueck', 'mittag', 'abendessen', 'snack']);
+          const entries = plan.entries.slice(0, 50); // Max 50 Einträge pro Plan
+          for (const entry of entries) {
             // Rezept per Titel finden
             let recipeId = entry.recipe_id;
             if (entry.recipe_title && !recipeId) {
@@ -755,12 +757,16 @@ export default async function mealplanRoutes(fastify) {
             }
             if (!recipeId) continue;
 
+            const dayOfWeek = Math.min(Math.max(parseInt(entry.day_of_week) || 0, 0), 6);
+            const mealType = validMealTypes.has(entry.meal_type) ? entry.meal_type : 'mittag';
+            const servings = Math.min(Math.max(parseInt(entry.servings) || 2, 1), 100);
+
             insertEntry.run(
               planId,
               recipeId,
-              entry.day_of_week ?? 0,
-              entry.meal_type || 'mittag',
-              entry.servings || 2,
+              dayOfWeek,
+              mealType,
+              servings,
               entry.is_cooked ? 1 : 0
             );
             entriesImported++;

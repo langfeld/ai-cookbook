@@ -35,6 +35,7 @@ import bringRoutes from './routes/bring.js';
 import collectionsRoutes from './routes/collections.js';
 import ingredientAliasRoutes from './routes/ingredient-aliases.js';
 import recipeBlockRoutes from './routes/recipe-blocks.js';
+import backupRoutes from './routes/backup.js';
 // ingredient-conversions entfernt – KI-Aggregation ersetzt zutat-spezifische Umrechnungen
 
 // Upload-Verzeichnisse sicherstellen (inkl. Unterordner)
@@ -76,9 +77,9 @@ const app = Fastify({
 // Plugins registrieren
 // ============================================
 
-// CORS für Frontend-Zugriff (in Docker nicht nötig, da gleicher Origin)
+// CORS für Frontend-Zugriff
 await app.register(cors, {
-  origin: true,
+  origin: config.isDev ? true : (process.env.FRONTEND_URL || true),
   credentials: true,
 });
 
@@ -188,6 +189,12 @@ app.decorate('authenticate', async function (request, reply) {
   // 2. JWT Auth (Standard)
   try {
     await request.jwtVerify();
+    // Prüfen ob Benutzer noch aktiv ist
+    const user = db.prepare('SELECT id, username, role, is_active FROM users WHERE id = ?').get(request.user.id);
+    if (!user || !user.is_active) {
+      return reply.status(401).send({ error: 'Benutzerkonto deaktiviert.' });
+    }
+    request.user = { id: user.id, username: user.username, role: user.role };
   } catch (err) {
     reply.status(401).send({ error: 'Nicht autorisiert. Bitte anmelden.' });
   }
@@ -219,6 +226,7 @@ await app.register(bringRoutes, { prefix: '/api/bring' });
 await app.register(collectionsRoutes, { prefix: '/api/collections' });
     await app.register(ingredientAliasRoutes, { prefix: '/api/ingredient-aliases' });
     await app.register(recipeBlockRoutes, { prefix: '/api/recipe-blocks' });
+    await app.register(backupRoutes, { prefix: '/api/backup' });
     // ingredient-conversions Route entfernt
 
 // ============================================

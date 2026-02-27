@@ -287,14 +287,14 @@ export default async function recipeBlockRoutes(fastify) {
         }
         if (!recipeId) { skipped++; continue; }
 
-        if (!block.blocked_until) { skipped++; continue; }
+        if (!block.blocked_until || !/^\d{4}-\d{2}-\d{2}/.test(block.blocked_until)) { skipped++; continue; }
 
         const existing = findExisting.get(userId, recipeId);
         if (existing) {
-          updateBlock.run(block.blocked_until, block.reason || null, existing.id);
+          updateBlock.run(String(block.blocked_until).slice(0, 30), block.reason ? String(block.reason).trim().slice(0, 500) : null, existing.id);
           updated++;
         } else {
-          insertBlock.run(userId, recipeId, block.blocked_until, block.reason || null);
+          insertBlock.run(userId, recipeId, String(block.blocked_until).slice(0, 30), block.reason ? String(block.reason).trim().slice(0, 500) : null);
           imported++;
         }
       }

@@ -260,6 +260,163 @@ export default async function collectionsRoutes(fastify) {
   });
 
   // ─────────────────────────────────────────────
+  // GET /export – Sammlungen exportieren
+  // ─────────────────────────────────────────────
+  fastify.get('/export', {
+    schema: {
+      description: 'Eigene Sammlungen als JSON exportieren',
+      tags: ['Sammlungen'],
+      security: [{ bearerAuth: [] }],
+    },
+  }, async (request, reply) => {
+    const userId = request.user.id;
+
+    const collections = db.prepare(`
+      SELECT c.* FROM collections c
+      WHERE c.user_id = ?
+      ORDER BY c.sort_order ASC, c.name ASC
+    `).all(userId);
+
+    const exportData = {
+      version: '1.0',
+      exported_at: new Date().toISOString(),
+      source: 'Zauberjournal',
+      type: 'collections',
+      collection_count: collections.length,
+      collections: collections.map(col => {
+        // Rezepttitel für diese Sammlung laden
+        const recipeTitles = db.prepare(`
+          SELECT r.title FROM recipes r
+          JOIN recipe_collections rc ON r.id = rc.recipe_id
+          WHERE rc.collection_id = ?
+          ORDER BY rc.added_at DESC
+        `).all(col.id).map(r => r.title);
+
+        return {
+          name: col.name,
+          icon: col.icon,
+          color: col.color,
+          sort_order: col.sort_order,
+          recipe_titles: recipeTitles,
+        };
+      }),
+    };
+
+    reply.header('Content-Type', 'application/json');
+    reply.header('Content-Disposition', `attachment; filename="sammlungen-export-${new Date().toISOString().split('T')[0]}.json"`);
+    return exportData;
+  });
+
+  // ─────────────────────────────────────────────
+  // POST /import – Sammlungen importieren
+  // ─────────────────────────────────────────────
+  fastify.post('/import', {
+    schema: {
+      description: 'Sammlungen aus JSON importieren',
+      tags: ['Sammlungen'],
+      security: [{ bearerAuth: [] }],
+    },
+  }, async (request, reply) => {
+    const userId = request.user.id;
+    let importData;
+
+    // Multipart oder JSON-Body
+    if (request.isMultipart()) {
+      const data = await request.file();
+      if (!data) return reply.status(400).send({ error: 'Keine Datei hochgeladen.' });
+      const buffer = await data.toBuffer();
+      const text = buffer.toString('utf-8').replace(/^\uFEFF/, '').trim();
+      try {
+        importData = JSON.parse(text);
+      } catch {
+        return reply.status(400).send({ error: 'Ungültiges JSON-Format.' });
+      }
+    } else {
+      importData = request.body;
+    }
+
+    // Validierung
+    if (!importData || !Array.isArray(importData.collections)) {
+      return reply.status(400).send({ error: 'Ungültiges Format: "collections"-Array erwartet.' });
+    }
+    if (importData.source && importData.source !== 'Zauberjournal') {
+      return reply.status(400).send({ error: 'Ungültige Import-Quelle.' });
+    }
+    if (importData.collections.length > 500) {
+      return reply.status(400).send({ error: 'Maximal 500 Sammlungen erlaubt.' });
+    }
+
+    let imported = 0;
+    let updated = 0;
+    let skipped = 0;
+    let recipesLinked = 0;
+
+    // Alle Rezepte des Users für Titel-Matching
+    const userRecipes = db.prepare('SELECT id, title FROM recipes WHERE user_id = ?').all(userId);
+    const recipeTitleMap = new Map(userRecipes.map(r => [r.title.toLowerCase(), r.id]));
+
+    const transaction = db.transaction(() => {
+      for (const col of importData.collections) {
+        if (!col.name || typeof col.name !== 'string') {
+          skipped++;
+          continue;
+        }
+
+        const name = col.name.trim().slice(0, 100);
+        const icon = (col.icon || '📁').slice(0, 10);
+        const color = /^#[0-9a-fA-F]{6}$/.test(col.color) ? col.color : '#6366f1';
+        const sortOrder = typeof col.sort_order === 'number' ? Math.min(Math.max(Math.floor(col.sort_order), 0), 9999) : 0;
+
+        // Existiert die Sammlung schon?
+        const existing = db.prepare(
+          'SELECT id FROM collections WHERE user_id = ? AND name = ? COLLATE NOCASE'
+        ).get(userId, name);
+
+        let collectionId;
+        if (existing) {
+          // Aktualisieren
+          db.prepare(
+            'UPDATE collections SET icon = ?, color = ?, sort_order = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
+          ).run(icon, color, sortOrder, existing.id);
+          collectionId = existing.id;
+          updated++;
+        } else {
+          // Neu erstellen
+          const result = db.prepare(
+            'INSERT INTO collections (user_id, name, icon, color, sort_order) VALUES (?, ?, ?, ?, ?)'
+          ).run(userId, name, icon, color, sortOrder);
+          collectionId = result.lastInsertRowid;
+          imported++;
+        }
+
+        // Rezepte verknüpfen (per Titel-Matching)
+        if (Array.isArray(col.recipe_titles)) {
+          const titles = col.recipe_titles.slice(0, 200); // Max 200 Rezepte pro Sammlung
+          for (const title of titles) {
+            if (typeof title !== 'string') continue;
+            const recipeId = recipeTitleMap.get(title.toLowerCase());
+            if (recipeId) {
+              const res = db.prepare(
+                'INSERT OR IGNORE INTO recipe_collections (recipe_id, collection_id) VALUES (?, ?)'
+              ).run(recipeId, collectionId);
+              if (res.changes > 0) recipesLinked++;
+            }
+          }
+        }
+      }
+    });
+    transaction();
+
+    return {
+      message: `${imported} neu importiert, ${updated} aktualisiert, ${skipped} übersprungen. ${recipesLinked} Rezept-Zuordnungen erstellt.`,
+      imported,
+      updated,
+      skipped,
+      recipes_linked: recipesLinked,
+    };
+  });
+
+  // ─────────────────────────────────────────────
   // GET /for-recipe/:recipeId – Sammlungen eines Rezepts
   // ─────────────────────────────────────────────
   fastify.get('/for-recipe/:recipeId', {

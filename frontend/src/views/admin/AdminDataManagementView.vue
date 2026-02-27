@@ -36,19 +36,28 @@
                 💾 Komplett-Backup
               </h2>
               <p class="text-stone-500 dark:text-stone-400 text-sm">
-                Komplette SQLite-Datenbank als Datei herunterladen — enthält alle Daten inkl. Passwort-Hashes.
+                Komplette Datenbank herunterladen oder alle Daten als JSON exportieren/importieren.
               </p>
             </div>
           </div>
-          <button
-            @click="downloadBackup"
-            :disabled="backupDownloading"
-            class="flex justify-center items-center gap-2 bg-primary-600 hover:bg-primary-700 disabled:opacity-50 px-5 py-3 rounded-xl font-medium text-white text-sm transition-colors shrink-0"
-          >
-            <Loader2 v-if="backupDownloading" class="w-4 h-4 animate-spin" />
-            <DatabaseBackup v-else class="w-4 h-4" />
-            {{ backupDownloading ? 'Lade...' : 'Backup herunterladen' }}
-          </button>
+          <div class="flex sm:flex-row flex-col gap-2 shrink-0">
+            <button
+              @click="activeModal = 'full-backup'"
+              class="flex justify-center items-center gap-2 bg-primary-600 hover:bg-primary-700 px-5 py-3 rounded-xl font-medium text-white text-sm transition-colors"
+            >
+              <ArrowDownUp class="w-4 h-4" />
+              JSON-Backup
+            </button>
+            <button
+              @click="downloadBackup"
+              :disabled="backupDownloading"
+              class="flex justify-center items-center gap-2 bg-stone-600 hover:bg-stone-700 disabled:opacity-50 px-5 py-3 rounded-xl font-medium text-white text-sm transition-colors"
+            >
+              <Loader2 v-if="backupDownloading" class="w-4 h-4 animate-spin" />
+              <DatabaseBackup v-else class="w-4 h-4" />
+              {{ backupDownloading ? 'Lade...' : 'SQLite-Backup' }}
+            </button>
+          </div>
         </div>
       </div>
 
@@ -170,6 +179,22 @@
       @close="activeModal = null"
       @imported="handleImported"
     />
+
+    <CollectionsImportExportModal
+      v-if="activeModal === 'collections'"
+      :is-admin="true"
+      :users="adminUsers"
+      @close="activeModal = null"
+      @imported="handleImported"
+    />
+
+    <FullBackupImportExportModal
+      v-if="activeModal === 'full-backup'"
+      :is-admin="true"
+      :users="adminUsers"
+      @close="activeModal = null"
+      @imported="handleImported"
+    />
   </div>
 </template>
 
@@ -187,6 +212,8 @@ import IngredientAliasesImportExportModal from '@/components/admin/IngredientAli
 import MealPlanImportExportModal from '@/components/mealplan/MealPlanImportExportModal.vue';
 import ShoppingListImportExportModal from '@/components/shopping/ShoppingListImportExportModal.vue';
 import RecipeBlocksImportExportModal from '@/components/recipes/RecipeBlocksImportExportModal.vue';
+import CollectionsImportExportModal from '@/components/collections/CollectionsImportExportModal.vue';
+import FullBackupImportExportModal from '@/components/ui/FullBackupImportExportModal.vue';
 
 import {
   Users,
@@ -201,6 +228,7 @@ import {
   DatabaseBackup,
   Calendar,
   Ban,
+  FolderOpen,
 } from 'lucide-vue-next';
 
 const api = useApi();
@@ -224,6 +252,7 @@ const counts = ref({
   shoppingLists: 0,
   recipeBlocks: 0,
   conversions: 0,
+  collections: 0,
 });
 
 const dataCategories = computed(() => [
@@ -315,6 +344,17 @@ const dataCategories = computed(() => [
     count: counts.value.recipeBlocks,
     action: () => { activeModal.value = 'recipe-blocks'; },
   },
+  {
+    key: 'collections',
+    emoji: '📂',
+    label: 'Sammlungen',
+    description: 'Alle Rezept-Sammlungen aller Benutzer exportieren/importieren.',
+    icon: FolderOpen,
+    bgClass: 'bg-amber-50 dark:bg-amber-900/30',
+    iconClass: 'text-amber-600 dark:text-amber-400',
+    count: counts.value.collections,
+    action: () => { activeModal.value = 'collections'; },
+  },
 ]);
 
 // ============================================
@@ -373,6 +413,7 @@ async function fetchCounts() {
       mealPlans: stats.total_meal_plans || 0,
       shoppingLists: stats.total_shopping_lists || 0,
       recipeBlocks: stats.recipe_blocks || 0,
+      collections: stats.total_collections || 0,
     };
   } catch {
     // Ignorieren
