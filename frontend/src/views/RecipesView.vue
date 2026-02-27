@@ -30,7 +30,7 @@
           :class="[
             'flex items-center gap-2 px-3 py-2 rounded-lg border text-sm font-medium transition-colors',
             selectMode
-              ? 'bg-red-50 dark:bg-red-900/20 border-red-300 dark:border-red-700 text-red-700 dark:text-red-300'
+              ? 'bg-violet-50 dark:bg-violet-900/20 border-violet-300 dark:border-violet-700 text-violet-700 dark:text-violet-300'
               : 'bg-stone-100 dark:bg-stone-800 border-stone-200 dark:border-stone-700 text-stone-700 dark:text-stone-300 hover:bg-stone-200 dark:hover:bg-stone-700'
           ]"
         >
@@ -140,7 +140,7 @@
             :class="[
               'w-6 h-6 rounded-md border-2 flex items-center justify-center transition-all shadow-sm',
               selectedIds.has(recipe.id)
-                ? 'bg-red-500 border-red-500 text-white'
+                ? 'bg-violet-500 border-violet-500 text-white'
                 : 'bg-white/90 dark:bg-stone-800/90 border-stone-300 dark:border-stone-600'
             ]"
           >
@@ -148,7 +148,7 @@
           </div>
         </div>
         <!-- Auswahl-Ring -->
-        <div v-if="selectMode && selectedIds.has(recipe.id)" class="z-5 absolute inset-0 rounded-xl ring-2 ring-red-500 ring-offset-2 dark:ring-offset-stone-950 pointer-events-none" />
+        <div v-if="selectMode && selectedIds.has(recipe.id)" class="z-5 absolute inset-0 rounded-xl ring-2 ring-violet-500 ring-offset-2 dark:ring-offset-stone-950 pointer-events-none" />
         <RecipeCard
           :recipe="recipe"
           :class="{ 'pointer-events-none': selectMode }"
@@ -173,6 +173,13 @@
             class="hover:bg-stone-100 dark:hover:bg-stone-800 px-3 py-1.5 border border-stone-300 dark:border-stone-600 rounded-lg text-stone-600 dark:text-stone-300 text-sm transition-colors"
           >
             Alle ({{ recipesStore.recipes.length }})
+          </button>
+          <button
+            @click="showBatchAddToCollection = true"
+            class="flex items-center gap-2 bg-violet-600 hover:bg-violet-700 px-4 py-1.5 rounded-lg font-medium text-white text-sm transition-colors"
+          >
+            <FolderPlus class="w-4 h-4" />
+            Zu Sammlung ({{ selectedIds.size }})
           </button>
           <button
             @click="showBatchDeleteConfirm = true"
@@ -222,6 +229,13 @@
 
     <!-- Sammlungen-Manager Modal -->
     <CollectionManager v-model="showCollectionManager" />
+
+    <!-- Batch: Rezepte zu Sammlung hinzufügen -->
+    <BatchAddToCollection
+      v-model="showBatchAddToCollection"
+      :recipe-ids="[...selectedIds]"
+      @added="onBatchAddedToCollection"
+    />
   </div>
 </template>
 
@@ -230,10 +244,11 @@ import { ref, onMounted } from 'vue';
 import { useRecipesStore } from '@/stores/recipes.js';
 import { useAuthStore } from '@/stores/auth.js';
 import { useCollectionsStore } from '@/stores/collections.js';
-import { Search, Sparkles, Plus, Star, BookOpen, ArrowDownUp, CheckSquare, Square, Check, Trash2, FolderOpen } from 'lucide-vue-next';
+import { Search, Sparkles, Plus, Star, BookOpen, ArrowDownUp, CheckSquare, Square, Check, Trash2, FolderOpen, FolderPlus } from 'lucide-vue-next';
 import RecipeCard from '@/components/recipes/RecipeCard.vue';
 import RecipeImportModal from '@/components/recipes/RecipeImportModal.vue';
 import CollectionManager from '@/components/collections/CollectionManager.vue';
+import BatchAddToCollection from '@/components/collections/BatchAddToCollection.vue';
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue';
 import { useNotification } from '@/composables/useNotification.js';
 
@@ -249,6 +264,7 @@ const selectedCollectionFilter = ref('');
 const selectMode = ref(false);
 const selectedIds = ref(new Set());
 const showBatchDeleteConfirm = ref(false);
+const showBatchAddToCollection = ref(false);
 const batchDeleting = ref(false);
 
 // Debounced Suche (300ms Verzögerung)
@@ -293,6 +309,12 @@ function toggleSelect(id) {
 
 function selectAll() {
   selectedIds.value = new Set(recipesStore.recipes.map(r => r.id));
+}
+
+function onBatchAddedToCollection() {
+  showBatchAddToCollection.value = false;
+  selectMode.value = false;
+  selectedIds.value = new Set();
 }
 
 async function executeBatchDelete() {

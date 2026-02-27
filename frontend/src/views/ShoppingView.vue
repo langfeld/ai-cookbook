@@ -88,33 +88,20 @@
             </div>
           </Transition>
         </div>
-        <!-- Zusammenfassen -->
+        <!-- Auswahl-Modus -->
         <button
           v-if="shoppingStore.activeList"
-          @click="toggleMergeMode"
+          @click="toggleSelectMode"
           :class="[
             'flex items-center gap-1.5 px-2.5 py-2 rounded-xl text-sm font-medium transition-colors border',
-            mergeMode
+            selectMode
               ? 'bg-violet-50 dark:bg-violet-900/30 border-violet-300 dark:border-violet-700 text-violet-700 dark:text-violet-300'
               : 'bg-stone-100 dark:bg-stone-800 border-stone-300 dark:border-stone-600 text-stone-500 dark:text-stone-400 hover:text-stone-700 dark:hover:text-stone-200'
           ]"
-          :title="mergeMode ? 'Zusammenfassen beenden' : 'Zutaten zusammenfassen'"
+          :title="selectMode ? 'Auswahl beenden' : 'Zutaten auswählen'"
         >
-          <Merge class="w-4 h-4" />
-        </button>
-        <!-- Blockieren -->
-        <button
-          v-if="shoppingStore.activeList"
-          @click="toggleBlockMode"
-          :class="[
-            'flex items-center gap-1.5 px-2.5 py-2 rounded-xl text-sm font-medium transition-colors border',
-            blockMode
-              ? 'bg-red-50 dark:bg-red-900/30 border-red-300 dark:border-red-700 text-red-700 dark:text-red-300'
-              : 'bg-stone-100 dark:bg-stone-800 border-stone-300 dark:border-stone-600 text-stone-500 dark:text-stone-400 hover:text-stone-700 dark:hover:text-stone-200'
-          ]"
-          :title="blockMode ? 'Blockieren beenden' : 'Zutaten zum Blockieren auswählen'"
-        >
-          <Ban class="w-4 h-4" />
+          <CheckSquare v-if="selectMode" class="w-4 h-4" />
+          <Square v-else class="w-4 h-4" />
         </button>
         <!-- Einstellungen (zentral) -->
         <button
@@ -313,63 +300,6 @@
 
     <!-- Einkaufsliste -->
     <div v-if="shoppingStore.activeList" class="space-y-6">
-      <!-- Merge-Mode Hinweis -->
-      <Transition name="slide">
-        <div v-if="mergeMode" class="flex items-center gap-3 bg-violet-50 dark:bg-violet-900/20 p-4 border border-violet-200 dark:border-violet-800 rounded-xl">
-          <Merge class="w-5 h-5 text-violet-600 dark:text-violet-400 shrink-0" />
-          <div class="flex-1">
-            <p class="font-medium text-violet-800 dark:text-violet-200 text-sm">
-              <template v-if="mergeSelection.length === 0">Klicke auf die Zutaten, die zusammengefasst werden sollen.</template>
-              <template v-else>
-                <span v-for="(sel, i) in mergeSelection" :key="sel.id">
-                  <span v-if="i > 0" class="text-violet-400"> + </span>
-                  <span class="bg-violet-200 dark:bg-violet-800 px-1.5 py-0.5 rounded font-semibold">{{ sel.ingredient_name }}</span>
-                </span>
-                <span v-if="mergeSelection.length < 2" class="ml-1">– wähle weitere aus.</span>
-              </template>
-            </p>
-          </div>
-          <button
-            v-if="mergeSelection.length >= 2"
-            @click="openMergeDialog"
-            class="bg-violet-600 hover:bg-violet-700 px-3 py-1.5 rounded-lg font-medium text-white text-sm transition-colors shrink-0"
-          >
-            Zusammenfassen ({{ mergeSelection.length }})
-          </button>
-          <button @click="toggleMergeMode" class="hover:bg-violet-100 dark:hover:bg-violet-800/50 p-1.5 rounded-lg text-violet-500 transition-colors">
-            <X class="w-4 h-4" />
-          </button>
-        </div>
-      </Transition>
-
-      <!-- Block-Mode Hinweis -->
-      <Transition name="slide">
-        <div v-if="blockMode" class="flex items-center gap-3 bg-red-50 dark:bg-red-900/20 p-4 border border-red-200 dark:border-red-800 rounded-xl">
-          <Ban class="w-5 h-5 text-red-600 dark:text-red-400 shrink-0" />
-          <div class="flex-1">
-            <p class="font-medium text-red-800 dark:text-red-200 text-sm">
-              <template v-if="blockSelection.length === 0">Klicke auf die Zutaten, die zukünftig blockiert werden sollen.</template>
-              <template v-else>
-                <span v-for="(sel, i) in blockSelection" :key="sel.id">
-                  <span v-if="i > 0" class="text-red-400">, </span>
-                  <span class="bg-red-200 dark:bg-red-800 px-1.5 py-0.5 rounded font-semibold">{{ sel.ingredient_name }}</span>
-                </span>
-              </template>
-            </p>
-          </div>
-          <button
-            v-if="blockSelection.length >= 1"
-            @click="confirmBlockSelection"
-            class="bg-red-600 hover:bg-red-700 px-3 py-1.5 rounded-lg font-medium text-white text-sm transition-colors shrink-0"
-          >
-            Blockieren ({{ blockSelection.length }})
-          </button>
-          <button @click="toggleBlockMode" class="hover:bg-red-100 dark:hover:bg-red-800/50 p-1.5 rounded-lg text-red-500 transition-colors">
-            <X class="w-4 h-4" />
-          </button>
-        </div>
-      </Transition>
-
       <!-- Kategorien als Masonry-Layout auf breiten Screens -->
       <div class="gap-6 space-y-6 lg:columns-2">
         <div
@@ -389,28 +319,22 @@
             <div
               v-for="item in items"
               :key="item.id"
-              @click="mergeMode ? handleMergeClick(item) : blockMode ? handleBlockClick(item) : null"
+              @click="selectMode ? handleSelectClick(item) : null"
               :class="[
-                'transition-all',
-                (mergeMode || blockMode)
-                  ? 'cursor-pointer'
-                  : '',
-                mergeMode ? 'hover:bg-violet-50 dark:hover:bg-violet-900/20' : '',
-                blockMode ? 'hover:bg-red-50 dark:hover:bg-red-900/20' : '',
+                'transition-all last:rounded-b-xl',
+                selectMode ? 'cursor-pointer' : '',
+                selectMode ? 'hover:bg-violet-50 dark:hover:bg-violet-900/20' : '',
                 item.is_checked ? 'opacity-50' : '',
-                mergeMode && mergeSelection.some(s => s.id === item.id)
-                  ? 'bg-violet-100 dark:bg-violet-900/30 ring-2 ring-violet-400 ring-inset'
-                  : '',
-                blockMode && blockSelection.some(s => s.id === item.id)
-                  ? 'bg-red-100 dark:bg-red-900/30 ring-2 ring-red-400 ring-inset'
+                selectMode && selectedItems.some(s => s.id === item.id)
+                  ? 'bg-violet-50 dark:bg-violet-900/20 border-2 border-violet-400 dark:border-violet-500 last:rounded-b-xl'
                   : ''
               ]"
             >
               <!-- Obere Zeile: Checkbox + Name + Menge + Aktionen -->
               <div class="flex items-center gap-3 px-4 py-3">
-                <!-- Checkbox (im Merge-Modus: Merge-Indikator, im Block-Modus: Block-Indikator) -->
+                <!-- Checkbox (im Auswahl-Modus: Auswahl-Indikator) -->
                 <button
-                  v-if="!mergeMode && !blockMode"
+                  v-if="!selectMode"
                   @click.stop="toggleItem(item)"
                   :class="[
                     'w-6 h-6 rounded-full border-2 flex items-center justify-center shrink-0 transition-all',
@@ -422,26 +346,15 @@
                   <Check v-if="item.is_checked" class="w-3.5 h-3.5 text-white" />
                 </button>
                 <div
-                  v-else-if="mergeMode"
+                  v-else
                   :class="[
-                    'w-6 h-6 rounded-full border-2 flex items-center justify-center shrink-0 transition-all',
-                    mergeSelection.some(s => s.id === item.id)
+                    'w-6 h-6 rounded-md border-2 flex items-center justify-center shrink-0 transition-all shadow-sm',
+                    selectedItems.some(s => s.id === item.id)
                       ? 'bg-violet-500 border-violet-500'
-                      : 'border-violet-300 dark:border-violet-600'
+                      : 'border-violet-300 dark:border-violet-600 bg-white/90 dark:bg-stone-800/90'
                   ]"
                 >
-                  <Check v-if="mergeSelection.some(s => s.id === item.id)" class="w-3.5 h-3.5 text-white" />
-                </div>
-                <div
-                  v-else-if="blockMode"
-                  :class="[
-                    'w-6 h-6 rounded-full border-2 flex items-center justify-center shrink-0 transition-all',
-                    blockSelection.some(s => s.id === item.id)
-                      ? 'bg-red-500 border-red-500'
-                      : 'border-red-300 dark:border-red-600'
-                  ]"
-                >
-                  <Check v-if="blockSelection.some(s => s.id === item.id)" class="w-3.5 h-3.5 text-white" />
+                  <Check v-if="selectedItems.some(s => s.id === item.id)" class="w-3.5 h-3.5 text-white" />
                 </div>
 
                 <!-- Artikelname + Rezept-Thumbnails -->
@@ -487,17 +400,17 @@
                 </div>
 
                 <!-- Aktionen (immer sichtbar, größere Touch-Targets) -->
-                <div v-if="!mergeMode && !blockMode" class="flex items-center gap-0.5 shrink-0">
+                <div v-if="!selectMode" class="flex items-center gap-0.5 shrink-0">
                   <button
                     @click.stop="moveToPantry(item)"
-                    class="hover:bg-amber-50 dark:hover:bg-amber-900/30 p-2 rounded-lg text-stone-400 hover:text-amber-600 dark:hover:text-amber-400 dark:text-stone-500 transition-colors"
+                    class="hover:bg-amber-50 dark:hover:bg-amber-900/30 px-2 py-1 rounded-lg text-stone-400 hover:text-amber-600 dark:hover:text-amber-400 dark:text-stone-500 transition-colors"
                     title="In den Vorratsschrank"
                   >
                     <Archive class="w-4 h-4" />
                   </button>
                   <button
                     @click.stop="deleteItem(item)"
-                    class="hover:bg-red-50 dark:hover:bg-red-900/30 p-2 rounded-lg text-stone-400 hover:text-red-500 dark:hover:text-red-400 dark:text-stone-500 transition-colors"
+                    class="hover:bg-red-50 dark:hover:bg-red-900/30 px-2 py-1 rounded-lg text-stone-400 hover:text-red-500 dark:hover:text-red-400 dark:text-stone-500 transition-colors"
                     title="Artikel entfernen"
                   >
                     <Trash2 class="w-4 h-4" />
@@ -506,7 +419,7 @@
               </div>
 
               <!-- REWE-Produkt-Karte (wenn zugewiesen) -->
-              <div v-if="item.rewe_product" class="mx-3 mb-3" :class="(mergeMode || blockMode) ? 'opacity-40 pointer-events-none select-none' : ''">
+              <div v-if="item.rewe_product" class="mx-3 pb-3" :class="selectMode ? 'pointer-events-none select-none' : ''">
                 <div class="bg-stone-50 dark:bg-stone-800/60 border border-stone-200 dark:border-stone-700 rounded-xl overflow-hidden">
                   <!-- Produktinfo mit Bild -->
                   <div class="flex items-center gap-3 p-3">
@@ -601,7 +514,7 @@
               </div>
 
               <!-- Kein REWE-Produkt → Suche anbieten -->
-              <div v-else-if="(shoppingStore.reweLinkedItems.length > 0 || reweLoading) && !item.rewe_product" class="-mt-1 px-4 pb-3" :class="(mergeMode || blockMode) ? 'opacity-40 pointer-events-none select-none' : ''">
+              <div v-else-if="(shoppingStore.reweLinkedItems.length > 0 || reweLoading) && !item.rewe_product" class="-mt-1 px-4 pb-3" :class="selectMode ? 'pointer-events-none select-none' : ''">
                 <button
                   @click.stop="openProductPicker(item)"
                   class="flex items-center gap-1.5 hover:bg-stone-50 dark:hover:bg-stone-800/50 px-3 py-1.5 rounded-lg text-stone-400 hover:text-rewe-600 dark:hover:text-rewe-400 text-xs transition-colors"
@@ -1833,6 +1746,49 @@
       </Transition>
     </Teleport>
 
+    <!-- Floating Aktionsleiste bei Auswahl -->
+    <Teleport to="body">
+      <Transition name="slide-up">
+        <div
+          v-if="selectMode && selectedItems.length > 0"
+          class="right-0 bottom-0 left-0 z-40 fixed flex justify-center items-center gap-3 bg-white/95 dark:bg-stone-900/95 shadow-[0_-4px_24px_rgba(0,0,0,0.12)] backdrop-blur-sm px-6 py-4 border-stone-200 dark:border-stone-700 border-t"
+        >
+          <div class="flex items-center gap-2 text-stone-600 dark:text-stone-300 text-sm">
+            <CheckSquare class="w-4 h-4" />
+            <span class="font-medium">{{ selectedItems.length }}</span> ausgewählt
+          </div>
+          <button
+            @click="selectAllItems"
+            class="hover:bg-stone-100 dark:hover:bg-stone-800 px-3 py-1.5 border border-stone-300 dark:border-stone-600 rounded-lg text-stone-600 dark:text-stone-300 text-sm transition-colors"
+          >
+            Alle ({{ uncheckedItemCount }})
+          </button>
+          <button
+            @click="startMergeFromSelection"
+            :disabled="selectedItems.length < 2"
+            class="flex items-center gap-2 bg-violet-600 hover:bg-violet-700 disabled:opacity-50 px-4 py-1.5 rounded-lg font-medium text-white text-sm transition-colors"
+          >
+            <Merge class="w-4 h-4" />
+            Zusammenfassen ({{ selectedItems.length }})
+          </button>
+          <button
+            @click="startBlockFromSelection"
+            :disabled="selectedItems.length < 1"
+            class="flex items-center gap-2 bg-red-600 hover:bg-red-700 disabled:opacity-50 px-4 py-1.5 rounded-lg font-medium text-white text-sm transition-colors"
+          >
+            <Ban class="w-4 h-4" />
+            Blockieren ({{ selectedItems.length }})
+          </button>
+          <button
+            @click="toggleSelectMode"
+            class="hover:bg-stone-100 dark:hover:bg-stone-800 px-3 py-1.5 border border-stone-300 dark:border-stone-600 rounded-lg text-stone-600 dark:text-stone-300 text-sm transition-colors"
+          >
+            Abbrechen
+          </button>
+        </div>
+      </Transition>
+    </Teleport>
+
   </div>
 </template>
 
@@ -1843,7 +1799,7 @@ import { useMealPlanStore } from '@/stores/mealplan.js';
 import { useIngredientAliasStore } from '@/stores/ingredient-aliases.js';
 import { useNotification } from '@/composables/useNotification.js';
 import { useApi } from '@/composables/useApi.js';
-import { ListPlus, Check, ShoppingBag, Plus, Minus, Package, BookOpen, BookX, ExternalLink, ShoppingCart, X, ArrowRightLeft, Search, Tag, Trash2, Star, Heart, Archive, Send, Link2, Unlink, ClipboardCopy, LogIn, LogOut, ChevronDown, ChevronLeft, ChevronRight, Loader2, Terminal, Download, Settings, RefreshCw, Merge, ArrowRight, History, RotateCcw, Ban, MapPin, PenLine, Upload, AlertTriangle, Copy, Eye, EyeOff } from 'lucide-vue-next';
+import { ListPlus, Check, ShoppingBag, Plus, Minus, Package, BookOpen, BookX, ExternalLink, ShoppingCart, X, ArrowRightLeft, Search, Tag, Trash2, Star, Heart, Archive, Send, Link2, Unlink, ClipboardCopy, LogIn, LogOut, ChevronDown, ChevronLeft, ChevronRight, Loader2, Terminal, Download, Settings, RefreshCw, Merge, ArrowRight, History, RotateCcw, Ban, MapPin, PenLine, Upload, AlertTriangle, Copy, Eye, EyeOff, CheckSquare, Square } from 'lucide-vue-next';
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue';
 import UnitInput from '@/components/ui/UnitInput.vue';
 
@@ -2070,9 +2026,13 @@ function toggleRecipeLinks() {
   localStorage.setItem('shopping_showRecipeLinks', showRecipeLinks.value);
 }
 
-// Zusammenfassen-Modus (Merge) – Multi-Select
+// Auswahl-Modus (vereinheitlicht für Merge + Block)
+const selectMode = ref(false);
+const selectedItems = ref([]);   // Ausgewählte Items
+
+// Zusammenfassen-Modus (Merge)
 const mergeMode = ref(false);
-const mergeSelection = ref([]);  // Ausgewählte Items
+const mergeSelection = ref([]);  // Wird aus selectedItems befüllt
 const showMergeDialog = ref(false);
 const mergeName = ref('');       // Gewählter Name für das zusammengefasste Item
 
@@ -2116,6 +2076,7 @@ const blockSelection = ref([]);
 
 const totalCount = computed(() => shoppingStore.activeList?.items?.length || 0);
 const checkedCount = computed(() => shoppingStore.activeList?.items?.filter(i => i.is_checked).length || 0);
+const uncheckedItemCount = computed(() => shoppingStore.activeList?.items?.filter(i => !i.is_checked).length || 0);
 const progressPercent = computed(() => totalCount.value ? (checkedCount.value / totalCount.value * 100) : 0);
 
 // REWE-Matching Fortschritt (0–100)
@@ -2791,6 +2752,50 @@ async function installUserscript() {
 }
 
 // ============================================
+// Auswahl-Modus (vereinheitlicht)
+// ============================================
+
+function toggleSelectMode() {
+  selectMode.value = !selectMode.value;
+  selectedItems.value = [];
+  // Modi zurücksetzen
+  mergeMode.value = false;
+  mergeSelection.value = [];
+  showMergeDialog.value = false;
+  blockMode.value = false;
+  blockSelection.value = [];
+}
+
+function handleSelectClick(item) {
+  if (!selectMode.value) return;
+  const idx = selectedItems.value.findIndex(s => s.id === item.id);
+  if (idx >= 0) {
+    selectedItems.value.splice(idx, 1);
+  } else {
+    selectedItems.value.push(item);
+  }
+}
+
+function selectAllItems() {
+  const items = shoppingStore.activeList?.items?.filter(i => !i.is_checked) || [];
+  selectedItems.value = [...items];
+}
+
+function startMergeFromSelection() {
+  if (selectedItems.value.length < 2) return;
+  mergeSelection.value = [...selectedItems.value];
+  mergeMode.value = true;
+  openMergeDialog();
+}
+
+function startBlockFromSelection() {
+  if (selectedItems.value.length < 1) return;
+  blockSelection.value = [...selectedItems.value];
+  blockMode.value = true;
+  confirmBlockSelection();
+}
+
+// ============================================
 // Zusammenfassen (Merge) Funktionen
 // ============================================
 
@@ -2798,23 +2803,11 @@ function toggleMergeMode() {
   mergeMode.value = !mergeMode.value;
   mergeSelection.value = [];
   showMergeDialog.value = false;
-  // Block-Modus beenden wenn Merge startet
-  if (mergeMode.value) {
-    blockMode.value = false;
-    blockSelection.value = [];
-  }
 }
 
-function handleMergeClick(item) {
-  if (!mergeMode.value) return;
-  const idx = mergeSelection.value.findIndex(s => s.id === item.id);
-  if (idx >= 0) {
-    // Item abwählen
-    mergeSelection.value.splice(idx, 1);
-  } else {
-    // Item hinzufügen
-    mergeSelection.value.push(item);
-  }
+function selectAllForMerge() {
+  const items = shoppingStore.activeList?.items?.filter(i => !i.is_checked) || [];
+  mergeSelection.value = [...items];
 }
 
 // Eindeutige Namen aus der Auswahl (für Radio-Buttons im Dialog)
@@ -2845,6 +2838,9 @@ async function confirmMerge() {
     showSuccess(`${mergeSelection.value.length} Zutaten zusammengefasst! "${mergeName.value}" wird künftig automatisch erkannt. ✅`);
     showMergeDialog.value = false;
     mergeSelection.value = [];
+    mergeMode.value = false;
+    selectMode.value = false;
+    selectedItems.value = [];
   } catch {
     showError('Zusammenfassen fehlgeschlagen.');
   }
@@ -2883,22 +2879,6 @@ async function unblockIngredient(blocked) {
 function toggleBlockMode() {
   blockMode.value = !blockMode.value;
   blockSelection.value = [];
-  // Merge-Modus beenden wenn Block startet
-  if (blockMode.value) {
-    mergeMode.value = false;
-    mergeSelection.value = [];
-    showMergeDialog.value = false;
-  }
-}
-
-function handleBlockClick(item) {
-  if (!blockMode.value) return;
-  const idx = blockSelection.value.findIndex(s => s.id === item.id);
-  if (idx >= 0) {
-    blockSelection.value.splice(idx, 1);
-  } else {
-    blockSelection.value.push(item);
-  }
 }
 
 async function confirmBlockSelection() {
@@ -2914,6 +2894,8 @@ async function confirmBlockSelection() {
     showSuccess(`${names.length} Zutat${names.length > 1 ? 'en' : ''} blockiert: ${names.join(', ')} 🚫`);
     blockSelection.value = [];
     blockMode.value = false;
+    selectMode.value = false;
+    selectedItems.value = [];
   } catch {
     showError('Blockieren fehlgeschlagen.');
   }
