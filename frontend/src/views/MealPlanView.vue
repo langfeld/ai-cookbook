@@ -348,7 +348,7 @@
           :class="mealTypes.length === 1 ? 'lg:grid-cols-4' : 'lg:grid-cols-3'">
 
           <div v-for="(day, dayIdx) in weekDays" :key="mt.key+'-lg-'+dayIdx"
-            class="space-y-2"
+            class="flex flex-col gap-2"
             @dragover.prevent="!isLocked && onDragOver(dayIdx, mt.key)"
             @dragleave="onDragLeave"
             @drop.prevent="!isLocked && onDrop(dayIdx, mt.key)">
@@ -1754,12 +1754,13 @@ onMounted(async () => {
 .meal-card-large-empty {
   display: flex;
   width: 100%;
+  min-height: 280px;
   justify-content: center;
   align-items: center;
-  aspect-ratio: 4 / 3;
   border: 2px dashed var(--color-stone-200);
   border-radius: var(--radius-xl);
   transition: border-color 0.15s ease, background-color 0.15s ease;
+  flex: 1;
 }
 :is(.dark .meal-card-large-empty) { border-color: var(--color-stone-800); }
 .meal-card-large-empty:hover {
