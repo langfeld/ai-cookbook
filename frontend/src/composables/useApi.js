@@ -54,25 +54,37 @@ async function apiFetch(url, options = {}) {
   }
 
   let response;
-  try {
-    response = await fetch(`${BASE_URL}${url}`, {
-      ...options,
-      headers,
-      body: options.body instanceof FormData
-        ? options.body
-        : options.body
-          ? JSON.stringify(options.body)
-          : undefined,
-    });
-  } catch {
-    // Bei Upload/POST-Requests kann der Server die Anfrage verarbeitet haben,
-    // bevor die Verbindung abbrach (z.B. lange KI-Verarbeitung)
-    const isWrite = options.method && options.method !== 'GET';
-    throw new Error(
-      isWrite
-        ? 'Verbindung unterbrochen. Die Aktion wurde möglicherweise trotzdem ausgeführt.'
-        : 'Server nicht erreichbar. Bitte prüfe deine Internetverbindung.'
-    );
+  const maxRetries = 3;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      response = await fetch(`${BASE_URL}${url}`, {
+        ...options,
+        headers,
+        body: options.body instanceof FormData
+          ? options.body
+          : options.body
+            ? JSON.stringify(options.body)
+            : undefined,
+      });
+    } catch {
+      // Bei Upload/POST-Requests kann der Server die Anfrage verarbeitet haben,
+      // bevor die Verbindung abbrach (z.B. lange KI-Verarbeitung)
+      const isWrite = options.method && options.method !== 'GET';
+      throw new Error(
+        isWrite
+          ? 'Verbindung unterbrochen. Die Aktion wurde möglicherweise trotzdem ausgeführt.'
+          : 'Server nicht erreichbar. Bitte prüfe deine Internetverbindung.'
+      );
+    }
+
+    // Bei Rate-Limit (429) automatisch nach Retry-After warten und erneut versuchen
+    if (response.status === 429 && attempt < maxRetries) {
+      const retryAfter = parseInt(response.headers.get('retry-after') || '5', 10);
+      await new Promise(resolve => setTimeout(resolve, retryAfter * 1000));
+      continue;
+    }
+    break;
   }
 
   // 401 -> Token abgelaufen, abmelden

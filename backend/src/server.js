@@ -88,11 +88,15 @@ await app.register(helmet, {
   crossOriginResourcePolicy: { policy: 'cross-origin' }, // Für Bild-Uploads
 });
 
-// Globales Rate Limiting (100 Requests/Minute pro IP)
+// Globales Rate Limiting (100 Requests/Minute pro IP, nur für API-Routen)
 await app.register(rateLimit, {
   max: 100,
   timeWindow: '1 minute',
   keyGenerator: (request) => request.ip,
+  allowList: (request) => {
+    // Statische Assets und SPA-Routen nicht rate-limiten
+    return !request.url.startsWith('/api/');
+  },
 });
 
 // JWT für Authentifizierung
