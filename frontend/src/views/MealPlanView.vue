@@ -22,7 +22,7 @@
           Intelligenter Essensplan – score-basiert &amp; per Drag&amp;Drop anpassbar
         </p>
       </div>
-      <div class="flex items-center gap-2">
+      <div class="flex flex-wrap items-center gap-2 w-full sm:w-auto">
         <button v-if="currentPlan" @click="toggleLockPlan"
           :class="['flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm transition-colors',
             isLocked
@@ -41,14 +41,15 @@
         </button>
         <button v-if="currentPlan && !isLocked" @click="confirmDeletePlan"
           class="flex items-center gap-1.5 hover:bg-red-50 dark:hover:bg-red-950 px-3 py-2 rounded-xl text-red-500 text-sm transition-colors">
-          <Trash2 class="w-4 h-4" /> Löschen
+          <Trash2 class="w-4 h-4" /> <span class="hidden sm:inline">Löschen</span>
         </button>
         <!-- Split-Button: Generieren + Einstellungen -->
-        <div class="flex shadow-sm rounded-xl overflow-hidden">
+        <div class="flex sm:flex-initial flex-1 shadow-sm rounded-xl overflow-hidden">
           <button @click="showGenerateModal = true" :disabled="store.generating"
-            class="flex items-center gap-2 bg-primary-600 hover:bg-primary-700 disabled:opacity-50 px-4 py-2 font-medium text-white text-sm transition-colors">
+            class="flex sm:flex-initial flex-1 justify-center items-center gap-2 bg-primary-600 hover:bg-primary-700 disabled:opacity-50 px-3 sm:px-4 py-2 font-medium text-white text-sm transition-colors">
             <Sparkles class="w-4 h-4" :class="{ 'animate-pulse': store.generating }" />
-            {{ store.generating ? 'Wird erstellt…' : 'Plan generieren' }}
+            <span class="hidden sm:inline">{{ store.generating ? 'Wird erstellt…' : 'Plan generieren' }}</span>
+            <span class="sm:hidden">{{ store.generating ? 'Erstellt…' : 'Generieren' }}</span>
           </button>
           <button @click="showGenSettings = true"
             class="flex items-center bg-primary-600 hover:bg-primary-700 px-2.5 py-2 border-primary-500 border-l text-white transition-colors"
