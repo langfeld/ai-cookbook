@@ -160,7 +160,7 @@ const mealTypeEmojis = {
 const stats = computed(() => [
   { icon: BookOpen, label: 'Rezepte', value: recipesStore.totalRecipes, color: 'primary' },
   { icon: Star, label: 'Favoriten', value: recipesStore.favoriteRecipes.length, color: 'amber' },
-  { icon: ShoppingCart, label: 'Einkauf', value: `${shoppingStore.openItemsCount} Items`, color: 'accent' },
+  { icon: ShoppingCart, label: 'Einkauf', value: shoppingStore.openItemsCount, color: 'accent' },
   { icon: Warehouse, label: 'Vorräte', value: pantryStore.items.length, color: 'indigo' },
 ]);
 
