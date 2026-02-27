@@ -63,14 +63,36 @@
               <CalendarPlus class="w-3.5 h-3.5" /> Planer
             </button>
             <AddToCollection v-if="recipe?.id" :recipe-id="recipe.id" />
-            <router-link :to="'/recipes/new?edit=' + recipe.id"
-              class="flex items-center gap-1 hover:bg-stone-100 dark:hover:bg-stone-800 px-2.5 py-1.5 rounded-lg text-stone-500 dark:text-stone-400 text-xs transition-colors">
-              <Pencil class="w-3 h-3" /> Bearbeiten
-            </router-link>
-            <button @click="showDeleteDialog = true"
-              class="flex items-center gap-1 hover:bg-red-50 dark:hover:bg-red-900/20 px-2.5 py-1.5 rounded-lg text-stone-400 hover:text-red-600 dark:hover:text-red-400 dark:text-stone-500 text-xs transition-colors">
-              <Trash2 class="w-3 h-3" /> Löschen
-            </button>
+
+            <!-- Mehr-Menü -->
+            <div class="relative">
+              <button @click="showMoreMenu = !showMoreMenu"
+                class="flex items-center hover:bg-stone-100 dark:hover:bg-stone-800 p-1.5 rounded-lg text-stone-500 dark:text-stone-400 transition-colors"
+                title="Weitere Aktionen">
+                <EllipsisVertical class="w-4 h-4" />
+              </button>
+              <Transition name="fade">
+                <div v-if="showMoreMenu"
+                  class="right-0 z-30 absolute bg-white dark:bg-stone-900 shadow-lg mt-1 py-1 border border-stone-200 dark:border-stone-700 rounded-xl w-48 origin-top-right">
+                  <button v-if="wakeLockSupported && isTouchDevice" @click="toggleWakeLock(); showMoreMenu = false"
+                    class="flex items-center gap-2.5 hover:bg-stone-50 dark:hover:bg-stone-800 px-3 py-2 w-full text-sm text-left transition-colors"
+                    :class="wakeLockActive ? 'text-primary-600 dark:text-primary-400' : 'text-stone-700 dark:text-stone-300'">
+                    <Smartphone class="w-4 h-4" />
+                    {{ wakeLockActive ? '✓ Display bleibt an' : 'Wach halten' }}
+                  </button>
+                  <router-link :to="'/recipes/new?edit=' + recipe.id" @click="showMoreMenu = false"
+                    class="flex items-center gap-2.5 hover:bg-stone-50 dark:hover:bg-stone-800 px-3 py-2 w-full text-stone-700 dark:text-stone-300 text-sm transition-colors">
+                    <Pencil class="w-4 h-4" /> Bearbeiten
+                  </router-link>
+                  <button @click="showDeleteDialog = true; showMoreMenu = false"
+                    class="flex items-center gap-2.5 hover:bg-red-50 dark:hover:bg-red-950/30 px-3 py-2 w-full text-red-600 dark:text-red-400 text-sm text-left transition-colors">
+                    <Trash2 class="w-4 h-4" /> Löschen
+                  </button>
+                </div>
+              </Transition>
+              <!-- Backdrop -->
+              <div v-if="showMoreMenu" @click="showMoreMenu = false" class="z-20 fixed inset-0" />
+            </div>
           </div>
         </div>
       </div>
@@ -376,7 +398,8 @@ import { useRecipesStore } from '@/stores/recipes.js';
 import { useMealPlanStore } from '@/stores/mealplan.js';
 import { usePantryStore } from '@/stores/pantry.js';
 import { useNotification } from '@/composables/useNotification.js';
-import { Star, Clock, Users, ChefHat, Pencil, Plus, Minus, Trash2, CalendarPlus, X, ChevronLeft, ChevronRight, Maximize, Warehouse, RotateCcw } from 'lucide-vue-next';
+import { Star, Clock, Users, ChefHat, Pencil, Plus, Minus, Trash2, CalendarPlus, X, ChevronLeft, ChevronRight, Maximize, Warehouse, RotateCcw, Smartphone, EllipsisVertical } from 'lucide-vue-next';
+import { useWakeLock } from '@/composables/useWakeLock.js';
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue';
 import AddToCollection from '@/components/collections/AddToCollection.vue';
 import CookingMode from '@/components/recipes/CookingMode.vue';
@@ -391,6 +414,7 @@ const mealPlanStore = useMealPlanStore();
 const pantryStore = usePantryStore();
 const { showSuccess } = useNotification();
 const { loadIcons, getEmoji } = useIngredientIcons();
+const { isActive: wakeLockActive, isSupported: wakeLockSupported, toggle: toggleWakeLock } = useWakeLock();
 
 const recipe = computed(() => recipesStore.currentRecipe);
 const adjustedServings = ref(4);
@@ -398,6 +422,8 @@ const showDeleteDialog = ref(false);
 const showHistoryPopup = ref(false);
 const deleting = ref(false);
 const showMealPlanSwapDialog = ref(false);
+const showMoreMenu = ref(false);
+const isTouchDevice = ref('ontouchstart' in window || navigator.maxTouchPoints > 0);
 const pendingSwapData = ref(null);
 const showCookingMode = ref(false);
 
