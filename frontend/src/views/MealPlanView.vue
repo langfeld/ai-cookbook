@@ -404,9 +404,9 @@
                   <Star class="w-4 h-4" :class="getMeal(dayIdx, mt.key).is_favorite ? 'fill-amber-400 text-amber-400' : 'text-stone-400'" />
                 </button>
 
-                <!-- Gekocht-Badge -->
+                <!-- Gekocht-Badge (oben links) -->
                 <div v-if="getMeal(dayIdx, mt.key).is_cooked"
-                  class="top-10 right-2 absolute place-items-center grid rounded-full w-6 h-6 bg-accent-500">
+                  class="top-2 left-2 absolute place-items-center grid rounded-full w-6 h-6 bg-accent-500">
                   <Check class="w-3.5 h-3.5 text-white" />
                 </div>
 
