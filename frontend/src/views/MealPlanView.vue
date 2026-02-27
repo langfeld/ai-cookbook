@@ -247,7 +247,8 @@
       </button>
     </div>
 
-    <div v-if="currentPlan && viewMode === 'week'" class="hidden lg:block -mx-4 lg:mx-0 px-4 lg:px-0 overflow-x-auto">
+    <!-- ═══════ DESKTOP WOCHEN-ANSICHT: KOMPAKT (3+ Slots) ═══════ -->
+    <div v-if="currentPlan && viewMode === 'week' && isCompactGrid" class="hidden lg:block -mx-4 lg:mx-0 px-4 lg:px-0 overflow-x-auto">
       <div class="gap-x-2 gap-y-1.5 grid grid-cols-7 lg:min-w-0 min-w-4xl">
 
         <!-- ── Zeile 1: Tag-Header ── -->
@@ -331,6 +332,99 @@
           </div>
         </template>
       </div>
+    </div>
+
+    <!-- ═══════ DESKTOP WOCHEN-ANSICHT: GROSSE KARTEN (1-2 Slots) ═══════ -->
+    <div v-if="currentPlan && viewMode === 'week' && !isCompactGrid" class="hidden lg:block space-y-6">
+      <template v-for="mt in mealTypes" :key="'lg-'+mt.key">
+        <!-- Slot-Überschrift -->
+        <div v-if="mealTypes.length > 1" class="flex items-center gap-2 mb-3">
+          <span class="text-lg">{{ mt.icon }}</span>
+          <h3 class="font-semibold text-stone-700 dark:text-stone-200 text-base">{{ mt.label }}</h3>
+        </div>
+
+        <!-- Karten-Grid -->
+        <div class="gap-4 grid grid-cols-2 xl:grid-cols-4"
+          :class="mealTypes.length === 1 ? 'lg:grid-cols-4' : 'lg:grid-cols-3'">
+
+          <div v-for="(day, dayIdx) in weekDays" :key="mt.key+'-lg-'+dayIdx"
+            @dragover.prevent="!isLocked && onDragOver(dayIdx, mt.key)"
+            @dragleave="onDragLeave"
+            @drop.prevent="!isLocked && onDrop(dayIdx, mt.key)">
+
+            <!-- Gefüllte Karte -->
+            <div v-if="getMeal(dayIdx, mt.key)"
+              class="group meal-card-large"
+              :class="{ 'meal-card-large--cooked': getMeal(dayIdx, mt.key).is_cooked }"
+              :draggable="!isLocked"
+              @dragstart="!isLocked && onDragStart($event, getMeal(dayIdx, mt.key))"
+              @dragend="onDragEnd"
+              @click="selectMeal(getMeal(dayIdx, mt.key))">
+
+              <!-- Bild -->
+              <div class="relative bg-stone-100 dark:bg-stone-800 aspect-4/3 overflow-hidden">
+                <img v-if="getMeal(dayIdx, mt.key).image_url"
+                  :src="getMeal(dayIdx, mt.key).image_url"
+                  :alt="getMeal(dayIdx, mt.key).recipe_title"
+                  class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                  loading="lazy" />
+                <div v-else class="flex justify-center items-center w-full h-full">
+                  <UtensilsCrossed class="w-10 h-10 text-stone-300 dark:text-stone-600" />
+                </div>
+                <!-- Tag-Badge -->
+                <div class="top-2 left-2 absolute bg-black/60 backdrop-blur-sm px-2 py-0.5 rounded-full font-medium text-white text-xs">
+                  {{ weekDays[dayIdx].short }} {{ weekDays[dayIdx].date }}
+                </div>
+                <!-- Gekocht-Badge -->
+                <div v-if="getMeal(dayIdx, mt.key).is_cooked"
+                  class="top-2 right-2 absolute place-items-center grid rounded-full w-6 h-6 bg-accent-500">
+                  <Check class="w-3.5 h-3.5 text-white" />
+                </div>
+                <!-- Portionen -->
+                <div class="bottom-2 left-2 absolute flex items-center gap-1 bg-black/60 backdrop-blur-sm px-2 py-0.5 rounded-full text-white text-xs"
+                  :class="{ 'cursor-pointer hover:bg-black/80': !isLocked }"
+                  @click.stop="!isLocked && openServingsPopup(getMeal(dayIdx, mt.key), $event)">
+                  <Users class="w-3 h-3" /> {{ getMeal(dayIdx, mt.key).servings }} Port.
+                </div>
+                <!-- Schwierigkeit -->
+                <span v-if="getMeal(dayIdx, mt.key).difficulty"
+                  class="right-2 bottom-2 absolute bg-black/60 backdrop-blur-sm px-2 py-0.5 rounded-full font-medium text-white text-xs">
+                  {{ getMeal(dayIdx, mt.key).difficulty }}
+                </span>
+              </div>
+
+              <!-- Info -->
+              <div class="p-3">
+                <h4 class="font-semibold text-stone-800 dark:group-hover:text-primary-400 dark:text-stone-100 group-hover:text-primary-600 text-sm truncate transition-colors">
+                  {{ getMeal(dayIdx, mt.key).recipe_title }}
+                </h4>
+                <div class="flex items-center gap-3 mt-1.5 text-stone-500 dark:text-stone-400 text-xs">
+                  <span v-if="getMeal(dayIdx, mt.key).total_time" class="flex items-center gap-1">
+                    <Clock class="w-3.5 h-3.5" /> {{ getMeal(dayIdx, mt.key).total_time }} Min.
+                  </span>
+                  <span class="flex items-center gap-1">
+                    <Users class="w-3.5 h-3.5" /> {{ getMeal(dayIdx, mt.key).servings }} Port.
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Leere Karte -->
+            <button v-else
+              class="meal-card-large-empty"
+              :disabled="isLocked"
+              @click="!isLocked && openSwapModal({ day_of_week: dayIdx, meal_type: mt.key, _isNew: true })"
+              @dragover.prevent="!isLocked && onDragOver(dayIdx, mt.key)"
+              @drop.prevent="!isLocked && onDrop(dayIdx, mt.key)">
+              <div class="text-center">
+                <div class="mb-1 font-medium text-stone-400 dark:text-stone-500 text-xs">{{ weekDays[dayIdx].short }} {{ weekDays[dayIdx].date }}</div>
+                <Plus v-if="!isLocked" class="mx-auto w-6 h-6 text-stone-300 dark:text-stone-600" />
+                <Lock v-else class="mx-auto w-5 h-5 text-stone-300 dark:text-stone-600" />
+              </div>
+            </button>
+          </div>
+        </div>
+      </template>
     </div>
 
     <!-- ═══════════════════ MOBILE WOCHEN-ANSICHT ═══════════════════ -->
@@ -1112,6 +1206,9 @@ const allMealTypes = [
 ];
 const mealTypes = computed(() => allMealTypes.filter(mt => visibleSlots.value.includes(mt.key)));
 
+/** Bei 1-2 sichtbaren Slots → große Karten, bei 3+ → kompaktes 7-Spalten-Grid */
+const isCompactGrid = computed(() => mealTypes.value.length >= 3);
+
 // ─── Computed ───
 const currentPlan = computed(() => store.currentPlan);
 
@@ -1551,7 +1648,7 @@ onMounted(async () => {
 }
 :is(.dark .servings-popup-value) { color: var(--color-stone-100); }
 
-/* ─── Meal Card (Wochenansicht) ─── */
+/* ─── Meal Card (Wochenansicht kompakt) ─── */
 .meal-card {
   cursor: grab;
   border-radius: var(--radius-lg);
@@ -1564,7 +1661,53 @@ onMounted(async () => {
 .meal-card:active { cursor: grabbing; }
 .meal-card--cooked { opacity: 0.55; }
 
-/* ─── Leerer Slot ─── */
+/* ─── Meal Card (große Kartenansicht) ─── */
+.meal-card-large {
+  cursor: grab;
+  background-color: white;
+  border: 1px solid var(--color-stone-200);
+  border-radius: var(--radius-xl);
+  overflow: hidden;
+  transition: transform 0.15s ease, box-shadow 0.2s ease, border-color 0.15s ease;
+}
+.meal-card-large:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
+  border-color: var(--color-primary-300);
+}
+.meal-card-large:active { cursor: grabbing; }
+.meal-card-large--cooked { opacity: 0.55; }
+:is(.dark .meal-card-large) {
+  background-color: var(--color-stone-900);
+  border-color: var(--color-stone-800);
+}
+:is(.dark .meal-card-large:hover) {
+  border-color: var(--color-primary-700);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+}
+
+/* ─── Leerer Slot (große Karten) ─── */
+.meal-card-large-empty {
+  display: flex;
+  width: 100%;
+  justify-content: center;
+  align-items: center;
+  aspect-ratio: 4 / 3;
+  border: 2px dashed var(--color-stone-200);
+  border-radius: var(--radius-xl);
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+:is(.dark .meal-card-large-empty) { border-color: var(--color-stone-800); }
+.meal-card-large-empty:hover {
+  border-color: var(--color-primary-300);
+  background-color: var(--color-primary-50);
+}
+:is(.dark .meal-card-large-empty:hover) {
+  border-color: var(--color-primary-700);
+  background-color: color-mix(in srgb, var(--color-primary-900) 20%, transparent);
+}
+
+/* ─── Leerer Slot (kompakt) ─── */
 .meal-card-empty {
   display: flex;
   flex: 1;
