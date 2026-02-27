@@ -125,11 +125,56 @@ ${INGREDIENT_RULES}
 }
 
 /**
+ * Extrahiert die Bild-URL eines Rezepts aus dem HTML einer Webseite.
+ * Priorität: JSON-LD Recipe.image > og:image > <meta name="image"> > großes <img>
+ * @param {string} html - Der HTML-Quelltext
+ * @param {string} pageUrl - Die URL der Seite (für relative URLs)
+ * @returns {string|null} - Absolute Bild-URL oder null
+ */
+export function extractRecipeImageUrl(html, pageUrl) {
+  // 1. JSON-LD: Recipe.image
+  try {
+    const jsonLdBlocks = html.match(/<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi);
+    if (jsonLdBlocks) {
+      for (const block of jsonLdBlocks) {
+        const content = block.replace(/<\/?script[^>]*>/gi, '').trim();
+        try {
+          const parsed = JSON.parse(content);
+          const recipe = parsed?.['@type'] === 'Recipe'
+            ? parsed
+            : parsed?.['@graph']?.find(i => i['@type'] === 'Recipe');
+          if (recipe?.image) {
+            const img = Array.isArray(recipe.image) ? recipe.image[0] : recipe.image;
+            const imgUrl = typeof img === 'string' ? img : img?.url;
+            if (imgUrl) return new URL(imgUrl, pageUrl).href;
+          }
+        } catch { /* JSON-LD parse error */ }
+      }
+    }
+  } catch { /* regex error */ }
+
+  // 2. Open Graph: og:image
+  const ogMatch = html.match(/<meta[^>]*property=["']og:image["'][^>]*content=["']([^"']+)["']/i)
+    || html.match(/<meta[^>]*content=["']([^"']+)["'][^>]*property=["']og:image["']/i);
+  if (ogMatch?.[1]) {
+    try { return new URL(ogMatch[1], pageUrl).href; } catch { /* invalid URL */ }
+  }
+
+  // 3. <meta name="image">
+  const metaImgMatch = html.match(/<meta[^>]*name=["']image["'][^>]*content=["']([^"']+)["']/i);
+  if (metaImgMatch?.[1]) {
+    try { return new URL(metaImgMatch[1], pageUrl).href; } catch { /* invalid URL */ }
+  }
+
+  return null;
+}
+
+/**
  * Extrahiert ein Rezept aus einer URL
  * Ruft die Webseite ab, extrahiert den Text-Inhalt und lässt die KI daraus ein Rezept erstellen
  * @param {string} url - Die URL der Rezeptseite
  * @param {string[]} existingCategories - Vorhandene Kategorie-Namen
- * @returns {Promise<object>} - Strukturiertes Rezept-Objekt
+ * @returns {Promise<{recipe: object, imageUrl: string|null}>} - Strukturiertes Rezept-Objekt + gefundene Bild-URL
  */
 export async function parseRecipeFromUrl(url, existingCategories = []) {
   // Webseite abrufen
@@ -147,6 +192,9 @@ export async function parseRecipeFromUrl(url, existingCategories = []) {
   }
 
   const html = await response.text();
+
+  // Rezeptbild aus der Seite extrahieren
+  const imageUrl = extractRecipeImageUrl(html, url);
 
   // HTML zu lesbarem Text reduzieren:
   // 1. Script/Style/Nav/Footer/Header entfernen
@@ -217,8 +265,8 @@ ${INGREDIENT_RULES}
 - Falls die Seite kein erkennbares Rezept enthält, erstelle ein Rezept basierend auf dem Titel oder Thema der Seite
 `;
 
-  const result = await ai.chatJSON(prompt, { maxTokens: 16384 });
-  return result;
+  const recipe = await ai.chatJSON(prompt, { maxTokens: 16384 });
+  return { recipe, imageUrl };
 }
 
 /**

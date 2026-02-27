@@ -512,13 +512,45 @@ export default async function recipesRoutes(fastify) {
     const { url } = request.body;
 
     const categories = db.prepare('SELECT name FROM categories WHERE user_id = ?').all(userId);
-    const parsedRecipe = await parseRecipeFromUrl(url, categories.map(c => c.name));
+    const { recipe: parsedRecipe, imageUrl: sourceImageUrl } = await parseRecipeFromUrl(url, categories.map(c => c.name));
+
+    // Rezeptbild von der Quellseite herunterladen und lokal speichern
+    let localImagePath = null;
+    if (sourceImageUrl) {
+      try {
+        const imgResponse = await fetch(sourceImageUrl, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (compatible; Zauberjournal/1.0)',
+            'Accept': 'image/*',
+            'Referer': url,
+          },
+          signal: AbortSignal.timeout(15000),
+        });
+
+        if (imgResponse.ok) {
+          const contentType = imgResponse.headers.get('content-type') || '';
+          if (contentType.startsWith('image/')) {
+            const imgBuffer = Buffer.from(await imgResponse.arrayBuffer());
+            const imageId = generateId();
+            localImagePath = `recipes/${imageId}.webp`;
+            const fullPath = resolve(config.upload.path, localImagePath);
+            await sharp(imgBuffer)
+              .resize(1200, 1200, { fit: 'inside', withoutEnlargement: true })
+              .webp({ quality: 85 })
+              .toFile(fullPath);
+          }
+        }
+      } catch {
+        // Bild-Download fehlgeschlagen – Rezept trotzdem importieren
+        localImagePath = null;
+      }
+    }
 
     // Gleiche Speicher-Logik wie bei Text-Import
     const transaction = db.transaction(() => {
       const recipeResult = db.prepare(`
-        INSERT INTO recipes (user_id, title, description, servings, prep_time, cook_time, total_time, difficulty, ai_generated, notes)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
+        INSERT INTO recipes (user_id, title, description, servings, prep_time, cook_time, total_time, difficulty, image_url, source_url, ai_generated, notes)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
       `).run(
         userId,
         parsedRecipe.title,
@@ -528,6 +560,8 @@ export default async function recipesRoutes(fastify) {
         parsedRecipe.cook_time || 0,
         parsedRecipe.total_time || 0,
         parsedRecipe.difficulty || 'mittel',
+        localImagePath ? `/api/uploads/${localImagePath}` : null,
+        url,
         `Importiert von: ${url}`
       );
 
