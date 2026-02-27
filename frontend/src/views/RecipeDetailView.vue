@@ -71,10 +71,11 @@
                 title="Weitere Aktionen">
                 <EllipsisVertical class="w-4 h-4" />
               </button>
+              <!-- Desktop: normales Dropdown -->
               <Transition name="fade">
                 <div v-if="showMoreMenu"
-                  class="right-0 z-30 absolute bg-white dark:bg-stone-900 shadow-lg mt-1 py-1 border border-stone-200 dark:border-stone-700 rounded-xl w-48 origin-top-right">
-                  <button v-if="wakeLockSupported && isTouchDevice" @click="toggleWakeLock(); showMoreMenu = false"
+                  class="hidden sm:block top-full right-0 z-30 absolute bg-white dark:bg-stone-900 shadow-lg mt-1 py-1 border border-stone-200 dark:border-stone-700 rounded-xl w-48">
+                  <button v-if="isTouchDevice" @click="toggleWakeLock(); showMoreMenu = false"
                     class="flex items-center gap-2.5 hover:bg-stone-50 dark:hover:bg-stone-800 px-3 py-2 w-full text-sm text-left transition-colors"
                     :class="wakeLockActive ? 'text-primary-600 dark:text-primary-400' : 'text-stone-700 dark:text-stone-300'">
                     <Smartphone class="w-4 h-4" />
@@ -90,8 +91,31 @@
                   </button>
                 </div>
               </Transition>
-              <!-- Backdrop -->
-              <div v-if="showMoreMenu" @click="showMoreMenu = false" class="z-20 fixed inset-0" />
+              <!-- Mobile: zentriertes Bottom-Sheet via Teleport -->
+              <Teleport to="body">
+                <Transition name="fade">
+                  <div v-if="showMoreMenu" class="sm:hidden z-50 fixed inset-0 flex justify-center items-center bg-black/20" @click.self="showMoreMenu = false">
+                    <div class="bg-white dark:bg-stone-900 shadow-lg mx-4 py-1 border border-stone-200 dark:border-stone-700 rounded-xl w-full max-w-xs">
+                      <button v-if="isTouchDevice" @click="toggleWakeLock(); showMoreMenu = false"
+                        class="flex items-center gap-2.5 hover:bg-stone-50 dark:hover:bg-stone-800 px-4 py-3 w-full text-sm text-left transition-colors"
+                        :class="wakeLockActive ? 'text-primary-600 dark:text-primary-400' : 'text-stone-700 dark:text-stone-300'">
+                        <Smartphone class="w-4 h-4" />
+                        {{ wakeLockActive ? '✓ Display bleibt an' : 'Wach halten' }}
+                      </button>
+                      <router-link :to="'/recipes/new?edit=' + recipe.id" @click="showMoreMenu = false"
+                        class="flex items-center gap-2.5 hover:bg-stone-50 dark:hover:bg-stone-800 px-4 py-3 w-full text-stone-700 dark:text-stone-300 text-sm transition-colors">
+                        <Pencil class="w-4 h-4" /> Bearbeiten
+                      </router-link>
+                      <button @click="showDeleteDialog = true; showMoreMenu = false"
+                        class="flex items-center gap-2.5 hover:bg-red-50 dark:hover:bg-red-950/30 px-4 py-3 w-full text-red-600 dark:text-red-400 text-sm text-left transition-colors">
+                        <Trash2 class="w-4 h-4" /> Löschen
+                      </button>
+                    </div>
+                  </div>
+                </Transition>
+              </Teleport>
+              <!-- Desktop backdrop -->
+              <div v-if="showMoreMenu" @click="showMoreMenu = false" class="hidden sm:block z-20 fixed inset-0" />
             </div>
           </div>
         </div>
@@ -423,7 +447,12 @@ const showHistoryPopup = ref(false);
 const deleting = ref(false);
 const showMealPlanSwapDialog = ref(false);
 const showMoreMenu = ref(false);
-const isTouchDevice = ref('ontouchstart' in window || navigator.maxTouchPoints > 0);
+// Touch-Erkennung mit mehreren Heuristiken (Brave blockiert ggf. maxTouchPoints)
+const isTouchDevice = ref(
+  'ontouchstart' in window ||
+  navigator.maxTouchPoints > 0 ||
+  window.matchMedia('(pointer: coarse)').matches
+);
 const pendingSwapData = ref(null);
 const showCookingMode = ref(false);
 
