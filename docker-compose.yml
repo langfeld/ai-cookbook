@@ -9,7 +9,7 @@
 # Update:   docker compose pull && docker compose up -d
 
 services:
-  cookbook:
+  zauberjournal:
     image: ghcr.io/GITHUB_USER/zauberjournal:latest   # ← GitHub-User anpassen!
     container_name: zauberjournal
     restart: unless-stopped

@@ -3,7 +3,7 @@ const features = [
   {
     icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg>`,
     title: 'KI-Rezeptimport',
-    description: 'Fotografiere dein Kochbuch — die KI erkennt Zutaten, Schritte, Schwierigkeitsgrad und Kategorien automatisch.',
+    description: 'Fotografiere dein Kochbuch oder beschreibe ein Rezept als Text — die KI erkennt Zutaten, Schritte und Kategorien automatisch. Auch mehrseitige Rezeptkarten.',
     accent: 'primary',
   },
   {
@@ -15,13 +15,13 @@ const features = [
   {
     icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/><path d="m9 16 2 2 4-4"/></svg>`,
     title: 'Wochenplaner',
-    description: 'Score-basierter Algorithmus plant deine Woche intelligent — mit Rotation, Synergien und optionalem KI-Reasoning.',
+    description: 'Score-basierter Algorithmus plant deine Woche intelligent — mit Rotation, Synergien, Rezept-Sperren und optionalem KI-Reasoning.',
     accent: 'primary',
   },
   {
     icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/></svg>`,
     title: 'Einkaufsliste',
-    description: 'Automatisch aus dem Wochenplan generiert — mit REWE-Produktmatching, Bring!-Integration und Vorratsabgleich.',
+    description: 'Automatisch aus dem Wochenplan generiert — mit Vorratsabgleich, Zutaten-Zusammenführung, Alias-System und Einkaufslisten-Verlauf.',
     accent: 'accent',
   },
   {
@@ -37,16 +37,34 @@ const features = [
     accent: 'accent',
   },
   {
+    icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9h18v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9Z"/><path d="m3 9 2.45-4.9A2 2 0 0 1 7.24 3h9.52a2 2 0 0 1 1.8 1.1L21 9"/><path d="M12 3v6"/></svg>`,
+    title: 'REWE-Integration',
+    description: 'Automatisches Produktmatching mit Preisoptimierung, Produkt-Picker und Tampermonkey-Userscript für direkten Warenkorb-Import.',
+    accent: 'primary',
+  },
+  {
+    icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>`,
+    title: 'Bring!-Anbindung',
+    description: 'Einkaufsliste per Klick an die Bring!-App senden — unterwegs bequem abhaken, bidirektional nutzbar.',
+    accent: 'accent',
+  },
+  {
+    icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>`,
+    title: 'Backup & Export',
+    description: 'Komplett-Backup aller Daten als JSON — Rezepte, Vorräte, Pläne, Einstellungen. Deine Daten gehören dir.',
+    accent: 'primary',
+  },
+  {
     icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>`,
     title: 'Self-Hosted',
     description: 'Deine Daten bleiben bei dir. Ein Docker-Container, ein Volume, fertig. Perfekt für NAS-Systeme.',
-    accent: 'primary',
+    accent: 'accent',
   },
   {
     icon: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>`,
     title: 'Mehrbenutzerfähig',
     description: 'Admin-Bereich, Rollen, Benutzerverwaltung — teile die App mit deiner Familie oder WG.',
-    accent: 'accent',
+    accent: 'primary',
   },
 ]
 ---
@@ -66,7 +84,7 @@ const features = [
         Alles was du brauchst
       </h2>
       <p class="mt-4 text-stone-600 dark:text-stone-400 text-lg">
-        Von der Rezepterfassung bis zum Einkauf — ein durchdachter Workflow für deinen Küchenalltag.
+        Von der Rezepterfassung über den Einkauf bis in den Vorratsschrank — ein durchdachter Workflow für deinen Küchenalltag.
       </p>
     </div>
 
