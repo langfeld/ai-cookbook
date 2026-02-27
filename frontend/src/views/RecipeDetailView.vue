@@ -9,7 +9,7 @@
   - Favoriten, Bewertung, Kochhistorie
 -->
 <template>
-  <div>
+  <div class="mx-auto max-w-7xl">
     <!-- Rezept-Inhalt -->
     <div v-if="recipe" class="space-y-6 animate-fade-in">
 

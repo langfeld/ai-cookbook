@@ -5,7 +5,7 @@
   Benutzer anzeigen, Rollen ändern, Konten sperren/löschen.
 -->
 <template>
-  <div class="mx-auto p-4 sm:p-6 lg:p-8 max-w-7xl">
+  <div class="mx-auto max-w-7xl">
     <!-- Header -->
     <div class="flex sm:flex-row flex-col sm:justify-between sm:items-center gap-4 mb-6 sm:mb-8">
       <div>

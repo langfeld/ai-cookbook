@@ -7,7 +7,7 @@
   und direkten Zugang zu den jeweiligen Modals.
 -->
 <template>
-  <div class="mx-auto p-4 sm:p-6 lg:p-8 max-w-7xl">
+  <div class="mx-auto max-w-7xl">
     <!-- Header -->
     <div class="mb-6 sm:mb-8">
       <h1 class="font-display font-bold text-stone-800 dark:text-stone-100 text-2xl sm:text-3xl">

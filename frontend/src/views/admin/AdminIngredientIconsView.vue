@@ -7,7 +7,7 @@
   Enthält einen integrierten Emoji-Picker mit Lebensmittel-Emojis.
 -->
 <template>
-  <div class="mx-auto p-4 sm:p-6 lg:p-8 max-w-5xl">
+  <div class="mx-auto max-w-7xl">
     <!-- Header -->
     <div class="flex sm:flex-row flex-col sm:items-center gap-4 mb-6 sm:mb-8">
       <div class="flex-1">
@@ -185,7 +185,7 @@
                 :key="item.name"
                 class="hover:bg-stone-50 dark:hover:bg-stone-800/30 transition-colors"
               >
-                <td class="px-4 py-3 text-center text-stone-300 dark:text-stone-600 text-lg">•</td>
+                <td class="px-4 py-3 text-stone-300 dark:text-stone-600 text-lg text-center">•</td>
                 <td class="px-4 py-3 font-medium text-stone-700 dark:text-stone-300 text-sm">{{ item.name }}</td>
                 <td class="px-4 py-3 font-medium text-stone-500 text-sm text-right">{{ item.count }}×</td>
                 <td class="px-4 py-3 text-right">

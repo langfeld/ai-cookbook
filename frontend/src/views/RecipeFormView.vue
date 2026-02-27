@@ -10,7 +10,7 @@
   - Kategorie-Auswahl
 -->
 <template>
-  <div class="space-y-6 mx-auto max-w-3xl animate-fade-in">
+  <div class="space-y-6 mx-auto max-w-7xl animate-fade-in">
     <h1 class="font-display font-bold text-stone-800 dark:text-stone-100 text-2xl">
       {{ isEdit ? 'Rezept bearbeiten' : 'Neues Rezept' }}
     </h1>

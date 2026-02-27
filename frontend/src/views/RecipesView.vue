@@ -5,7 +5,7 @@
   Zeigt alle Rezepte mit Filtern, Suche und Import-Optionen.
 -->
 <template>
-  <div class="space-y-6 animate-fade-in">
+  <div class="space-y-6 mx-auto max-w-7xl animate-fade-in">
     <!-- Header mit Aktionen -->
     <div class="flex sm:flex-row flex-col sm:items-center gap-4">
       <div class="flex-1">

@@ -12,7 +12,7 @@
   - Gekocht-Markierung (toggle)
 -->
 <template>
-  <div class="space-y-6 animate-fade-in">
+  <div class="space-y-6 mx-auto max-w-7xl animate-fade-in">
 
     <!-- ═══════════════════ HEADER ═══════════════════ -->
     <div class="flex sm:flex-row flex-col justify-between items-start sm:items-center gap-4">
