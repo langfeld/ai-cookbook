@@ -180,7 +180,7 @@
             class="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 px-3 sm:px-4 py-1.5 rounded-lg font-medium text-white text-sm transition-colors"
           >
             <FolderPlus class="w-4 h-4" />
-            <span class="hidden sm:inline">Zu Sammlung</span> ({{ selectedIds.size }})
+            Zu Sammlung
           </button>
           <button
             v-if="selectedCollectionFilter"
@@ -188,14 +188,14 @@
             class="flex items-center gap-1.5 bg-amber-600 hover:bg-amber-700 px-3 sm:px-4 py-1.5 rounded-lg font-medium text-white text-sm transition-colors"
           >
             <FolderMinus class="w-4 h-4" />
-            <span class="hidden sm:inline">Aus Sammlung</span> ({{ selectedIds.size }})
+            Aus Sammlung
           </button>
           <button
             @click="showBatchDeleteConfirm = true"
             class="flex items-center gap-1.5 bg-red-600 hover:bg-red-700 px-3 sm:px-4 py-1.5 rounded-lg font-medium text-white text-sm transition-colors"
           >
             <Trash2 class="w-4 h-4" />
-            <span class="hidden sm:inline">Löschen</span> ({{ selectedIds.size }})
+            Löschen
           </button>
         </div>
       </Transition>

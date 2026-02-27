@@ -1770,7 +1770,7 @@
             class="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 px-3 sm:px-4 py-1.5 rounded-lg font-medium text-white text-sm transition-colors"
           >
             <Merge class="w-4 h-4" />
-            <span class="hidden sm:inline">Zusammenfassen</span> ({{ selectedItems.length }})
+            Zusammenfassen
           </button>
           <button
             @click="startBlockFromSelection"
@@ -1778,7 +1778,7 @@
             class="flex items-center gap-1.5 bg-red-600 hover:bg-red-700 disabled:opacity-50 px-3 sm:px-4 py-1.5 rounded-lg font-medium text-white text-sm transition-colors"
           >
             <Ban class="w-4 h-4" />
-            <span class="hidden sm:inline">Blockieren</span> ({{ selectedItems.length }})
+            Blockieren
           </button>
           <button
             @click="toggleSelectMode"
