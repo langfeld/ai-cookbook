@@ -321,12 +321,12 @@
               :key="item.id"
               @click="selectMode ? handleSelectClick(item) : null"
               :class="[
-                'transition-all last:rounded-b-xl',
+                'transition-all last:rounded-b-xl border-2 border-transparent',
                 selectMode ? 'cursor-pointer' : '',
                 selectMode ? 'hover:bg-violet-50 dark:hover:bg-violet-900/20' : '',
                 item.is_checked ? 'opacity-50' : '',
                 selectMode && selectedItems.some(s => s.id === item.id)
-                  ? 'bg-violet-50 dark:bg-violet-900/20 border-2 border-violet-400 dark:border-violet-500 last:rounded-b-xl'
+                  ? 'bg-violet-50 dark:bg-violet-900/20 !border-violet-400 dark:!border-violet-500'
                   : ''
               ]"
             >
@@ -1766,7 +1766,7 @@
           <button
             @click="startMergeFromSelection"
             :disabled="selectedItems.length < 2"
-            class="flex items-center gap-2 bg-violet-600 hover:bg-violet-700 disabled:opacity-50 px-4 py-1.5 rounded-lg font-medium text-white text-sm transition-colors"
+            class="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 px-4 py-1.5 rounded-lg font-medium text-white text-sm transition-colors"
           >
             <Merge class="w-4 h-4" />
             Zusammenfassen ({{ selectedItems.length }})

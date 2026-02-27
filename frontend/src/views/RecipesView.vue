@@ -176,7 +176,7 @@
           </button>
           <button
             @click="showBatchAddToCollection = true"
-            class="flex items-center gap-2 bg-violet-600 hover:bg-violet-700 px-4 py-1.5 rounded-lg font-medium text-white text-sm transition-colors"
+            class="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 px-4 py-1.5 rounded-lg font-medium text-white text-sm transition-colors"
           >
             <FolderPlus class="w-4 h-4" />
             Zu Sammlung ({{ selectedIds.size }})
