@@ -368,10 +368,7 @@
             <div v-if="getMeal(dayIdx, mt.key)"
               class="mobile-meal-card"
               :class="{ 'opacity-55': getMeal(dayIdx, mt.key).is_cooked }"
-              @touchstart.passive="onMobileTouchStart(getMeal(dayIdx, mt.key), $event)"
-              @touchend="onMobileTouchEnd(getMeal(dayIdx, mt.key), $event)"
-              @touchmove.passive="onMobileTouchMove($event)"
-              @contextmenu.prevent>
+              @click="router.push('/recipes/' + getMeal(dayIdx, mt.key).recipe_id)">
               <!-- Bild -->
               <div class="relative aspect-[5/3] overflow-hidden">
                 <img v-if="getMeal(dayIdx, mt.key).image_url"
@@ -409,11 +406,16 @@
                   </span>
                 </div>
               </div>
-              <!-- Titel -->
-              <div class="px-3.5 py-2.5">
-                <h4 class="font-semibold text-stone-800 dark:text-stone-100 text-base leading-snug">
+              <!-- Titel + Options-Button -->
+              <div class="flex items-center gap-2 px-3.5 py-2.5">
+                <h4 class="flex-1 font-semibold text-stone-800 dark:text-stone-100 text-base leading-snug">
                   {{ getMeal(dayIdx, mt.key).recipe_title }}
                 </h4>
+                <button @click.stop="selectMeal(getMeal(dayIdx, mt.key))"
+                  class="flex justify-center items-center hover:bg-stone-100 dark:hover:bg-stone-800 p-1.5 rounded-lg text-stone-400 dark:text-stone-500 transition-colors shrink-0"
+                  title="Optionen">
+                  <EllipsisVertical class="w-5 h-5" />
+                </button>
               </div>
             </div>
 
@@ -427,13 +429,6 @@
         </div>
       </template>
 
-      <!-- Long-Press Hinweis -->
-      <div class="flex items-center gap-2.5 bg-stone-50 dark:bg-stone-900/60 mt-2 px-4 py-2.5 border border-stone-200/60 dark:border-stone-800/60 rounded-xl">
-        <Hand class="w-4 h-4 text-stone-400 dark:text-stone-500 shrink-0" />
-        <p class="text-stone-400 dark:text-stone-500 text-xs leading-relaxed">
-          <span class="font-medium text-stone-500 dark:text-stone-400">Tipp:</span> Tippe auf ein Rezept, um es zu öffnen. Halte es gedrückt für weitere Optionen.
-        </p>
-      </div>
     </div>
 
     <!-- ═══════════════════ TAGES-ANSICHT ═══════════════════ -->
@@ -523,14 +518,11 @@
             </div>
           </div>
 
-          <!-- ── Mobile: gleiches Karten-Layout wie Wochenansicht (Tap → Rezept, Long-Press → Popup) ── -->
+          <!-- ── Mobile: Karten-Layout (Tap → Rezept, ⋮-Button → Optionen) ── -->
           <div v-if="getMeal(selectedDayIdx, mt.key)" class="lg:hidden">
             <div class="mobile-meal-card"
               :class="{ 'opacity-55': getMeal(selectedDayIdx, mt.key).is_cooked }"
-              @touchstart.passive="onMobileTouchStart(getMeal(selectedDayIdx, mt.key), $event)"
-              @touchend="onMobileTouchEnd(getMeal(selectedDayIdx, mt.key), $event)"
-              @touchmove.passive="onMobileTouchMove($event)"
-              @contextmenu.prevent>
+              @click="router.push('/recipes/' + getMeal(selectedDayIdx, mt.key).recipe_id)">
               <!-- Bild -->
               <div class="relative aspect-[5/3] overflow-hidden">
                 <img v-if="getMeal(selectedDayIdx, mt.key).image_url"
@@ -567,11 +559,16 @@
                   </span>
                 </div>
               </div>
-              <!-- Titel -->
-              <div class="px-3.5 py-2.5">
-                <h4 class="font-semibold text-stone-800 dark:text-stone-100 text-base leading-snug">
+              <!-- Titel + Options-Button -->
+              <div class="flex items-center gap-2 px-3.5 py-2.5">
+                <h4 class="flex-1 font-semibold text-stone-800 dark:text-stone-100 text-base leading-snug">
                   {{ getMeal(selectedDayIdx, mt.key).recipe_title }}
                 </h4>
+                <button @click.stop="selectMeal(getMeal(selectedDayIdx, mt.key))"
+                  class="flex justify-center items-center hover:bg-stone-100 dark:hover:bg-stone-800 p-1.5 rounded-lg text-stone-400 dark:text-stone-500 transition-colors shrink-0"
+                  title="Optionen">
+                  <EllipsisVertical class="w-5 h-5" />
+                </button>
               </div>
             </div>
           </div>
@@ -596,13 +593,6 @@
         </div>
       </div>
 
-      <!-- Long-Press Hinweis (mobile Tagesansicht) -->
-      <div class="lg:hidden flex items-center gap-2.5 bg-stone-50 dark:bg-stone-900/60 px-4 py-2.5 border border-stone-200/60 dark:border-stone-800/60 rounded-xl">
-        <Hand class="w-4 h-4 text-stone-400 dark:text-stone-500 shrink-0" />
-        <p class="text-stone-400 dark:text-stone-500 text-xs leading-relaxed">
-          <span class="font-medium text-stone-500 dark:text-stone-400">Tipp:</span> Tippe auf ein Rezept, um es zu öffnen. Halte es gedrückt für weitere Optionen.
-        </p>
-      </div>
     </div>
 
     <!-- ═══════════════════ GENERIEREN-MODAL ═══════════════════ -->
@@ -904,7 +894,7 @@
                   <ChefHat class="w-4 h-4" /> {{ selectedMeal.difficulty }}
                 </span>
               </div>
-              <div class="flex flex-wrap gap-2 pt-2">
+              <div class="gap-2 grid grid-cols-2 pt-2">
                 <button @click="toggleCooked(selectedMeal); selectedMeal = null;"
                   class="action-pill" :class="selectedMeal.is_cooked ? 'action-pill--active' : ''">
                   <Check class="w-4 h-4" /> {{ selectedMeal.is_cooked ? 'Rückgängig' : 'Gekocht' }}
@@ -1016,7 +1006,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { useMealPlanStore } from '@/stores/mealplan.js';
 import { useCollectionsStore } from '@/stores/collections.js';
@@ -1027,7 +1017,7 @@ import {
   Sparkles, ChevronLeft, ChevronRight, Check, Eye, RefreshCw,
   X, Clock, ChefHat, UtensilsCrossed, Plus, Minus, Star, Trash2,
   LayoutGrid, CalendarDays, Settings, Settings2, FolderOpen, Info,
-  Ban, ShieldOff, Lock, Unlock, Users, ChevronDown, Hand, FolderSearch,
+  Ban, ShieldOff, Lock, Unlock, Users, ChevronDown, FolderSearch, EllipsisVertical,
 } from 'lucide-vue-next';
 
 const router = useRouter();
@@ -1063,46 +1053,7 @@ const showSlotSettings = ref(false);
 const showPastDays = ref(false);
 const reasoningCollapsed = ref(true);
 
-// ─── Long-Press-Handling für Mobile ───
-const longPressTimer = ref(null);
-const longPressTriggered = ref(false);
-const touchMoved = ref(false);
-const touchStartPos = ref({ x: 0, y: 0 });
-const LONG_PRESS_MS = 500;
-const MOVE_THRESHOLD = 10; // px – Fingerbewegung unter diesem Wert gilt als Tap
 
-function onMobileTouchStart(meal, e) {
-  longPressTriggered.value = false;
-  touchMoved.value = false;
-  const touch = e.touches[0];
-  touchStartPos.value = { x: touch.clientX, y: touch.clientY };
-  longPressTimer.value = setTimeout(() => {
-    longPressTriggered.value = true;
-    selectMeal(meal);
-    if (navigator.vibrate) navigator.vibrate(30);
-  }, LONG_PRESS_MS);
-}
-
-function onMobileTouchEnd(meal, e) {
-  clearTimeout(longPressTimer.value);
-  if (!longPressTriggered.value && !touchMoved.value) {
-    e.preventDefault();
-    router.push(`/recipes/${meal.recipe_id}`);
-  }
-}
-
-function onMobileTouchMove(e) {
-  if (touchMoved.value) return;
-  const touch = e.touches[0];
-  const dx = touch.clientX - touchStartPos.value.x;
-  const dy = touch.clientY - touchStartPos.value.y;
-  if (dx * dx + dy * dy > MOVE_THRESHOLD * MOVE_THRESHOLD) {
-    touchMoved.value = true;
-    clearTimeout(longPressTimer.value);
-  }
-}
-
-onUnmounted(() => clearTimeout(longPressTimer.value));
 
 // Bei Änderung automatisch in localStorage speichern
 watch([genMealTypes, genPersons, visibleSlots, genSourceMode, genCollectionIds, genDeduplicate, genAiReasoning, genActiveDays], () => {
@@ -1644,8 +1595,9 @@ onMounted(async () => {
 .action-pill {
   display: flex;
   align-items: center;
-  gap: calc(var(--spacing) * 1);
-  padding: calc(var(--spacing) * 2) calc(var(--spacing) * 3);
+  justify-content: center;
+  gap: calc(var(--spacing) * 1.5);
+  padding: calc(var(--spacing) * 2.5) calc(var(--spacing) * 3);
   border-radius: var(--radius-xl);
   font-size: 0.8rem;
   font-weight: 500;
