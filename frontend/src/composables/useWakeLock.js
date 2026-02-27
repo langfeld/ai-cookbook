@@ -5,9 +5,12 @@
  * Hält den Bildschirm wach, solange aktiv.
  *
  * Strategie (mit automatischem Fallback):
- *  1. Native Screen Wake Lock API (Chrome, Safari 16.4+, Edge)
- *  2. Video-Fallback: Unsichtbares Micro-Video in Endlosschleife
- *     (funktioniert in praktisch allen mobilen Browsern inkl. Brave)
+ *  1. Native Screen Wake Lock API (Chrome 84+, Safari 16.4+, Edge 84+, Firefox 126+)
+ *  2. Canvas-MediaStream-Fallback: Erzeugt einen Live-Videostream
+ *     aus einem Canvas-Element. Browser behandeln aktive MediaStream-
+ *     Wiedergabe als echte Mediennutzung und halten den Bildschirm wach.
+ *     Funktioniert auch in Brave und anderen Browsern, die die native
+ *     Wake Lock API blockieren.
  *
  * Wird automatisch re-aktiviert wenn der Tab wieder sichtbar wird.
  * Wird automatisch freigegeben beim Unmount der Komponente.
@@ -15,21 +18,22 @@
 
 import { ref, onUnmounted, watch } from 'vue';
 
-// Winziges transparentes WebM-Video (1x1px, ~1KB) als Base64
-// Verhindert auf mobilen Browsern das Display-Timeout
-const TINY_WEBM = 'data:video/webm;base64,GkXfo0AgQoaBAUL3gQFC8oEEQvOBCEKCQAR3ZWJtQoeBAkKFgQIYU4BnQI0VSalmQCgq17FAAw9CQE2AQAZ3aGFtbXlXQUAGd2hhbW15RIlACECPQAAAAAAAFlSua0AxrkAu14EBY8WBAZyBACK1nEADdW5khkAFVl9WUDglhohAA1ZQOIOBAeBABrCBCLqBCB9DtnVBMKqBAlPAgQBhBYEBYoUBYGqBAlPAewEAAAAAABJUw2anQoeBAUKEgQEjoxMAAAAAAABRu94BcYABdwEAAAAAABJUw2anQoeBAUKEgQEjoxMAAAAAAABRu94BcYABdwEAAAAAABJUw2anQoaBAaOjEwAAAAAAAFG73gFxgAF3AQAAAAAAAA==';
-
 const nativeSupported = 'wakeLock' in navigator;
-// Video-Fallback ist auf praktisch allen mobilen Geräten möglich
-const videoSupported = typeof document !== 'undefined' && typeof HTMLVideoElement !== 'undefined';
+const canvasStreamSupported =
+  typeof document !== 'undefined' &&
+  typeof HTMLCanvasElement !== 'undefined' &&
+  typeof HTMLCanvasElement.prototype.captureStream === 'function' &&
+  typeof HTMLVideoElement !== 'undefined';
 
 export function useWakeLock() {
   const isActive = ref(false);
-  const isSupported = ref(nativeSupported || videoSupported);
-  const method = ref(null); // 'native' | 'video' | null
+  const isSupported = ref(nativeSupported || canvasStreamSupported);
+  const method = ref(null); // 'native' | 'stream' | null
 
   let nativeLock = null;
-  let videoEl = null;
+  let streamVideo = null;
+  let streamCanvas = null;
+  let streamAnimFrame = null;
 
   // ── Native Wake Lock ──────────────────────────────
 
@@ -46,7 +50,7 @@ export function useWakeLock() {
 
       return true;
     } catch (err) {
-      console.warn('Native Wake Lock fehlgeschlagen:', err.message);
+      console.warn('[WakeLock] Native fehlgeschlagen:', err.message);
       return false;
     }
   }
@@ -58,53 +62,95 @@ export function useWakeLock() {
     }
   }
 
-  // ── Video-Fallback ────────────────────────────────
+  // ── Canvas-MediaStream-Fallback ───────────────────
+  //
+  // Erzeugt ein Canvas (2×2px), zeichnet regelmäßig darauf,
+  // wandelt es in einen MediaStream und spielt diesen in einem
+  // Video-Element ab. Der Browser erkennt aktive Medienwiedergabe
+  // und verhindert das Display-Timeout.
 
-  function requestVideo() {
+  function requestStream() {
     try {
-      if (!videoEl) {
-        videoEl = document.createElement('video');
-        videoEl.setAttribute('playsinline', '');
-        videoEl.setAttribute('muted', '');
-        videoEl.muted = true;
-        videoEl.loop = true;
-        videoEl.src = TINY_WEBM;
-        // Unsichtbar, aber im DOM (manche Browser brauchen das)
-        Object.assign(videoEl.style, {
-          position: 'fixed',
-          top: '-1px',
-          left: '-1px',
-          width: '1px',
-          height: '1px',
-          opacity: '0.01',
-          pointerEvents: 'none',
-          zIndex: '-1',
-        });
-        document.body.appendChild(videoEl);
+      if (!streamCanvas) {
+        streamCanvas = document.createElement('canvas');
+        streamCanvas.width = 2;
+        streamCanvas.height = 2;
       }
 
-      const playPromise = videoEl.play();
-      if (playPromise) {
-        playPromise.then(() => {
-          isActive.value = true;
-          method.value = 'video';
-        }).catch((err) => {
-          console.warn('Video Wake Lock fehlgeschlagen:', err.message);
+      const ctx = streamCanvas.getContext('2d');
+
+      // Regelmäßig auf das Canvas zeichnen, damit der Stream "lebt"
+      let tick = 0;
+      function draw() {
+        // Abwechselnd Farbe ändern, damit der Stream nicht als statisch erkannt wird
+        const c = tick++ % 2 === 0 ? '#000001' : '#000002';
+        ctx.fillStyle = c;
+        ctx.fillRect(0, 0, 2, 2);
+        streamAnimFrame = requestAnimationFrame(draw);
+      }
+      draw();
+
+      const stream = streamCanvas.captureStream(1); // 1 FPS reicht
+
+      if (!streamVideo) {
+        streamVideo = document.createElement('video');
+        streamVideo.setAttribute('playsinline', '');
+        streamVideo.setAttribute('muted', '');
+        streamVideo.muted = true;
+        // Sichtbar genug für den Browser, aber unsichtbar für den User:
+        // Nicht display:none, nicht opacity:0 – sondern unter dem Content
+        // mit minimalem Footprint
+        Object.assign(streamVideo.style, {
+          position: 'fixed',
+          bottom: '0',
+          left: '0',
+          width: '2px',
+          height: '2px',
+          opacity: '0.01',
+          pointerEvents: 'none',
+          zIndex: '-9999',
         });
+        document.body.appendChild(streamVideo);
+      }
+
+      streamVideo.srcObject = stream;
+
+      const playPromise = streamVideo.play();
+      if (playPromise) {
+        playPromise
+          .then(() => {
+            isActive.value = true;
+            method.value = 'stream';
+            console.info('[WakeLock] Canvas-Stream aktiv');
+          })
+          .catch((err) => {
+            console.warn('[WakeLock] Stream-Wiedergabe fehlgeschlagen:', err.message);
+            cleanupStream();
+          });
       }
       return true;
     } catch (err) {
-      console.warn('Video Wake Lock fehlgeschlagen:', err.message);
+      console.warn('[WakeLock] Stream-Fallback fehlgeschlagen:', err.message);
+      cleanupStream();
       return false;
     }
   }
 
-  function releaseVideo() {
-    if (videoEl) {
-      videoEl.pause();
-      videoEl.remove();
-      videoEl = null;
+  function cleanupStream() {
+    if (streamAnimFrame) {
+      cancelAnimationFrame(streamAnimFrame);
+      streamAnimFrame = null;
     }
+    if (streamVideo) {
+      streamVideo.pause();
+      if (streamVideo.srcObject) {
+        streamVideo.srcObject.getTracks().forEach((t) => t.stop());
+        streamVideo.srcObject = null;
+      }
+      streamVideo.remove();
+      streamVideo = null;
+    }
+    streamCanvas = null;
   }
 
   // ── Öffentliche API ───────────────────────────────
@@ -112,15 +158,15 @@ export function useWakeLock() {
   async function request() {
     if (!isSupported.value) return false;
 
-    // Erst native versuchen, dann Fallback
+    // Erst native versuchen
     if (nativeSupported) {
       const ok = await requestNative();
       if (ok) return true;
     }
 
-    // Fallback: Video
-    if (videoSupported) {
-      return requestVideo();
+    // Fallback: Canvas-MediaStream
+    if (canvasStreamSupported) {
+      return requestStream();
     }
 
     return false;
@@ -129,8 +175,8 @@ export function useWakeLock() {
   async function release() {
     if (method.value === 'native') {
       await releaseNative();
-    } else if (method.value === 'video') {
-      releaseVideo();
+    } else if (method.value === 'stream') {
+      cleanupStream();
     }
     isActive.value = false;
     method.value = null;
