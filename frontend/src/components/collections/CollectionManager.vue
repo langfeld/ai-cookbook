@@ -67,7 +67,7 @@
             </div>
             <!-- Inline Icon-Grid (Neu) -->
             <Transition name="fade">
-              <div v-if="showIconPicker" class="mt-2 bg-stone-50 dark:bg-stone-800 p-2 border border-stone-200 dark:border-stone-700 rounded-lg">
+              <div v-if="showIconPicker" class="bg-stone-50 dark:bg-stone-800 mt-2 p-2 border border-stone-200 dark:border-stone-700 rounded-lg">
                 <div class="flex flex-wrap gap-1 max-h-32 overflow-y-auto">
                   <button
                     v-for="icon in iconOptions" :key="icon"
@@ -92,90 +92,92 @@
             <div v-else class="space-y-2">
               <div
                 v-for="col in collectionsStore.collections" :key="col.id"
-                class="group flex items-center gap-3 hover:bg-stone-50 dark:hover:bg-stone-800 p-3 border border-stone-200 dark:border-stone-700 rounded-xl transition-colors"
+                class="group hover:bg-stone-50 dark:hover:bg-stone-800 p-3 border border-stone-200 dark:border-stone-700 rounded-xl transition-colors"
               >
-                <!-- Icon & Farbe -->
-                <div
-                  class="flex justify-center items-center rounded-lg w-10 h-10 text-lg shrink-0"
-                  :style="{ backgroundColor: col.color + '20', borderColor: col.color + '40' }"
-                  style="border-width: 1px;"
-                >
-                  {{ col.icon }}
+                <!-- Bearbeiten-Modus -->
+                <div v-if="editingId === col.id" class="space-y-2">
+                  <div class="flex gap-1.5">
+                    <input
+                      v-model="editName"
+                      @keyup.enter="saveEdit(col)"
+                      @keyup.escape="editingId = null"
+                      class="flex-1 bg-white dark:bg-stone-800 px-2.5 py-1 border border-primary-400 rounded-lg outline-none min-w-0 text-sm"
+                      ref="editInput"
+                    />
+                    <button @click="saveEdit(col)" class="bg-primary-50 hover:bg-primary-100 dark:bg-primary-900/30 p-1.5 rounded-lg text-primary-600 hover:text-primary-700 transition-colors" title="Speichern">
+                      <Check class="w-4 h-4" />
+                    </button>
+                    <button @click="editingId = null" class="bg-stone-100 hover:bg-stone-200 dark:bg-stone-800 p-1.5 rounded-lg text-stone-400 hover:text-stone-600 transition-colors" title="Abbrechen">
+                      <X class="w-4 h-4" />
+                    </button>
+                  </div>
+                  <div class="flex items-center gap-2">
+                    <!-- Icon-Button (Edit) -->
+                    <button
+                      @click="showEditIconPicker = !showEditIconPicker"
+                      class="bg-stone-50 dark:bg-stone-800 p-1.5 border border-stone-200 dark:border-stone-700 rounded-lg text-base leading-none"
+                      title="Icon ändern"
+                    >
+                      {{ editIcon }}
+                    </button>
+                    <!-- Color-Picker (Edit) -->
+                    <div class="relative w-8 h-8">
+                      <div
+                        class="flex justify-center items-center border border-stone-200 dark:border-stone-700 rounded-lg w-full h-full pointer-events-none"
+                        :style="{ backgroundColor: editColor }"
+                      >
+                        <Palette class="drop-shadow-sm w-3.5 h-3.5 text-white" />
+                      </div>
+                      <input
+                        v-model="editColor"
+                        type="color"
+                        class="z-10 absolute inset-0 opacity-0 w-full h-full cursor-pointer"
+                        title="Farbe ändern"
+                      />
+                    </div>
+                    <span class="text-stone-400 text-xs">Icon & Farbe</span>
+                  </div>
+                  <!-- Inline Icon-Grid (Edit) -->
+                  <Transition name="fade">
+                    <div v-if="showEditIconPicker" class="bg-stone-50 dark:bg-stone-800 p-2 border border-stone-200 dark:border-stone-700 rounded-lg">
+                      <div class="flex flex-wrap gap-1 max-h-32 overflow-y-auto">
+                        <button
+                          v-for="icon in iconOptions" :key="icon"
+                          @click="editIcon = icon; showEditIconPicker = false"
+                          :class="['p-1.5 rounded hover:bg-stone-100 dark:hover:bg-stone-700 text-lg transition-colors',
+                            icon === editIcon ? 'bg-primary-100 dark:bg-primary-900' : '']"
+                        >{{ icon }}</button>
+                      </div>
+                    </div>
+                  </Transition>
                 </div>
 
-                <!-- Name & Count -->
-                <div class="flex-1 min-w-0">
-                  <!-- Bearbeiten-Modus -->
-                  <div v-if="editingId === col.id" class="space-y-2">
-                    <div class="flex gap-1">
-                      <input
-                        v-model="editName"
-                        @keyup.enter="saveEdit(col)"
-                        @keyup.escape="editingId = null"
-                        class="flex-1 bg-white dark:bg-stone-800 px-2 py-0.5 border border-primary-400 rounded outline-none text-sm"
-                        ref="editInput"
-                      />
-                      <button @click="saveEdit(col)" class="p-1 text-primary-600 hover:text-primary-700">
-                        <Check class="w-4 h-4" />
-                      </button>
-                      <button @click="editingId = null" class="p-1 text-stone-400 hover:text-stone-600">
-                        <X class="w-4 h-4" />
-                      </button>
-                    </div>
-                    <div class="flex items-center gap-2">
-                      <!-- Icon-Button (Edit) -->
-                      <button
-                        @click="showEditIconPicker = !showEditIconPicker"
-                        class="bg-stone-50 dark:bg-stone-800 p-1.5 border border-stone-200 dark:border-stone-700 rounded-lg text-base leading-none"
-                        title="Icon ändern"
-                      >
-                        {{ editIcon }}
-                      </button>
-                      <!-- Color-Picker (Edit) -->
-                      <div class="relative w-8 h-8">
-                        <div
-                          class="flex justify-center items-center border border-stone-200 dark:border-stone-700 rounded-lg w-full h-full pointer-events-none"
-                          :style="{ backgroundColor: editColor }"
-                        >
-                          <Palette class="drop-shadow-sm w-3.5 h-3.5 text-white" />
-                        </div>
-                        <input
-                          v-model="editColor"
-                          type="color"
-                          class="z-10 absolute inset-0 opacity-0 w-full h-full cursor-pointer"
-                          title="Farbe ändern"
-                        />
-                      </div>
-                      <span class="text-stone-400 text-xs">Icon & Farbe</span>
-                    </div>
-                    <!-- Inline Icon-Grid (Edit) -->
-                    <Transition name="fade">
-                      <div v-if="showEditIconPicker" class="bg-stone-50 dark:bg-stone-800 p-2 border border-stone-200 dark:border-stone-700 rounded-lg">
-                        <div class="flex flex-wrap gap-1 max-h-32 overflow-y-auto">
-                          <button
-                            v-for="icon in iconOptions" :key="icon"
-                            @click="editIcon = icon; showEditIconPicker = false"
-                            :class="['p-1.5 rounded hover:bg-stone-100 dark:hover:bg-stone-700 text-lg transition-colors',
-                              icon === editIcon ? 'bg-primary-100 dark:bg-primary-900' : '']"
-                          >{{ icon }}</button>
-                        </div>
-                      </div>
-                    </Transition>
+                <!-- Anzeige-Modus -->
+                <div v-else class="flex items-center gap-3">
+                  <!-- Icon & Farbe -->
+                  <div
+                    class="flex justify-center items-center rounded-lg w-10 h-10 text-lg shrink-0"
+                    :style="{ backgroundColor: col.color + '20', borderColor: col.color + '40' }"
+                    style="border-width: 1px;"
+                  >
+                    {{ col.icon }}
                   </div>
-                  <template v-else>
+
+                  <!-- Name & Count -->
+                  <div class="flex-1 min-w-0">
                     <div class="font-medium text-stone-800 dark:text-stone-200 text-sm truncate">{{ col.name }}</div>
                     <div class="text-stone-400 text-xs">{{ col.recipe_count ?? 0 }} Rezept{{ col.recipe_count !== 1 ? 'e' : '' }}</div>
-                  </template>
-                </div>
+                  </div>
 
-                <!-- Aktionen -->
-                <div v-if="editingId !== col.id" class="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-                  <button @click="startEdit(col)" class="hover:bg-stone-200 dark:hover:bg-stone-700 p-1.5 rounded-lg transition-colors" title="Bearbeiten">
-                    <Pencil class="w-3.5 h-3.5 text-stone-400" />
-                  </button>
-                  <button @click="confirmDelete(col)" class="hover:bg-red-100 dark:hover:bg-red-900/30 p-1.5 rounded-lg transition-colors" title="Löschen">
-                    <Trash2 class="w-3.5 h-3.5 text-stone-400 hover:text-red-500" />
-                  </button>
+                  <!-- Aktionen -->
+                  <div class="flex gap-1 sm:group-hover:opacity-100 sm:opacity-0 transition-opacity shrink-0">
+                    <button @click="startEdit(col)" class="hover:bg-stone-200 dark:hover:bg-stone-700 p-1.5 rounded-lg transition-colors" title="Bearbeiten">
+                      <Pencil class="w-3.5 h-3.5 text-stone-400" />
+                    </button>
+                    <button @click="confirmDelete(col)" class="hover:bg-red-100 dark:hover:bg-red-900/30 p-1.5 rounded-lg transition-colors" title="Löschen">
+                      <Trash2 class="w-3.5 h-3.5 text-stone-400 hover:text-red-500" />
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
