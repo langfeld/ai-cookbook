@@ -298,6 +298,7 @@ import {
   Sun, Moon, UtensilsCrossed, ChefHat,
 } from 'lucide-vue-next';
 import { useIngredientIcons } from '@/composables/useIngredientIcons';
+import { useWakeLock } from '@/composables/useWakeLock.js';
 import { formatAmount } from '@/utils/formatAmount.js';
 
 const TIMER_STORAGE_KEY = 'cooking-mode-timer-enabled';
@@ -316,9 +317,8 @@ const emit = defineEmits(['update:modelValue', 'finished']);
 const currentIndex = ref(0);
 const showIngredients = ref(false);
 const checkedIngredients = ref(new Set());
-const wakeLockActive = ref(false);
+const { isActive: wakeLockActive, toggle: toggleWakeLock, request: requestWakeLock, release: releaseWakeLock } = useWakeLock();
 const isMobile = ref(false);
-let wakeLockSentinel = null;
 
 // Timer
 const timerEnabled = ref(loadTimerPref());
@@ -522,36 +522,7 @@ function timerAlarm() {
   }
 }
 
-// ─── Wake Lock ───
-async function toggleWakeLock() {
-  if (wakeLockActive.value) {
-    releaseWakeLock();
-  } else {
-    await requestWakeLock();
-  }
-}
-
-async function requestWakeLock() {
-  try {
-    if ('wakeLock' in navigator) {
-      wakeLockSentinel = await navigator.wakeLock.request('screen');
-      wakeLockActive.value = true;
-      wakeLockSentinel.addEventListener('release', () => {
-        wakeLockActive.value = false;
-      });
-    }
-  } catch {
-    // Wake Lock nicht verfügbar
-  }
-}
-
-function releaseWakeLock() {
-  if (wakeLockSentinel) {
-    wakeLockSentinel.release();
-    wakeLockSentinel = null;
-  }
-  wakeLockActive.value = false;
-}
+// Wake Lock wird über useWakeLock Composable gesteuert
 
 // ─── Touch/Swipe ───
 function onTouchStart(e) {
