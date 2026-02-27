@@ -1002,29 +1002,29 @@
         </div>
       </Transition>
     </Teleport>
+
+    <!-- Bestätigungs-Dialog: Fixierten Plan überschreiben -->
+    <ConfirmDialog
+      v-model="showOverwriteLockedConfirm"
+      variant="warning"
+      title="Fixierten Plan überschreiben?"
+      message="Der aktuelle Plan ist fixiert (bereits eingekauft). Trotzdem überschreiben?"
+      confirm-text="Überschreiben"
+      cancel-text="Abbrechen"
+      @confirm="executeGenerate"
+    />
+
+    <!-- Bestätigungs-Dialog: Wochenplan löschen -->
+    <ConfirmDialog
+      v-model="showDeletePlanConfirm"
+      variant="danger"
+      title="Wochenplan löschen?"
+      message="Wochenplan wirklich löschen? Diese Aktion kann nicht rückgängig gemacht werden."
+      confirm-text="Löschen"
+      cancel-text="Abbrechen"
+      @confirm="executeDeletePlan"
+    />
   </div>
-
-  <!-- Bestätigungs-Dialog: Fixierten Plan überschreiben -->
-  <ConfirmDialog
-    v-model="showOverwriteLockedConfirm"
-    variant="warning"
-    title="Fixierten Plan überschreiben?"
-    message="Der aktuelle Plan ist fixiert (bereits eingekauft). Trotzdem überschreiben?"
-    confirm-text="Überschreiben"
-    cancel-text="Abbrechen"
-    @confirm="executeGenerate"
-  />
-
-  <!-- Bestätigungs-Dialog: Wochenplan löschen -->
-  <ConfirmDialog
-    v-model="showDeletePlanConfirm"
-    variant="danger"
-    title="Wochenplan löschen?"
-    message="Wochenplan wirklich löschen? Diese Aktion kann nicht rückgängig gemacht werden."
-    confirm-text="Löschen"
-    cancel-text="Abbrechen"
-    @confirm="executeDeletePlan"
-  />
 </template>
 
 <script setup>

@@ -321,18 +321,18 @@
         </div>
       </div>
     </div>
-  </div>
 
-  <!-- Bestätigungs-Dialog für Mapping löschen -->
-  <ConfirmDialog
-    v-model="showDeleteConfirm"
-    variant="danger"
-    :title="`Mapping löschen?`"
-    :message="`Mapping \u201E${deleteTarget?.keyword}\u201C \u2192 ${deleteTarget?.emoji} wirklich löschen?`"
-    confirm-text="Löschen"
-    cancel-text="Abbrechen"
-    @confirm="executeDeleteIcon"
-  />
+    <!-- Bestätigungs-Dialog für Mapping löschen -->
+    <ConfirmDialog
+      v-model="showDeleteConfirm"
+      variant="danger"
+      :title="`Mapping löschen?`"
+      :message="`Mapping \u201E${deleteTarget?.keyword}\u201C \u2192 ${deleteTarget?.emoji} wirklich löschen?`"
+      confirm-text="Löschen"
+      cancel-text="Abbrechen"
+      @confirm="executeDeleteIcon"
+    />
+  </div>
 </template>
 
 <script setup>
