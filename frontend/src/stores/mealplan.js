@@ -199,11 +199,21 @@ export const useMealPlanStore = defineStore('mealplan', () => {
     return data;
   }
 
+  /** Plan auf eine andere Woche duplizieren */
+  async function duplicatePlan(sourcePlanId, targetWeekStart) {
+    const data = await api.post(`/mealplan/${sourcePlanId}/duplicate`, { targetWeekStart });
+    // Wenn Zielwoche = aktuell angezeigte Woche, Plan aktualisieren
+    if (data.plan) {
+      currentPlan.value = data.plan;
+    }
+    return data;
+  }
+
   return {
     currentPlan, reasoning, reasoningSource, reasoningLoading, planHistory, loading, generating,
     mealTypeLabels,
     generatePlan, pollReasoning, fetchCurrentPlan, fetchHistory,
     fetchSuggestions, markCooked, updateServings, swapRecipe, addEntry, addRecipeToPlan, moveEntry, removeEntry, deletePlan,
-    toggleLock,
+    toggleLock, duplicatePlan,
   };
 });

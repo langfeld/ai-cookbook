@@ -161,6 +161,70 @@ export default async function mealplanRoutes(fastify) {
   });
 
   // ─────────────────────────────────────────────
+  // POST /:planId/duplicate – Plan auf eine andere Woche kopieren
+  // ─────────────────────────────────────────────
+  fastify.post('/:planId/duplicate', {
+    schema: {
+      description: 'Wochenplan auf eine andere Woche kopieren',
+      tags: ['Wochenplan'],
+      security: [{ bearerAuth: [] }],
+      params: {
+        type: 'object',
+        properties: { planId: { type: 'integer' } },
+        required: ['planId'],
+      },
+      body: {
+        type: 'object',
+        required: ['targetWeekStart'],
+        properties: {
+          targetWeekStart: { type: 'string', format: 'date', description: 'Zielwoche (Montag als YYYY-MM-DD)' },
+        },
+      },
+    },
+  }, async (request, reply) => {
+    const { planId } = request.params;
+    const { targetWeekStart } = request.body;
+    const userId = request.user.id;
+
+    // Quellplan prüfen
+    const sourcePlan = db.prepare('SELECT id FROM meal_plans WHERE id = ? AND user_id = ?').get(planId, userId);
+    if (!sourcePlan) return reply.status(404).send({ error: 'Quellplan nicht gefunden' });
+
+    // Quell-Einträge laden
+    const sourceEntries = db.prepare('SELECT * FROM meal_plan_entries WHERE meal_plan_id = ?').all(sourcePlan.id);
+
+    // Bestehenden Plan für die Zielwoche löschen (falls vorhanden)
+    const existing = db.prepare('SELECT id FROM meal_plans WHERE user_id = ? AND week_start = ?').get(userId, targetWeekStart);
+    if (existing) {
+      db.prepare('DELETE FROM meal_plans WHERE id = ?').run(existing.id);
+    }
+
+    // Neuen Plan erstellen und Einträge kopieren
+    const transaction = db.transaction(() => {
+      const { lastInsertRowid } = db.prepare('INSERT INTO meal_plans (user_id, week_start) VALUES (?, ?)').run(userId, targetWeekStart);
+      const newPlanId = Number(lastInsertRowid);
+
+      const insertEntry = db.prepare(
+        'INSERT INTO meal_plan_entries (meal_plan_id, recipe_id, day_of_week, meal_type, servings) VALUES (?, ?, ?, ?, ?)'
+      );
+      for (const entry of sourceEntries) {
+        insertEntry.run(newPlanId, entry.recipe_id, entry.day_of_week, entry.meal_type, entry.servings);
+      }
+
+      return newPlanId;
+    });
+
+    const newPlanId = transaction();
+    const savedPlan = getMealPlan(userId, targetWeekStart);
+
+    return {
+      message: `Plan mit ${sourceEntries.length} Einträgen auf KW ${targetWeekStart} kopiert!`,
+      planId: newPlanId,
+      plan: savedPlan,
+    };
+  });
+
+  // ─────────────────────────────────────────────
   // POST /add-recipe – Rezept manuell zum Planer hinzufügen
   // ─────────────────────────────────────────────
   fastify.post('/add-recipe', {

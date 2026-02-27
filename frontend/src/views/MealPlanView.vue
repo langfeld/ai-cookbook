@@ -33,6 +33,12 @@
           <Unlock v-else class="w-4 h-4" />
           <span class="hidden sm:inline">{{ isLocked ? 'Fixiert' : 'Fixieren' }}</span>
         </button>
+        <button @click="showLoadDialog = true"
+          class="flex items-center gap-1.5 hover:bg-stone-100 dark:hover:bg-stone-800 px-3 py-2 rounded-xl text-stone-600 dark:text-stone-400 text-sm transition-colors"
+          title="Gespeicherten Plan laden">
+          <FolderSearch class="w-4 h-4" />
+          <span class="hidden sm:inline">Laden</span>
+        </button>
         <button v-if="currentPlan && !isLocked" @click="confirmDeletePlan"
           class="flex items-center gap-1.5 hover:bg-red-50 dark:hover:bg-red-950 px-3 py-2 rounded-xl text-red-500 text-sm transition-colors">
           <Trash2 class="w-4 h-4" /> Löschen
@@ -208,10 +214,16 @@
       <p class="mx-auto mb-6 max-w-md text-stone-500 dark:text-stone-400 text-sm">
         Erstelle einen intelligenten Essensplan basierend auf deinen Rezepten, Kochhistorie und Vorräten.
       </p>
-      <button @click="showGenerateModal = true"
-        class="bg-primary-600 hover:bg-primary-700 px-6 py-3 rounded-xl font-medium text-white transition-colors">
-        <Sparkles class="inline mr-2 w-4 h-4" /> Plan generieren
-      </button>
+      <div class="flex flex-wrap justify-center gap-3">
+        <button @click="showGenerateModal = true"
+          class="bg-primary-600 hover:bg-primary-700 px-6 py-3 rounded-xl font-medium text-white transition-colors">
+          <Sparkles class="inline mr-2 w-4 h-4" /> Plan generieren
+        </button>
+        <button @click="showLoadDialog = true"
+          class="bg-stone-100 hover:bg-stone-200 dark:bg-stone-800 dark:hover:bg-stone-700 px-6 py-3 rounded-xl font-medium text-stone-700 dark:text-stone-300 transition-colors">
+          <FolderSearch class="inline mr-2 w-4 h-4" /> Plan laden
+        </button>
+      </div>
     </div>
 
     <!-- ═══════════════════ WOCHEN-ANSICHT ═══════════════════ -->
@@ -969,6 +981,15 @@
       </Transition>
     </Teleport>
 
+    <!-- Plan-Laden-Dialog -->
+    <LoadPlanDialog
+      :show="showLoadDialog"
+      :current-week-start="currentWeekStart"
+      @close="showLoadDialog = false"
+      @navigate-to-week="navigateToWeek"
+      @plan-copied="onPlanCopied"
+    />
+
     <!-- Portionen-Popup -->
     <Teleport to="body">
       <Transition name="fade">
@@ -1000,11 +1021,12 @@ import { useMealPlanStore } from '@/stores/mealplan.js';
 import { useCollectionsStore } from '@/stores/collections.js';
 import { useRecipeBlocksStore } from '@/stores/recipe-blocks.js';
 import { useNotification } from '@/composables/useNotification.js';
+import LoadPlanDialog from '@/components/mealplan/LoadPlanDialog.vue';
 import {
   Sparkles, ChevronLeft, ChevronRight, Check, Eye, RefreshCw,
   X, Clock, ChefHat, UtensilsCrossed, Plus, Minus, Star, Trash2,
   LayoutGrid, CalendarDays, Settings, Settings2, FolderOpen, Info,
-  Ban, ShieldOff, Lock, Unlock, Users, ChevronDown, Hand,
+  Ban, ShieldOff, Lock, Unlock, Users, ChevronDown, Hand, FolderSearch,
 } from 'lucide-vue-next';
 
 const router = useRouter();
@@ -1020,6 +1042,7 @@ const selectedDayIdx = ref(new Date().getDay() === 0 ? 6 : new Date().getDay() -
 const selectedMeal = ref(null);
 const showGenerateModal = ref(false);
 const showGenSettings = ref(false);
+const showLoadDialog = ref(false);
 const servingsPopup = ref(null); // { meal, x, y }
 
 // Gespeicherte Präferenzen aus localStorage laden
@@ -1156,6 +1179,29 @@ function changeWeek(offset) {
 function goToToday() {
   weekOffset.value = 0;
   selectedDayIdx.value = new Date().getDay() === 0 ? 6 : new Date().getDay() - 1;
+}
+
+/** Zu einer bestimmten Woche navigieren (von LoadPlanDialog) */
+function navigateToWeek(weekStart) {
+  // weekOffset berechnen: Differenz zur aktuellen "echten" Woche
+  const today = new Date();
+  const day = today.getDay();
+  const todayMonday = new Date(today);
+  todayMonday.setDate(today.getDate() - day + (day === 0 ? -6 : 1));
+  todayMonday.setHours(0, 0, 0, 0);
+
+  const [y, m, d] = weekStart.split('-').map(Number);
+  const targetMonday = new Date(y, m - 1, d);
+  targetMonday.setHours(0, 0, 0, 0);
+
+  const diffWeeks = Math.round((targetMonday - todayMonday) / (7 * 86400000));
+  weekOffset.value = diffWeeks;
+}
+
+/** Nach Plan-Kopie: Daten neu laden */
+async function onPlanCopied() {
+  await store.fetchCurrentPlan(currentWeekStart.value);
+  store.fetchHistory();
 }
 
 // ─── Helpers ───
