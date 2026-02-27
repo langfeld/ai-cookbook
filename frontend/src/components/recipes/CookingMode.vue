@@ -122,7 +122,7 @@
                       ]">
                         <Check v-if="checkedIngredients.has(ing.id)" class="w-3.5 h-3.5" />
                       </div>
-                      <span class="w-18 font-semibold tabular-nums text-right shrink-0">{{ scaleAmount(ing.amount) }} {{ ing.unit }}</span>
+                      <span class="min-w-18 font-semibold tabular-nums text-right whitespace-nowrap shrink-0">{{ scaleAmount(ing.amount) }} {{ ing.unit }}</span>
                       <span>
                         <span v-if="getEmoji(ing.name)" class="mr-1">{{ getEmoji(ing.name) }}</span>
                         {{ ing.name }}
@@ -150,7 +150,7 @@
                       ]">
                         <Check v-if="checkedIngredients.has(ing.id)" class="w-3.5 h-3.5" />
                       </div>
-                      <span class="w-18 font-semibold tabular-nums text-right shrink-0">{{ scaleAmount(ing.amount) }} {{ ing.unit }}</span>
+                      <span class="min-w-18 font-semibold tabular-nums text-right whitespace-nowrap shrink-0">{{ scaleAmount(ing.amount) }} {{ ing.unit }}</span>
                       <span>
                         <span v-if="getEmoji(ing.name)" class="mr-1">{{ getEmoji(ing.name) }}</span>
                         {{ ing.name }}

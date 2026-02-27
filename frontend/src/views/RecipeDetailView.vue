@@ -159,16 +159,18 @@
           </div>
 
           <!-- Zutaten-Liste -->
-          <ul class="space-y-1">
+          <ul :class="adjustmentMode ? 'space-y-1' : 'grid gap-x-2 gap-y-0.5'"
+              :style="!adjustmentMode ? 'grid-template-columns: 1.25rem auto 1fr' : undefined">
             <li v-for="ing in flatIngredients" :key="ing.id"
-              class="flex items-center gap-2 hover:bg-stone-50 dark:hover:bg-stone-800/50 px-1.5 py-1.5 rounded-md transition-colors"
-              :class="adjustmentMode ? 'flex-wrap' : ''">
-              <span class="w-5 text-base text-center shrink-0" :title="ing.name">{{ getEmoji(ing.name) || '•' }}</span>
+              class="hover:bg-stone-50 dark:hover:bg-stone-800/50 px-1.5 py-1.5 rounded-md transition-colors"
+              :class="adjustmentMode
+                ? 'flex items-center gap-2 flex-wrap'
+                : 'col-span-full grid grid-cols-subgrid items-baseline'">
+              <span class="text-base text-center" :class="adjustmentMode ? 'w-5 shrink-0' : ''" :title="ing.name">{{ getEmoji(ing.name) || '•' }}</span>
 
               <!-- Normal -->
               <template v-if="!adjustmentMode">
-                <span class="font-medium text-stone-800 dark:text-stone-200 text-base text-right shrink-0"
-                  :class="ing.amounts.length > 1 ? 'min-w-16' : 'w-16'">
+                <span class="font-medium text-stone-800 dark:text-stone-200 text-base text-right whitespace-nowrap">
                   <template v-for="(a, i) in ing.amounts" :key="i">
                     <template v-if="i > 0">, </template>
                     {{ scaleAmount(a.amount) }}&nbsp;{{ a.unit }}
@@ -215,7 +217,7 @@
                 </span>
               </template>
 
-              <span class="text-stone-700 dark:text-stone-300 text-base" :class="adjustmentMode ? 'basis-full sm:basis-auto sm:flex-1 pl-7 sm:pl-0 -mt-1 sm:mt-0' : 'flex-1'">
+              <span class="text-stone-700 dark:text-stone-300 text-base" :class="adjustmentMode ? 'basis-full sm:basis-auto sm:flex-1 pl-7 sm:pl-0 -mt-1 sm:mt-0' : ''">
                 {{ ing.name }}
                 <span v-if="ing.is_optional || ing.notes" class="block text-stone-400 text-xs leading-snug">
                   <template v-if="ing.is_optional">(optional)</template>
