@@ -40,25 +40,29 @@
           Heute auf dem Plan
         </h3>
         <div v-if="todayMeals.length" class="space-y-3">
-          <div
+          <router-link
             v-for="meal in todayMeals"
             :key="meal.id"
-            class="flex items-center gap-3 bg-stone-50 dark:bg-stone-800/50 p-3 rounded-lg"
+            :to="`/recipes/${meal.recipe_id}`"
+            class="group flex items-center gap-3 bg-stone-50 hover:bg-stone-100 dark:bg-stone-800/50 dark:hover:bg-stone-800 p-3 rounded-lg transition-colors"
           >
-            <span class="text-lg">{{ mealTypeEmojis[meal.meal_type] || '🍽️' }}</span>
-            <div class="flex-1">
-              <p class="font-medium text-stone-800 dark:text-stone-200 text-sm">{{ meal.recipe_title }}</p>
+            <div class="bg-stone-200 dark:bg-stone-700 rounded-lg w-12 h-12 overflow-hidden shrink-0">
+              <img v-if="meal.image_url" :src="meal.image_url" :alt="meal.recipe_title" class="w-full h-full object-cover group-hover:scale-105 transition-transform" />
+              <div v-else class="flex justify-center items-center w-full h-full text-lg">{{ mealTypeEmojis[meal.meal_type] || '🍽️' }}</div>
+            </div>
+            <div class="flex-1 min-w-0">
+              <p class="font-medium text-stone-800 dark:group-hover:text-primary-400 dark:text-stone-200 group-hover:text-primary-600 text-sm truncate transition-colors">{{ meal.recipe_title }}</p>
               <p class="text-stone-500 text-xs">{{ meal.total_time }} Min. • {{ meal.difficulty }}</p>
             </div>
             <button
               v-if="!meal.is_cooked"
-              @click="markMealCooked(meal)"
+              @click.prevent="markMealCooked(meal)"
               class="px-3 py-1 rounded-full text-xs transition-colors bg-accent-100 text-accent-700 hover:bg-accent-200 dark:bg-accent-900/50 dark:hover:bg-accent-800 dark:text-accent-300"
             >
               Gekocht ✓
             </button>
-            <span v-else class="text-xs text-accent-600 dark:text-accent-400">✓ Gekocht</span>
-          </div>
+            <span v-else class="text-xs text-accent-600 dark:text-accent-400">Gekocht ✓</span>
+          </router-link>
         </div>
         <div v-else class="py-8 text-stone-400 text-center">
           <Calendar class="opacity-50 mx-auto mb-2 w-10 h-10" />
