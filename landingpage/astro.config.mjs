@@ -17,7 +17,7 @@ export default defineConfig({
       social: [
         { icon: 'github', label: 'GitHub', href: 'https://github.com/langfeld/zauberjournal' },
       ],
-      customCss: [],
+      customCss: ['./src/styles/starlight-custom.css'],
       sidebar: [
         {
           label: 'Erste Schritte',

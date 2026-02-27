@@ -1,0 +1,52 @@
+/* =============================================================
+   Zauberjournal Starlight Theme
+   Maps Starlight CSS variables to our Amber/Stone landing page palette.
+   Fonts: Inter (body) + system mono
+   Colors: Amber primary (#f59e0b), Stone neutrals
+   ============================================================= */
+
+/* -- Fonts ---------------------------------------------------- */
+:root {
+  --sl-font: 'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+
+/* -- Dark mode (default in Starlight) ------------------------- */
+:root {
+  /* ── Neutrals (Stone) ── */
+  --sl-color-white: hsl(0, 0%, 100%);           /* #ffffff */
+  --sl-color-gray-1: hsl(30, 6%, 90%);           /* stone-200 ish */
+  --sl-color-gray-2: hsl(24, 6%, 73%);           /* stone-400 */
+  --sl-color-gray-3: hsl(24, 5%, 56%);           /* stone-500 */
+  --sl-color-gray-4: hsl(33, 5%, 41%);           /* stone-600 */
+  --sl-color-gray-5: hsl(28, 6%, 24%);           /* stone-800 */
+  --sl-color-gray-6: hsl(24, 10%, 14%);          /* stone-900 */
+  --sl-color-black: hsl(20, 14%, 6%);            /* stone-950 */
+
+  /* ── Accent (Amber) ── */
+  --sl-color-accent-low: hsl(33, 60%, 16%);      /* dark amber bg */
+  --sl-color-accent: hsl(38, 92%, 50%);           /* #f59e0b – amber-500 */
+  --sl-color-accent-high: hsl(45, 93%, 76%);      /* amber-300 */
+
+  /* ── Semantic (keep orange hue = amber) ── */
+  --sl-hue-orange: 38;
+}
+
+/* -- Light mode ---------------------------------------------- */
+:root[data-theme='light'],
+[data-theme='light'] ::backdrop {
+  /* ── Neutrals (Stone – inverted) ── */
+  --sl-color-white: hsl(20, 14%, 8%);            /* stone-950 */
+  --sl-color-gray-1: hsl(24, 10%, 14%);          /* stone-900 */
+  --sl-color-gray-2: hsl(28, 6%, 24%);           /* stone-800 */
+  --sl-color-gray-3: hsl(33, 5%, 41%);           /* stone-600 */
+  --sl-color-gray-4: hsl(24, 5%, 56%);           /* stone-500 */
+  --sl-color-gray-5: hsl(24, 6%, 83%);           /* stone-300 */
+  --sl-color-gray-6: hsl(30, 6%, 93%);           /* stone-200 */
+  --sl-color-gray-7: hsl(60, 9%, 98%);           /* stone-50 */
+  --sl-color-black: hsl(0, 0%, 100%);            /* white */
+
+  /* ── Accent (Amber – darker for light bg, WCAG AA safe) ── */
+  --sl-color-accent-high: hsl(28, 73%, 26%);     /* amber-800 */
+  --sl-color-accent: hsl(30, 90%, 34%);           /* amber-700ish – 5.3:1 on white */
+  --sl-color-accent-low: hsl(48, 97%, 89%);       /* amber-100 */
+}
