@@ -229,6 +229,59 @@ export default async function collectionsRoutes(fastify) {
   });
 
   // ─────────────────────────────────────────────
+  // DELETE /:id/recipes – Mehrere Rezepte aus Sammlung entfernen (Batch)
+  // ─────────────────────────────────────────────
+  fastify.delete('/:id/recipes', {
+    schema: {
+      description: 'Mehrere Rezepte aus einer Sammlung entfernen',
+      tags: ['Sammlungen'],
+      security: [{ bearerAuth: [] }],
+      body: {
+        type: 'object',
+        required: ['recipeIds'],
+        properties: {
+          recipeIds: {
+            type: 'array',
+            items: { type: 'integer' },
+            minItems: 1,
+          },
+        },
+      },
+    },
+  }, async (request, reply) => {
+    const { id } = request.params;
+    const { recipeIds } = request.body;
+
+    // Prüfen ob Sammlung dem Benutzer gehört
+    const collection = db.prepare(
+      'SELECT id, name FROM collections WHERE id = ? AND user_id = ?'
+    ).get(id, request.user.id);
+    if (!collection) {
+      return reply.status(404).send({ error: 'Sammlung nicht gefunden.' });
+    }
+
+    const stmt = db.prepare(
+      'DELETE FROM recipe_collections WHERE recipe_id = ? AND collection_id = ?'
+    );
+
+    let removedCount = 0;
+    const removeMany = db.transaction(() => {
+      for (const recipeId of recipeIds) {
+        const result = stmt.run(recipeId, id);
+        if (result.changes > 0) removedCount++;
+      }
+    });
+    removeMany();
+
+    return {
+      message: removedCount > 0
+        ? `${removedCount} Rezept${removedCount !== 1 ? 'e' : ''} aus "${collection.name}" entfernt.`
+        : 'Keines der Rezepte war in dieser Sammlung.',
+      removedCount,
+    };
+  });
+
+  // ─────────────────────────────────────────────
   // DELETE /:id/recipes/:recipeId – Rezept aus Sammlung entfernen
   // ─────────────────────────────────────────────
   fastify.delete('/:id/recipes/:recipeId', {

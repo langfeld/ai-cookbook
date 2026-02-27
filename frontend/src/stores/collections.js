@@ -66,6 +66,14 @@ export const useCollectionsStore = defineStore('collections', () => {
     if (col && col.recipe_count > 0) col.recipe_count--;
   }
 
+  /** Mehrere Rezepte aus Sammlung entfernen (Batch) */
+  async function removeRecipes(collectionId, recipeIds) {
+    const data = await api.del(`/collections/${collectionId}/recipes`, { recipeIds });
+    const col = collections.value.find(c => c.id === collectionId);
+    if (col) col.recipe_count = Math.max(0, (col.recipe_count || 0) - data.removedCount);
+    return data;
+  }
+
   /** Sammlungen eines Rezepts laden */
   async function fetchCollectionsForRecipe(recipeId) {
     const data = await api.get(`/collections/for-recipe/${recipeId}`);
@@ -75,6 +83,6 @@ export const useCollectionsStore = defineStore('collections', () => {
   return {
     collections, loading, totalCollections,
     fetchCollections, createCollection, updateCollection, deleteCollection,
-    addRecipes, removeRecipe, fetchCollectionsForRecipe,
+    addRecipes, removeRecipe, removeRecipes, fetchCollectionsForRecipe,
   };
 });

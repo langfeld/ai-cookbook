@@ -158,7 +158,7 @@ export function useApi() {
     get: (url) => apiFetch(url).catch(err => { showError(err.message); throw err; }),
     post: (url, body) => apiFetch(url, { method: 'POST', body }).catch(err => { showError(err.message); throw err; }),
     put: (url, body) => apiFetch(url, { method: 'PUT', body }).catch(err => { showError(err.message); throw err; }),
-    del: (url) => apiFetch(url, { method: 'DELETE' }).catch(err => { showError(err.message); throw err; }),
+    del: (url, body) => apiFetch(url, { method: 'DELETE', ...(body ? { body } : {}) }).catch(err => { showError(err.message); throw err; }),
     upload: (url, formData) => apiFetch(url, { method: 'POST', body: formData }).catch(err => { showError(err.message); throw err; }),
   };
 }

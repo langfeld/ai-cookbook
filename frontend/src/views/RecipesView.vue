@@ -183,6 +183,14 @@
             <span class="hidden sm:inline">Zu Sammlung</span> ({{ selectedIds.size }})
           </button>
           <button
+            v-if="selectedCollectionFilter"
+            @click="showBatchRemoveFromCollection = true"
+            class="flex items-center gap-1.5 bg-amber-600 hover:bg-amber-700 px-3 sm:px-4 py-1.5 rounded-lg font-medium text-white text-sm transition-colors"
+          >
+            <FolderMinus class="w-4 h-4" />
+            <span class="hidden sm:inline">Aus Sammlung</span> ({{ selectedIds.size }})
+          </button>
+          <button
             @click="showBatchDeleteConfirm = true"
             class="flex items-center gap-1.5 bg-red-600 hover:bg-red-700 px-3 sm:px-4 py-1.5 rounded-lg font-medium text-white text-sm transition-colors"
           >
@@ -203,6 +211,18 @@
       cancel-text="Abbrechen"
       :loading="batchDeleting"
       @confirm="executeBatchDelete"
+    />
+
+    <!-- Bestätigungs-Dialog für Batch-Entfernen aus Sammlung -->
+    <ConfirmDialog
+      v-model="showBatchRemoveFromCollection"
+      variant="warning"
+      :title="`${selectedIds.size} Rezept${selectedIds.size !== 1 ? 'e' : ''} aus Sammlung entfernen?`"
+      :message="`${selectedIds.size} Rezept${selectedIds.size !== 1 ? 'e werden' : ' wird'} aus der Sammlung entfernt. Die Rezepte selbst bleiben erhalten.`"
+      confirm-text="Aus Sammlung entfernen"
+      cancel-text="Abbrechen"
+      :loading="batchRemoving"
+      @confirm="executeBatchRemoveFromCollection"
     />
 
     <!-- Leerer Zustand -->
@@ -245,7 +265,7 @@ import { ref, onMounted } from 'vue';
 import { useRecipesStore } from '@/stores/recipes.js';
 import { useAuthStore } from '@/stores/auth.js';
 import { useCollectionsStore } from '@/stores/collections.js';
-import { Search, Sparkles, Plus, Star, BookOpen, ArrowDownUp, CheckSquare, Square, Check, Trash2, FolderOpen, FolderPlus } from 'lucide-vue-next';
+import { Search, Sparkles, Plus, Star, BookOpen, ArrowDownUp, CheckSquare, Square, Check, Trash2, FolderOpen, FolderPlus, FolderMinus } from 'lucide-vue-next';
 import RecipeCard from '@/components/recipes/RecipeCard.vue';
 import RecipeImportModal from '@/components/recipes/RecipeImportModal.vue';
 import CollectionManager from '@/components/collections/CollectionManager.vue';
@@ -266,7 +286,9 @@ const selectMode = ref(false);
 const selectedIds = ref(new Set());
 const showBatchDeleteConfirm = ref(false);
 const showBatchAddToCollection = ref(false);
+const showBatchRemoveFromCollection = ref(false);
 const batchDeleting = ref(false);
+const batchRemoving = ref(false);
 
 // Debounced Suche (300ms Verzögerung)
 let searchTimeout;
@@ -316,6 +338,23 @@ function onBatchAddedToCollection() {
   showBatchAddToCollection.value = false;
   selectMode.value = false;
   selectedIds.value = new Set();
+}
+
+async function executeBatchRemoveFromCollection() {
+  batchRemoving.value = true;
+  try {
+    const ids = [...selectedIds.value];
+    const result = await collectionsStore.removeRecipes(Number(selectedCollectionFilter.value), ids);
+    showSuccess(result.message);
+    showBatchRemoveFromCollection.value = false;
+    selectMode.value = false;
+    selectedIds.value = new Set();
+    recipesStore.fetchRecipes();
+  } catch {
+    showError('Entfernen fehlgeschlagen.');
+  } finally {
+    batchRemoving.value = false;
+  }
 }
 
 async function executeBatchDelete() {
