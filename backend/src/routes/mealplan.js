@@ -283,8 +283,16 @@ export default async function mealplanRoutes(fastify) {
     }
 
     const entry = db.prepare(`
-      SELECT mpe.*, r.title as recipe_title, r.image_url, r.total_time, r.difficulty, r.servings as original_servings
-      FROM meal_plan_entries mpe JOIN recipes r ON mpe.recipe_id = r.id WHERE mpe.id = ?
+      SELECT mpe.*, r.title as recipe_title, r.image_url, r.total_time, r.difficulty,
+        r.description as recipe_description, r.is_favorite, r.ai_generated, r.times_cooked,
+        r.servings as original_servings,
+        GROUP_CONCAT(DISTINCT c.name) as category_names
+      FROM meal_plan_entries mpe
+      JOIN recipes r ON mpe.recipe_id = r.id
+      LEFT JOIN recipe_categories rc ON r.id = rc.recipe_id
+      LEFT JOIN categories c ON rc.category_id = c.id
+      WHERE mpe.id = ?
+      GROUP BY mpe.id
     `).get(entryId);
 
     const fullPlan = getMealPlan(userId, week_start);
@@ -362,8 +370,16 @@ export default async function mealplanRoutes(fastify) {
     ).run(planId, recipe_id, day_of_week, meal_type, servings);
 
     const entry = db.prepare(`
-      SELECT mpe.*, r.title as recipe_title, r.image_url, r.total_time, r.difficulty, r.servings as original_servings
-      FROM meal_plan_entries mpe JOIN recipes r ON mpe.recipe_id = r.id WHERE mpe.id = ?
+      SELECT mpe.*, r.title as recipe_title, r.image_url, r.total_time, r.difficulty,
+        r.description as recipe_description, r.is_favorite, r.ai_generated, r.times_cooked,
+        r.servings as original_servings,
+        GROUP_CONCAT(DISTINCT c.name) as category_names
+      FROM meal_plan_entries mpe
+      JOIN recipes r ON mpe.recipe_id = r.id
+      LEFT JOIN recipe_categories rc ON r.id = rc.recipe_id
+      LEFT JOIN categories c ON rc.category_id = c.id
+      WHERE mpe.id = ?
+      GROUP BY mpe.id
     `).get(lastInsertRowid);
 
     return { message: 'Eintrag hinzugefügt!', entry };
@@ -393,8 +409,16 @@ export default async function mealplanRoutes(fastify) {
     if (result.changes === 0) return reply.status(404).send({ error: 'Eintrag nicht gefunden' });
 
     const entry = db.prepare(`
-      SELECT mpe.*, r.title as recipe_title, r.image_url, r.total_time, r.difficulty, r.servings as original_servings
-      FROM meal_plan_entries mpe JOIN recipes r ON mpe.recipe_id = r.id WHERE mpe.id = ?
+      SELECT mpe.*, r.title as recipe_title, r.image_url, r.total_time, r.difficulty,
+        r.description as recipe_description, r.is_favorite, r.ai_generated, r.times_cooked,
+        r.servings as original_servings,
+        GROUP_CONCAT(DISTINCT c.name) as category_names
+      FROM meal_plan_entries mpe
+      JOIN recipes r ON mpe.recipe_id = r.id
+      LEFT JOIN recipe_categories rc ON r.id = rc.recipe_id
+      LEFT JOIN categories c ON rc.category_id = c.id
+      WHERE mpe.id = ?
+      GROUP BY mpe.id
     `).get(request.params.entryId);
 
     return { message: 'Eintrag aktualisiert!', entry };

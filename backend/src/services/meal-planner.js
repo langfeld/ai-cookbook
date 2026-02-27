@@ -676,10 +676,18 @@ export function getMealPlan(userId, weekStart) {
       r.image_url,
       r.total_time,
       r.difficulty,
-      r.servings as original_servings
+      r.description as recipe_description,
+      r.is_favorite,
+      r.ai_generated,
+      r.times_cooked,
+      r.servings as original_servings,
+      GROUP_CONCAT(DISTINCT c.name) as category_names
     FROM meal_plan_entries mpe
     JOIN recipes r ON mpe.recipe_id = r.id
+    LEFT JOIN recipe_categories rc ON r.id = rc.recipe_id
+    LEFT JOIN categories c ON rc.category_id = c.id
     WHERE mpe.meal_plan_id = ?
+    GROUP BY mpe.id
     ORDER BY mpe.day_of_week, mpe.meal_type
   `).all(plan.id);
 

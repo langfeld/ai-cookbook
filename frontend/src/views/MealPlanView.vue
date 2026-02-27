@@ -352,7 +352,7 @@
             @dragleave="onDragLeave"
             @drop.prevent="!isLocked && onDrop(dayIdx, mt.key)">
 
-            <!-- Gefüllte Karte -->
+            <!-- Gefüllte Karte (RecipeCard-Design) -->
             <div v-if="getMeal(dayIdx, mt.key)"
               class="group meal-card-large"
               :class="{ 'meal-card-large--cooked': getMeal(dayIdx, mt.key).is_cooked }"
@@ -368,42 +368,69 @@
                   :alt="getMeal(dayIdx, mt.key).recipe_title"
                   class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                   loading="lazy" />
-                <div v-else class="flex justify-center items-center w-full h-full">
-                  <UtensilsCrossed class="w-10 h-10 text-stone-300 dark:text-stone-600" />
-                </div>
-                <!-- Tag-Badge -->
+                <div v-else class="flex justify-center items-center opacity-50 w-full h-full text-5xl">🍽️</div>
+
+                <!-- Tag-Badge (oben links) -->
                 <div class="top-2 left-2 absolute bg-black/60 backdrop-blur-sm px-2 py-0.5 rounded-full font-medium text-white text-xs">
                   {{ weekDays[dayIdx].short }} {{ weekDays[dayIdx].date }}
                 </div>
+
+                <!-- Favorit-Button (oben rechts) -->
+                <button
+                  @click.stop="toggleMealFavorite(getMeal(dayIdx, mt.key))"
+                  class="top-2 right-2 absolute bg-white/80 hover:bg-white dark:bg-stone-900/80 dark:hover:bg-stone-900 backdrop-blur-sm p-1.5 rounded-full transition-colors">
+                  <Star class="w-4 h-4" :class="getMeal(dayIdx, mt.key).is_favorite ? 'fill-amber-400 text-amber-400' : 'text-stone-400'" />
+                </button>
+
                 <!-- Gekocht-Badge -->
                 <div v-if="getMeal(dayIdx, mt.key).is_cooked"
-                  class="top-2 right-2 absolute place-items-center grid rounded-full w-6 h-6 bg-accent-500">
+                  class="top-10 right-2 absolute place-items-center grid rounded-full w-6 h-6 bg-accent-500">
                   <Check class="w-3.5 h-3.5 text-white" />
                 </div>
-                <!-- Portionen -->
-                <div class="bottom-2 left-2 absolute flex items-center gap-1 bg-black/60 backdrop-blur-sm px-2 py-0.5 rounded-full text-white text-xs"
-                  :class="{ 'cursor-pointer hover:bg-black/80': !isLocked }"
-                  @click.stop="!isLocked && openServingsPopup(getMeal(dayIdx, mt.key), $event)">
-                  <Users class="w-3 h-3" /> {{ getMeal(dayIdx, mt.key).servings }} Port.
-                </div>
-                <!-- Schwierigkeit -->
+
+                <!-- Schwierigkeitsgrad (unten links, bunt) -->
                 <span v-if="getMeal(dayIdx, mt.key).difficulty"
-                  class="right-2 bottom-2 absolute bg-black/60 backdrop-blur-sm px-2 py-0.5 rounded-full font-medium text-white text-xs">
+                  :class="['absolute bottom-2 left-2 px-2 py-0.5 text-xs font-medium rounded-full', difficultyClasses[getMeal(dayIdx, mt.key).difficulty] || difficultyClasses.mittel]">
                   {{ getMeal(dayIdx, mt.key).difficulty }}
+                </span>
+
+                <!-- KI-Badge (unten rechts) -->
+                <span v-if="getMeal(dayIdx, mt.key).ai_generated"
+                  class="right-2 bottom-2 absolute bg-indigo-100 dark:bg-indigo-900/60 px-2 py-0.5 rounded-full font-medium text-indigo-700 dark:text-indigo-300 text-xs">
+                  🤖 KI
                 </span>
               </div>
 
               <!-- Info -->
-              <div class="p-3">
-                <h4 class="font-semibold text-stone-800 dark:group-hover:text-primary-400 dark:text-stone-100 group-hover:text-primary-600 text-sm truncate transition-colors">
+              <div class="p-4">
+                <h4 class="font-semibold text-stone-800 dark:group-hover:text-primary-400 dark:text-stone-100 group-hover:text-primary-600 truncate transition-colors">
                   {{ getMeal(dayIdx, mt.key).recipe_title }}
                 </h4>
-                <div class="flex items-center gap-3 mt-1.5 text-stone-500 dark:text-stone-400 text-xs">
+                <p v-if="getMeal(dayIdx, mt.key).recipe_description" class="mt-1 text-stone-500 dark:text-stone-400 text-sm line-clamp-2">
+                  {{ getMeal(dayIdx, mt.key).recipe_description }}
+                </p>
+
+                <!-- Meta-Infos -->
+                <div class="flex items-center gap-3 mt-3 text-stone-500 dark:text-stone-400 text-xs">
                   <span v-if="getMeal(dayIdx, mt.key).total_time" class="flex items-center gap-1">
                     <Clock class="w-3.5 h-3.5" /> {{ getMeal(dayIdx, mt.key).total_time }} Min.
                   </span>
-                  <span class="flex items-center gap-1">
+                  <span class="flex items-center gap-1"
+                    :class="{ 'cursor-pointer hover:text-stone-700 dark:hover:text-stone-200': !isLocked }"
+                    @click.stop="!isLocked && openServingsPopup(getMeal(dayIdx, mt.key), $event)">
                     <Users class="w-3.5 h-3.5" /> {{ getMeal(dayIdx, mt.key).servings }} Port.
+                  </span>
+                  <span v-if="getMeal(dayIdx, mt.key).times_cooked" class="flex items-center gap-1">
+                    <ChefHat class="w-3.5 h-3.5" /> {{ getMeal(dayIdx, mt.key).times_cooked }}x
+                  </span>
+                </div>
+
+                <!-- Kategorien -->
+                <div v-if="getMeal(dayIdx, mt.key).category_names" class="flex flex-wrap gap-1 mt-3">
+                  <span v-for="cat in getMeal(dayIdx, mt.key).category_names.split(',')"
+                    :key="cat"
+                    class="bg-stone-100 dark:bg-stone-800 px-2 py-0.5 rounded-full text-stone-600 dark:text-stone-400 text-xs">
+                    {{ cat.trim() }}
                   </span>
                 </div>
               </div>
@@ -1125,6 +1152,7 @@
 import { computed, onMounted, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { useMealPlanStore } from '@/stores/mealplan.js';
+import { useRecipesStore } from '@/stores/recipes.js';
 import { useCollectionsStore } from '@/stores/collections.js';
 import { useRecipeBlocksStore } from '@/stores/recipe-blocks.js';
 import { useNotification } from '@/composables/useNotification.js';
@@ -1139,7 +1167,15 @@ import {
 
 const router = useRouter();
 const store = useMealPlanStore();
+const recipesStore = useRecipesStore();
 const collectionsStore = useCollectionsStore();
+
+// Schwierigkeitsgrad-Farben (identisch mit RecipeCard)
+const difficultyClasses = {
+  leicht: 'bg-green-100 dark:bg-green-900/60 text-green-700 dark:text-green-300',
+  mittel: 'bg-amber-100 dark:bg-amber-900/60 text-amber-700 dark:text-amber-300',
+  schwer: 'bg-red-100 dark:bg-red-900/60 text-red-700 dark:text-red-300',
+};
 const blocksStore = useRecipeBlocksStore();
 const { showSuccess } = useNotification();
 
@@ -1330,6 +1366,13 @@ function openDayView(dayIdx) {
 
 function selectMeal(meal) {
   selectedMeal.value = meal;
+}
+
+/** Favoriten-Status eines Rezepts im Wochenplan umschalten */
+async function toggleMealFavorite(meal) {
+  await recipesStore.toggleFavorite(meal.recipe_id);
+  // Status im lokalen Meal-Entry aktualisieren
+  meal.is_favorite = !meal.is_favorite;
 }
 
 // ─── Generierung ───
