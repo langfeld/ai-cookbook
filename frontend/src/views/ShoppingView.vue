@@ -1546,6 +1546,17 @@
       @confirm="confirmCompletePurchase"
     />
 
+    <!-- Bestätigungs-Dialog für Präferenzen zurücksetzen -->
+    <ConfirmDialog
+      v-model="showClearPrefsConfirm"
+      variant="warning"
+      title="Zuordnungen zurücksetzen?"
+      :message="`Alle ${rewePreferences.length} gespeicherten Zuordnungen wirklich zurücksetzen?`"
+      confirm-text="Zurücksetzen"
+      cancel-text="Abbrechen"
+      @confirm="executeClearAllPrefs"
+    />
+
     <!-- REWE Bestell-Warnung (fehlende Zuordnungen / hohe Mengen) -->
     <Teleport to="body">
       <Transition name="fade">
@@ -2004,6 +2015,7 @@ const newItem = ref({ name: '', amount: null, unit: '' });
 
 // "Einkauf abschließen?"-Dialog nach Bring!/REWE
 const showCompletePurchasePrompt = ref(false);
+const showClearPrefsConfirm = ref(false);
 
 // REWE-Bestell-Warnung (nicht zugeordnete Artikel / hohe Mengen)
 const showReweWarning = ref(false);
@@ -2341,7 +2353,11 @@ async function removePref(pref) {
 }
 
 async function clearAllPrefs() {
-  if (!confirm(`Alle ${rewePreferences.value.length} gespeicherten Zuordnungen wirklich zurücksetzen?`)) return;
+  showClearPrefsConfirm.value = true;
+}
+
+async function executeClearAllPrefs() {
+  showClearPrefsConfirm.value = false;
   try {
     await shoppingStore.clearAllPreferences();
     rewePreferences.value = [];

@@ -186,6 +186,17 @@
       </div>
     </Transition>
   </Teleport>
+
+  <!-- Bestätigungs-Dialog für Sammlung löschen -->
+  <ConfirmDialog
+    v-model="showDeleteConfirm"
+    variant="danger"
+    :title="`Sammlung löschen?`"
+    :message="`Sammlung \u201E${deleteTarget?.name}\u201C wirklich löschen? Rezepte bleiben erhalten.`"
+    confirm-text="Löschen"
+    cancel-text="Abbrechen"
+    @confirm="executeDelete"
+  />
 </template>
 
 <script setup>
@@ -193,6 +204,7 @@ import { ref, watch } from 'vue';
 import { useCollectionsStore } from '@/stores/collections.js';
 import { useNotification } from '@/composables/useNotification.js';
 import { FolderOpen, X, Plus, Check, Pencil, Trash2, Palette } from 'lucide-vue-next';
+import ConfirmDialog from '@/components/ui/ConfirmDialog.vue';
 
 const props = defineProps({ modelValue: Boolean });
 const emit = defineEmits(['update:modelValue']);
@@ -208,6 +220,8 @@ const showIconPicker = ref(false);
 const editingId = ref(null);
 const editName = ref('');
 const editIcon = ref('📁');
+const showDeleteConfirm = ref(false);
+const deleteTarget = ref(null);
 const editColor = ref('#6366f1');
 const showEditIconPicker = ref(false);
 
@@ -265,14 +279,22 @@ async function saveEdit(col) {
   editingId.value = null;
 }
 
-async function confirmDelete(col) {
-  if (!confirm(`Sammlung "${col.name}" wirklich löschen? Rezepte bleiben erhalten.`)) return;
+function confirmDelete(col) {
+  deleteTarget.value = col;
+  showDeleteConfirm.value = true;
+}
+
+async function executeDelete() {
+  const col = deleteTarget.value;
+  showDeleteConfirm.value = false;
+  if (!col) return;
   try {
     await collectionsStore.deleteCollection(col.id);
     showSuccess(`Sammlung "${col.name}" gelöscht.`);
   } catch {
     showError('Fehler beim Löschen.');
   }
+  deleteTarget.value = null;
 }
 
 // Sammlungen laden wenn Modal geöffnet wird

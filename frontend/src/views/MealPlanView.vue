@@ -1003,6 +1003,28 @@
       </Transition>
     </Teleport>
   </div>
+
+  <!-- Bestätigungs-Dialog: Fixierten Plan überschreiben -->
+  <ConfirmDialog
+    v-model="showOverwriteLockedConfirm"
+    variant="warning"
+    title="Fixierten Plan überschreiben?"
+    message="Der aktuelle Plan ist fixiert (bereits eingekauft). Trotzdem überschreiben?"
+    confirm-text="Überschreiben"
+    cancel-text="Abbrechen"
+    @confirm="executeGenerate"
+  />
+
+  <!-- Bestätigungs-Dialog: Wochenplan löschen -->
+  <ConfirmDialog
+    v-model="showDeletePlanConfirm"
+    variant="danger"
+    title="Wochenplan löschen?"
+    message="Wochenplan wirklich löschen? Diese Aktion kann nicht rückgängig gemacht werden."
+    confirm-text="Löschen"
+    cancel-text="Abbrechen"
+    @confirm="executeDeletePlan"
+  />
 </template>
 
 <script setup>
@@ -1013,6 +1035,7 @@ import { useCollectionsStore } from '@/stores/collections.js';
 import { useRecipeBlocksStore } from '@/stores/recipe-blocks.js';
 import { useNotification } from '@/composables/useNotification.js';
 import LoadPlanDialog from '@/components/mealplan/LoadPlanDialog.vue';
+import ConfirmDialog from '@/components/ui/ConfirmDialog.vue';
 import {
   Sparkles, ChevronLeft, ChevronRight, Check, Eye, RefreshCw,
   X, Clock, ChefHat, UtensilsCrossed, Plus, Minus, Star, Trash2,
@@ -1034,6 +1057,8 @@ const selectedMeal = ref(null);
 const showGenerateModal = ref(false);
 const showGenSettings = ref(false);
 const showLoadDialog = ref(false);
+const showOverwriteLockedConfirm = ref(false);
+const showDeletePlanConfirm = ref(false);
 const servingsPopup = ref(null); // { meal, x, y }
 
 // Gespeicherte Präferenzen aus localStorage laden
@@ -1213,7 +1238,16 @@ function selectMeal(meal) {
 // ─── Generierung ───
 async function doGenerate() {
   // Warnung wenn fixierter Plan überschrieben wird
-  if (isLocked.value && !confirm('Der aktuelle Plan ist fixiert (bereits eingekauft). Trotzdem überschreiben?')) return;
+  if (isLocked.value) {
+    showGenerateModal.value = false;
+    showOverwriteLockedConfirm.value = true;
+    return;
+  }
+  executeGenerate();
+}
+
+async function executeGenerate() {
+  showOverwriteLockedConfirm.value = false;
   showGenerateModal.value = false;
   try {
     const options = {
@@ -1340,7 +1374,12 @@ async function removeEntry(meal) {
 async function confirmDeletePlan() {
   if (!currentPlan.value) return;
   if (isLocked.value) return;
-  if (!confirm('Wochenplan wirklich löschen?')) return;
+  showDeletePlanConfirm.value = true;
+}
+
+async function executeDeletePlan() {
+  showDeletePlanConfirm.value = false;
+  if (!currentPlan.value) return;
   try {
     await store.deletePlan(currentPlan.value.id);
     showSuccess('Wochenplan gelöscht');

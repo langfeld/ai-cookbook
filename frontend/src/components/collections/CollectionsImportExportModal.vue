@@ -157,6 +157,7 @@
 import { ref } from 'vue';
 import { useApi } from '@/composables/useApi.js';
 import { useAuthStore } from '@/stores/auth.js';
+import { useNotification } from '@/composables/useNotification.js';
 import { X, Download, Upload, Loader2 } from 'lucide-vue-next';
 
 const props = defineProps({
@@ -168,6 +169,7 @@ const emit = defineEmits(['close', 'imported']);
 
 const api = useApi();
 const authStore = useAuthStore();
+const { showError } = useNotification();
 
 const activeTab = ref('export');
 const exporting = ref(false);
@@ -195,7 +197,7 @@ async function handleExport() {
     const blob = await response.blob();
     downloadBlob(blob, `sammlungen-export-${new Date().toISOString().split('T')[0]}.json`);
   } catch (err) {
-    alert(err.message || 'Export fehlgeschlagen');
+    showError(err.message || 'Export fehlgeschlagen');
   } finally {
     exporting.value = false;
   }
@@ -228,7 +230,7 @@ function processFile(file) {
       };
     } catch {
       filePreview.value = null;
-      alert('Datei konnte nicht gelesen werden');
+      showError('Datei konnte nicht gelesen werden');
     }
   };
   reader.readAsText(file);

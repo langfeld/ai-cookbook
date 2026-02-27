@@ -188,6 +188,7 @@
 import { ref, computed } from 'vue';
 import { useApi } from '@/composables/useApi.js';
 import { useAuthStore } from '@/stores/auth.js';
+import { useNotification } from '@/composables/useNotification.js';
 import { X, Download, Upload, Loader2, ShieldAlert } from 'lucide-vue-next';
 
 const props = defineProps({
@@ -199,6 +200,7 @@ const emit = defineEmits(['close', 'imported']);
 
 const api = useApi();
 const authStore = useAuthStore();
+const { showError } = useNotification();
 
 const activeTab = ref('export');
 const exporting = ref(false);
@@ -260,7 +262,7 @@ async function handleExport() {
     const date = new Date().toISOString().split('T')[0];
     downloadBlob(blob, `zauberjournal-backup-${date}.json`);
   } catch (err) {
-    alert(err.message || 'Export fehlgeschlagen');
+    showError(err.message || 'Export fehlgeschlagen');
   } finally {
     exporting.value = false;
   }

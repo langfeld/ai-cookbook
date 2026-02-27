@@ -589,6 +589,17 @@
       :loading="batchDeleting"
       @confirm="executeBatchDelete"
     />
+
+    <!-- Bestätigungs-Dialog für Einzelartikel entfernen -->
+    <ConfirmDialog
+      v-model="showRemoveConfirm"
+      variant="danger"
+      :title="`${removeTarget?.ingredient_name} entfernen?`"
+      :message="`${removeTarget?.ingredient_name} wirklich aus dem Vorratsschrank entfernen?`"
+      confirm-text="Entfernen"
+      cancel-text="Abbrechen"
+      @confirm="executeRemoveItem"
+    />
   </div>
 </template>
 
@@ -616,6 +627,8 @@ const selectMode = ref(false);
 const selectedIds = ref(new Set());
 const showBatchDeleteConfirm = ref(false);
 const batchDeleting = ref(false);
+const showRemoveConfirm = ref(false);
+const removeTarget = ref(null);
 
 const addForm = reactive({
   name: '',
@@ -856,14 +869,22 @@ async function adjustAmount() {
   }
 }
 
-async function removeItem(item) {
-  if (!confirm(`${item.ingredient_name} wirklich entfernen?`)) return;
+function removeItem(item) {
+  removeTarget.value = item;
+  showRemoveConfirm.value = true;
+}
+
+async function executeRemoveItem() {
+  const item = removeTarget.value;
+  showRemoveConfirm.value = false;
+  if (!item) return;
   try {
     await pantryStore.removeItem(item.id);
     showSuccess(`${item.ingredient_name} entfernt`);
   } catch {
     // Fehler wird von useApi angezeigt
   }
+  removeTarget.value = null;
 }
 
 // Alle gefilterten Items (für "Alle auswählen")

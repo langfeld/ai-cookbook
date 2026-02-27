@@ -322,6 +322,17 @@
       </div>
     </div>
   </div>
+
+  <!-- Bestätigungs-Dialog für Mapping löschen -->
+  <ConfirmDialog
+    v-model="showDeleteConfirm"
+    variant="danger"
+    :title="`Mapping löschen?`"
+    :message="`Mapping \u201E${deleteTarget?.keyword}\u201C \u2192 ${deleteTarget?.emoji} wirklich löschen?`"
+    confirm-text="Löschen"
+    cancel-text="Abbrechen"
+    @confirm="executeDeleteIcon"
+  />
 </template>
 
 <script setup>
@@ -333,6 +344,7 @@ import {
   Search, PlusCircle, Pencil, Trash2, X, ExternalLink, Info, AlertTriangle,
   List, CheckCircle, CircleOff,
 } from 'lucide-vue-next';
+import ConfirmDialog from '@/components/ui/ConfirmDialog.vue';
 
 const api = useApi();
 const { showSuccess, showError } = useNotification();
@@ -348,6 +360,8 @@ const editId = ref(null);
 const formKeyword = ref('');
 const formEmoji = ref('');
 const emojiSearch = ref('');
+const showDeleteConfirm = ref(false);
+const deleteTarget = ref(null);
 const saving = ref(false);
 
 // Emoji-Picker Datensatz (Lebensmittel-bezogene Emojis)
@@ -569,8 +583,15 @@ async function saveMapping() {
   }
 }
 
-async function deleteIcon(icon) {
-  if (!confirm(`Mapping „${icon.keyword}" → ${icon.emoji} wirklich löschen?`)) return;
+function deleteIcon(icon) {
+  deleteTarget.value = icon;
+  showDeleteConfirm.value = true;
+}
+
+async function executeDeleteIcon() {
+  const icon = deleteTarget.value;
+  showDeleteConfirm.value = false;
+  if (!icon) return;
   try {
     await api.del(`/ingredient-icons/${icon.id}`);
     showSuccess('Mapping gelöscht! 🗑️');
@@ -579,6 +600,7 @@ async function deleteIcon(icon) {
   } catch {
     // Fehler wird von useApi angezeigt
   }
+  deleteTarget.value = null;
 }
 
 async function fetchIcons() {
