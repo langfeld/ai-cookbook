@@ -127,11 +127,12 @@
 
           <!-- Zutaten in der Gruppe -->
           <div v-for="(ing, iIdx) in group.items" :key="iIdx"
-               class="items-start gap-2 grid grid-cols-[1fr_1fr] sm:grid-cols-[5rem_6rem_1fr_auto_auto]"
+               class="items-start gap-2 grid grid-cols-[1fr_1fr] sm:grid-cols-[5rem_6rem_1fr_8rem_auto_auto]"
           >
             <input v-model.number="ing.amount" type="number" step="0.01" min="0" class="form-input" placeholder="Menge" />
             <UnitInput v-model="ing.unit" placeholder="Einheit" />
             <input v-model="ing.name" type="text" class="col-span-2 sm:col-span-1 form-input" placeholder="Zutat (z.B. Kartoffeln)" required />
+            <input v-model="ing.notes" type="text" class="col-span-2 sm:col-span-1 text-stone-400 form-input" placeholder="Hinweis" />
             <label class="flex items-center gap-1 py-2 text-stone-400 text-xs cursor-pointer">
               <input type="checkbox" v-model="ing.is_optional" class="rounded" />
               opt.
@@ -143,7 +144,7 @@
 
           <button
             type="button"
-            @click="group.items.push({ amount: null, unit: '', name: '', is_optional: false })"
+            @click="group.items.push({ amount: null, unit: '', name: '', notes: '', is_optional: false })"
             class="flex items-center gap-1 text-primary-600 hover:text-primary-700 text-sm"
           >
             <Plus class="w-3 h-3" /> Zutat hinzufügen
@@ -256,7 +257,7 @@ const form = reactive({
   difficulty: 'mittel',
   category_ids: [],
   ingredient_groups: [
-    { name: '', items: [{ amount: null, unit: '', name: '', is_optional: false }] }
+    { name: '', items: [{ amount: null, unit: '', name: '', notes: '', is_optional: false }] }
   ],
   steps: [
     { title: '', instruction: '', duration_minutes: null }
@@ -382,11 +383,11 @@ onMounted(async () => {
       for (const ing of r.ingredients || []) {
         const gn = ing.group_name || '';
         if (!groups[gn]) groups[gn] = [];
-        groups[gn].push({ amount: ing.amount, unit: ing.unit, name: ing.name, is_optional: ing.is_optional });
+        groups[gn].push({ amount: ing.amount, unit: ing.unit, name: ing.name, notes: ing.notes || '', is_optional: ing.is_optional });
       }
       form.ingredient_groups = Object.entries(groups).map(([name, items]) => ({ name, items }));
       if (!form.ingredient_groups.length) {
-        form.ingredient_groups = [{ name: '', items: [{ amount: null, unit: '', name: '', is_optional: false }] }];
+        form.ingredient_groups = [{ name: '', items: [{ amount: null, unit: '', name: '', notes: '', is_optional: false }] }];
       }
 
       // Kochschritte
