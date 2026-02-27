@@ -14,7 +14,7 @@
     <div v-if="recipe" class="space-y-6 animate-fade-in">
 
       <!-- ═══════ HEADER ═══════ -->
-      <div class="flex md:flex-row flex-col gap-6 lg:grid lg:grid-cols-[minmax(272px,320px)_1fr]">
+      <div class="flex md:flex-row flex-col gap-6 lg:grid lg:grid-cols-[minmax(300px,400px)_1fr]">
         <!-- Bild -->
         <div v-if="recipe.image_url"
           class="bg-stone-100 dark:bg-stone-800 bg-cover bg-center rounded-xl w-full min-h-48 aspect-video lg:aspect-auto overflow-hidden"
@@ -122,11 +122,11 @@
       </div>
 
       <!-- ═══════ ZWEI-SPALTEN: ZUTATEN + ZUBEREITUNG ═══════ -->
-      <div class="lg:items-stretch lg:gap-6 space-y-6 lg:space-y-0 lg:grid lg:grid-cols-[minmax(272px,320px)_1fr]">
+      <div class="lg:items-stretch lg:gap-6 space-y-6 lg:space-y-0 lg:grid lg:grid-cols-[minmax(300px,400px)_1fr]">
 
         <!-- ── ZUTATEN (links, sticky auf Desktop) ── -->
         <div class="lg:top-4 lg:sticky lg:self-stretch bg-white dark:bg-stone-900 p-4 border border-stone-200 dark:border-stone-800 rounded-xl">
-          <h2 class="mb-3 font-semibold text-stone-800 dark:text-stone-100 text-base">🥕 Zutaten</h2>
+          <h2 class="mb-3 font-semibold text-stone-800 dark:text-stone-100 text-lg">🥕 Zutaten</h2>
 
           <!-- Portionsrechner -->
           <div class="flex flex-wrap items-center gap-2 mb-3 pb-3 border-stone-100 dark:border-stone-800 border-b">
@@ -135,7 +135,7 @@
                 class="flex justify-center items-center bg-stone-100 hover:bg-stone-200 dark:bg-stone-800 dark:hover:bg-stone-700 rounded-full w-7 h-7 text-stone-600 dark:text-stone-400">
                 <Minus class="w-3.5 h-3.5" />
               </button>
-              <span class="w-14 font-medium text-stone-700 dark:text-stone-300 text-sm text-center">{{ adjustedServings }} Port.</span>
+              <span class="w-14 font-medium text-stone-700 dark:text-stone-300 text-base text-center">{{ adjustedServings }} Port.</span>
               <button @click="adjustedServings++"
                 class="flex justify-center items-center bg-stone-100 hover:bg-stone-200 dark:bg-stone-800 dark:hover:bg-stone-700 rounded-full w-7 h-7 text-stone-600 dark:text-stone-400">
                 <Plus class="w-3.5 h-3.5" />
@@ -163,11 +163,11 @@
             <li v-for="ing in flatIngredients" :key="ing.id"
               class="flex items-center gap-2 hover:bg-stone-50 dark:hover:bg-stone-800/50 px-1.5 py-1.5 rounded-md transition-colors"
               :class="adjustmentMode ? 'flex-wrap' : ''">
-              <span class="w-5 text-sm text-center shrink-0" :title="ing.name">{{ getEmoji(ing.name) || '•' }}</span>
+              <span class="w-5 text-base text-center shrink-0" :title="ing.name">{{ getEmoji(ing.name) || '•' }}</span>
 
               <!-- Normal -->
               <template v-if="!adjustmentMode">
-                <span class="font-medium text-stone-800 dark:text-stone-200 text-sm text-right shrink-0"
+                <span class="font-medium text-stone-800 dark:text-stone-200 text-base text-right shrink-0"
                   :class="ing.amounts.length > 1 ? 'min-w-16' : 'w-16'">
                   <template v-for="(a, i) in ing.amounts" :key="i">
                     <template v-if="i > 0">, </template>
@@ -215,10 +215,13 @@
                 </span>
               </template>
 
-              <span class="text-stone-700 dark:text-stone-300 text-sm" :class="adjustmentMode ? 'basis-full sm:basis-auto sm:flex-1 pl-7 sm:pl-0 -mt-1 sm:mt-0' : 'flex-1'">
+              <span class="text-stone-700 dark:text-stone-300 text-base" :class="adjustmentMode ? 'basis-full sm:basis-auto sm:flex-1 pl-7 sm:pl-0 -mt-1 sm:mt-0' : 'flex-1'">
                 {{ ing.name }}
-                <span v-if="ing.is_optional" class="ml-1 text-stone-400 text-xs">(optional)</span>
-                <span v-if="ing.notes" class="ml-1 text-stone-400 text-xs">– {{ ing.notes }}</span>
+                <span v-if="ing.is_optional || ing.notes" class="block text-stone-400 text-xs leading-snug">
+                  <template v-if="ing.is_optional">(optional)</template>
+                  <template v-if="ing.is_optional && ing.notes"> – </template>
+                  <template v-if="ing.notes">{{ ing.notes }}</template>
+                </span>
               </span>
             </li>
           </ul>
@@ -228,7 +231,7 @@
         <div class="flex flex-col gap-6">
           <!-- Zubereitung -->
           <div class="flex-1 bg-white dark:bg-stone-900 p-5 border border-stone-200 dark:border-stone-800 rounded-xl">
-            <h2 class="mb-5 font-semibold text-stone-800 dark:text-stone-100 text-base">👨‍🍳 Zubereitung</h2>
+            <h2 class="mb-5 font-semibold text-stone-800 dark:text-stone-100 text-lg">👨‍🍳 Zubereitung</h2>
             <div class="space-y-8">
               <div v-for="step in recipe.steps" :key="step.id" class="flex gap-3">
                 <div class="flex justify-center items-center bg-primary-100 dark:bg-primary-900/50 mt-0.5 rounded-full w-7 h-7 shrink-0">
@@ -236,12 +239,12 @@
                 </div>
                 <div class="flex-1 min-w-0">
                   <div class="flex items-center gap-2 mb-0.5">
-                    <h3 v-if="step.title" class="font-medium text-stone-800 dark:text-stone-200 text-sm">{{ step.title }}</h3>
-                    <span v-if="step.duration_minutes" class="flex items-center gap-1 text-stone-400 text-xs whitespace-nowrap shrink-0">
-                      <Clock class="w-3 h-3" /> {{ step.duration_minutes }} Min.
+                    <h3 v-if="step.title" class="font-medium text-stone-800 dark:text-stone-200 text-base">{{ step.title }}</h3>
+                    <span v-if="step.duration_minutes" class="flex items-center gap-1 text-stone-400 text-sm whitespace-nowrap shrink-0">
+                      <Clock class="w-3.5 h-3.5" /> {{ step.duration_minutes }} Min.
                     </span>
                   </div>
-                  <p class="text-stone-600 dark:text-stone-400 text-sm leading-loose" v-html="highlightIngredients(step.instruction)" />
+                  <p class="text-stone-600 dark:text-stone-400 text-base leading-loose" v-html="highlightIngredients(step.instruction)" />
                 </div>
               </div>
             </div>
