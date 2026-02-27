@@ -34,7 +34,7 @@
 
     <div class="gap-6 grid lg:grid-cols-2">
       <!-- Heutiger Plan -->
-      <div class="bg-white dark:bg-stone-900 p-6 border border-stone-200 dark:border-stone-800 rounded-xl">
+      <div class="bg-white dark:bg-stone-900 p-6 border border-stone-200 dark:border-stone-800 rounded-xl overflow-hidden">
         <h3 class="flex items-center gap-2 mb-4 font-semibold text-stone-800 dark:text-stone-100 text-lg">
           <Calendar class="w-5 h-5 text-primary-500" />
           Heute auf dem Plan
