@@ -162,31 +162,32 @@
       <Transition name="slide-up">
         <div
           v-if="selectMode && selectedIds.size > 0"
-          class="right-0 bottom-0 left-0 z-40 fixed flex justify-center items-center gap-4 bg-white/95 dark:bg-stone-900/95 shadow-[0_-4px_24px_rgba(0,0,0,0.12)] backdrop-blur-sm px-6 py-4 border-stone-200 dark:border-stone-700 border-t"
+          class="right-0 bottom-0 left-0 z-40 fixed flex flex-wrap justify-center items-center gap-2 sm:gap-4 bg-white/95 dark:bg-stone-900/95 shadow-[0_-4px_24px_rgba(0,0,0,0.12)] backdrop-blur-sm px-3 sm:px-6 py-3 sm:py-4 border-stone-200 dark:border-stone-700 border-t"
         >
-          <div class="flex items-center gap-2 text-stone-600 dark:text-stone-300 text-sm">
+          <div class="flex items-center gap-1.5 text-stone-600 dark:text-stone-300 text-sm">
             <CheckSquare class="w-4 h-4" />
-            <span class="font-medium">{{ selectedIds.size }}</span> ausgewählt
+            <span class="font-medium">{{ selectedIds.size }}</span>
+            <span class="hidden sm:inline">ausgewählt</span>
           </div>
           <button
             @click="selectAll"
-            class="hover:bg-stone-100 dark:hover:bg-stone-800 px-3 py-1.5 border border-stone-300 dark:border-stone-600 rounded-lg text-stone-600 dark:text-stone-300 text-sm transition-colors"
+            class="hover:bg-stone-100 dark:hover:bg-stone-800 px-2.5 sm:px-3 py-1.5 border border-stone-300 dark:border-stone-600 rounded-lg text-stone-600 dark:text-stone-300 text-sm transition-colors"
           >
             Alle ({{ recipesStore.recipes.length }})
           </button>
           <button
             @click="showBatchAddToCollection = true"
-            class="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 px-4 py-1.5 rounded-lg font-medium text-white text-sm transition-colors"
+            class="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 px-3 sm:px-4 py-1.5 rounded-lg font-medium text-white text-sm transition-colors"
           >
             <FolderPlus class="w-4 h-4" />
-            Zu Sammlung ({{ selectedIds.size }})
+            <span class="hidden sm:inline">Zu Sammlung</span> ({{ selectedIds.size }})
           </button>
           <button
             @click="showBatchDeleteConfirm = true"
-            class="flex items-center gap-2 bg-red-600 hover:bg-red-700 px-4 py-1.5 rounded-lg font-medium text-white text-sm transition-colors"
+            class="flex items-center gap-1.5 bg-red-600 hover:bg-red-700 px-3 sm:px-4 py-1.5 rounded-lg font-medium text-white text-sm transition-colors"
           >
             <Trash2 class="w-4 h-4" />
-            Löschen ({{ selectedIds.size }})
+            <span class="hidden sm:inline">Löschen</span> ({{ selectedIds.size }})
           </button>
         </div>
       </Transition>
