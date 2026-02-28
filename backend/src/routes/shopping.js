@@ -656,29 +656,105 @@ export default async function shoppingRoutes(fastify) {
     ).get(userId);
 
     if (!list || !list.meal_plan_id) {
-      return { recipes: [] };
+      return { ingredients: [] };
     }
 
     // Allokation berechnen (shared Service)
     const { recipes } = calculatePantryAllocations(userId, list.meal_plan_id);
 
-    // Nur Rezepte mit mindestens einer gedeckten/teilweise gedeckten Zutat
-    const filteredRecipes = recipes
-      .map(recipe => ({
-        recipe_id: recipe.recipe_id,
-        recipe_title: recipe.recipe_title,
-        recipe_image_url: recipe.recipe_image_url,
-        day_of_week: recipe.day_of_week,
-        day_label: recipe.day_label,
-        meal_type: recipe.meal_type,
-        meal_type_label: recipe.meal_type_label,
-        ingredients: recipe.ingredients.filter(ing =>
-          (ing.is_covered || ing.is_partial) && !ing.is_blocked
-        ),
-      }))
-      .filter(recipe => recipe.ingredients.length > 0);
+    // Nach Zutat gruppieren (statt nach Rezept) – so muss man nur einmal
+    // pro Zutat im Schrank nachschauen
+    const ingredientMap = new Map();
 
-    return { recipes: filteredRecipes };
+    for (const recipe of recipes) {
+      for (const ing of recipe.ingredients) {
+        if (ing.is_blocked) continue;
+        if (!ing.is_covered && !ing.is_partial) continue;
+
+        const key = ing.name.toLowerCase();
+        if (!ingredientMap.has(key)) {
+          ingredientMap.set(key, {
+            name: ing.name,
+            total_needed_amount: 0,
+            needed_unit: ing.needed_unit || '',
+            total_needed_base_amount: 0,
+            needed_base_unit: ing.needed_base_unit || '',
+            total_covered_base_amount: 0,
+            pantry_id: ing.pantry_id,
+            is_permanent: ing.is_permanent || false,
+            unit_mismatch: ing.unit_mismatch || false,
+            mixed_units: false,
+            recipes: [],
+          });
+        }
+
+        const entry = ingredientMap.get(key);
+
+        // Prüfen ob verschiedene Einheiten genutzt werden
+        if (entry.needed_unit && ing.needed_unit && entry.needed_unit !== (ing.needed_unit || '')) {
+          entry.mixed_units = true;
+        }
+
+        entry.total_needed_amount += (ing.needed_amount || 0);
+        entry.total_needed_base_amount += (ing.needed_base_amount || 0);
+        entry.total_covered_base_amount += (ing.covered_base_amount || 0);
+
+        // Rezept-Referenz hinzufügen (gleiche Einträge desselben Rezepts zusammenfassen)
+        const existingRecipe = entry.recipes.find(r =>
+          r.recipe_id === recipe.recipe_id && r.day_of_week === recipe.day_of_week && r.meal_type === recipe.meal_type
+        );
+        if (existingRecipe) {
+          existingRecipe.needed_amount += (ing.needed_amount || 0);
+        } else {
+          entry.recipes.push({
+            recipe_id: recipe.recipe_id,
+            recipe_title: recipe.recipe_title,
+            recipe_image_url: recipe.recipe_image_url || null,
+            day_of_week: recipe.day_of_week,
+            day_label: recipe.day_label,
+            meal_type: recipe.meal_type,
+            meal_type_label: recipe.meal_type_label,
+            needed_amount: ing.needed_amount || 0,
+            needed_unit: ing.needed_unit || '',
+          });
+        }
+      }
+    }
+
+    // Aggregierte Werte berechnen
+    const ingredients = [...ingredientMap.values()].map(agg => {
+      agg.total_needed_amount = Math.round(agg.total_needed_amount * 100) / 100;
+      agg.total_needed_base_amount = Math.round(agg.total_needed_base_amount * 100) / 100;
+      agg.total_covered_base_amount = Math.round(agg.total_covered_base_amount * 100) / 100;
+
+      // Bei verschiedenen Einheiten Basiseinheiten verwenden
+      if (agg.mixed_units) {
+        agg.display_amount = agg.total_needed_base_amount;
+        agg.display_unit = agg.needed_base_unit;
+      } else {
+        agg.display_amount = agg.total_needed_amount;
+        agg.display_unit = agg.needed_unit;
+      }
+
+      // Deckungsstatus aus aggregierten Basiswerten
+      agg.is_covered = agg.total_covered_base_amount >= agg.total_needed_base_amount || agg.unit_mismatch;
+      agg.is_partial = !agg.unit_mismatch && agg.total_covered_base_amount > 0 && agg.total_covered_base_amount < agg.total_needed_base_amount;
+
+      // Rezept-Mengen runden
+      agg.recipes.forEach(r => {
+        r.needed_amount = Math.round(r.needed_amount * 100) / 100;
+      });
+
+      return agg;
+    });
+
+    // Sortieren: teilweise zuerst, dann alphabetisch
+    ingredients.sort((a, b) => {
+      if (a.is_partial !== b.is_partial) return a.is_partial ? -1 : 1;
+      return a.name.localeCompare(b.name, 'de');
+    });
+
+    return { ingredients };
   });
 
   // ─────────────────────────────────────────────

@@ -184,6 +184,10 @@ export const useShoppingStore = defineStore('shopping', () => {
   async function deleteItem(itemId) {
     await api.del(`/shopping/item/${itemId}`);
     items.value = items.value.filter(i => i.id !== itemId);
+    // Vorratscheck aktualisieren (falls geladen), damit „verschoben"-Status stimmt
+    if (pantryCheck.value) {
+      fetchPantryCheck();
+    }
   }
 
   /** Vorratscheck laden (welche Vorräte sollten für den Wochenplan vorhanden sein?) */

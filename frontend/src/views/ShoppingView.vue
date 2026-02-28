@@ -265,78 +265,70 @@
 
       <!-- Aufklappbarer Vorratscheck-Inhalt -->
       <Transition name="slide">
-        <div v-if="showPantryCheck && shoppingStore.pantryCheck" class="space-y-4 mt-3">
+        <div v-if="showPantryCheck && shoppingStore.pantryCheck" class="space-y-3 mt-3">
           <!-- Info-Hinweis -->
           <p class="text-stone-500 dark:text-stone-400 text-xs">
             Diese Zutaten sollten im Vorrat vorhanden sein. Falls etwas fehlt, kannst du es per Klick zur Einkaufsliste hinzufügen.
           </p>
 
-          <!-- Rezept-Karten -->
-          <div class="gap-4 space-y-4 lg:columns-2" v-if="shoppingStore.pantryCheck.recipes?.length">
+          <!-- Zutaten-Liste (nach Zutat gruppiert) -->
+          <div v-if="shoppingStore.pantryCheck.ingredients?.length" class="bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-800 rounded-xl divide-y divide-stone-100 dark:divide-stone-800 overflow-hidden">
             <div
-              v-for="recipe in shoppingStore.pantryCheck.recipes"
-              :key="`${recipe.recipe_id}-${recipe.day_of_week}-${recipe.meal_type}`"
-              class="bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-800 rounded-xl overflow-hidden break-inside-avoid"
+              v-for="ing in shoppingStore.pantryCheck.ingredients"
+              :key="ing.name"
+              :class="[
+                'flex items-center gap-3 px-4 py-2.5 transition-all',
+                movedPantryItems.has(ing.name.toLowerCase()) ? 'opacity-40' : ''
+              ]"
             >
-              <!-- Rezept-Header -->
-              <div class="flex items-center gap-3 bg-stone-50 dark:bg-stone-800/60 px-4 py-2.5 border-stone-200 dark:border-stone-700 border-b">
-                <div class="bg-stone-200 dark:bg-stone-700 rounded-lg w-8 h-8 overflow-hidden shrink-0">
-                  <img v-if="recipe.recipe_image_url" :src="recipe.recipe_image_url" :alt="recipe.recipe_title" class="w-full h-full object-cover" />
-                  <span v-else class="flex justify-center items-center w-full h-full text-sm">🍽️</span>
-                </div>
-                <div class="flex-1 min-w-0">
-                  <p class="font-semibold text-stone-700 dark:text-stone-200 text-sm truncate">{{ recipe.recipe_title }}</p>
-                  <p class="text-stone-400 dark:text-stone-500 text-xs">{{ recipe.day_label }} · {{ recipe.meal_type_label }}</p>
+              <!-- Status-Icon -->
+              <div class="shrink-0">
+                <Check v-if="ing.is_covered && !ing.is_partial" class="w-4 h-4 text-green-500" />
+                <AlertTriangle v-else-if="ing.is_partial" class="w-4 h-4 text-amber-500" />
+              </div>
+
+              <!-- Name + Menge + Rezept-Thumbnails -->
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-1.5">
+                  <span class="font-medium text-stone-800 dark:text-stone-200 text-sm">{{ ing.name }}</span>
+                  <span class="text-stone-400 dark:text-stone-500 text-xs">
+                    <template v-if="ing.is_partial">
+                      {{ formatPantryAmount(ing.total_covered_base_amount, ing.needed_base_unit) }} von {{ formatPantryAmount(ing.display_amount, ing.display_unit) }} vorhanden
+                    </template>
+                    <template v-else>
+                      {{ formatPantryAmount(ing.display_amount, ing.display_unit) }}
+                      <span v-if="ing.is_permanent" class="text-blue-500 dark:text-blue-400">∞</span>
+                    </template>
+                  </span>
+                  <!-- Mini Rezept-Thumbnails (wie bei Einkaufslisten-Items) -->
+                  <div v-if="showRecipeLinks && ing.recipes?.length" class="flex -space-x-1.5">
+                    <router-link
+                      v-for="recipe in ing.recipes"
+                      :key="recipe.recipe_id"
+                      :to="`/recipes/${recipe.recipe_id}`"
+                      :title="`${recipe.recipe_title} (${recipe.day_label} · ${recipe.meal_type_label})`"
+                      class="hover:z-10 relative bg-stone-200 dark:bg-stone-700 border-2 border-white dark:border-stone-900 rounded-full w-5 h-5 overflow-hidden hover:scale-125 transition-transform shrink-0"
+                    >
+                      <img v-if="recipe.recipe_image_url" :src="recipe.recipe_image_url" :alt="recipe.recipe_title" class="w-full h-full object-cover" />
+                      <span v-else class="flex justify-center items-center w-full h-full text-[8px]">🍽️</span>
+                    </router-link>
+                  </div>
                 </div>
               </div>
 
-              <!-- Zutaten-Liste -->
-              <div class="divide-y divide-stone-100 dark:divide-stone-800">
-                <div
-                  v-for="ing in recipe.ingredients"
-                  :key="ing.name"
-                  :class="[
-                    'flex items-center gap-3 px-4 py-2.5 transition-all',
-                    movedPantryItems.has(`${recipe.recipe_id}-${ing.name}`)
-                      ? 'opacity-40 line-through'
-                      : ''
-                  ]"
-                >
-                  <!-- Status-Icon -->
-                  <div class="shrink-0">
-                    <Check v-if="ing.is_covered && !ing.is_partial" class="w-4 h-4 text-green-500" />
-                    <AlertTriangle v-else-if="ing.is_partial" class="w-4 h-4 text-amber-500" />
-                  </div>
-
-                  <!-- Name + Mengeninfo -->
-                  <div class="flex-1 min-w-0">
-                    <span class="text-stone-800 dark:text-stone-200 text-sm">{{ ing.name }}</span>
-                    <span class="ml-1.5 text-stone-400 dark:text-stone-500 text-xs">
-                      <template v-if="ing.is_partial">
-                        {{ formatPantryAmount(ing.covered_base_amount, ing.needed_base_unit) }} von {{ formatPantryAmount(ing.needed_amount, ing.needed_unit) }} vorhanden
-                      </template>
-                      <template v-else>
-                        {{ formatPantryAmount(ing.needed_amount, ing.needed_unit) }}
-                        <span v-if="ing.is_permanent" class="text-blue-500 dark:text-blue-400">∞</span>
-                      </template>
-                    </span>
-                  </div>
-
-                  <!-- Zur Einkaufsliste hinzufügen -->
-                  <button
-                    v-if="!movedPantryItems.has(`${recipe.recipe_id}-${ing.name}`)"
-                    @click="moveFromPantryCheckToList(recipe, ing)"
-                    :disabled="pantryCheckMoving === `${recipe.recipe_id}-${ing.name}`"
-                    class="flex items-center gap-1 hover:bg-primary-50 dark:hover:bg-primary-900/20 px-2 py-1 rounded-lg text-stone-400 hover:text-primary-600 dark:hover:text-primary-400 text-xs transition-colors shrink-0"
-                    title="Zur Einkaufsliste hinzufügen"
-                  >
-                    <Loader2 v-if="pantryCheckMoving === `${recipe.recipe_id}-${ing.name}`" class="w-3.5 h-3.5 animate-spin" />
-                    <Plus v-else class="w-3.5 h-3.5" />
-                    <span class="hidden sm:inline">Einkaufen</span>
-                  </button>
-                  <span v-else class="text-stone-400 text-xs shrink-0">✓ verschoben</span>
-                </div>
-              </div>
+              <!-- Zur Einkaufsliste hinzufügen -->
+              <button
+                v-if="!movedPantryItems.has(ing.name.toLowerCase())"
+                @click="moveFromPantryCheckToList(ing)"
+                :disabled="pantryCheckMoving === ing.name.toLowerCase()"
+                class="flex items-center gap-1 hover:bg-primary-50 dark:hover:bg-primary-900/20 px-2 py-1 rounded-lg text-stone-400 hover:text-primary-600 dark:hover:text-primary-400 text-xs transition-colors shrink-0"
+                title="Zur Einkaufsliste hinzufügen"
+              >
+                <Loader2 v-if="pantryCheckMoving === ing.name.toLowerCase()" class="w-3.5 h-3.5 animate-spin" />
+                <Plus v-else class="w-3.5 h-3.5" />
+                <span class="hidden sm:inline">Einkaufen</span>
+              </button>
+              <span v-else class="text-stone-400 text-xs shrink-0">✓ verschoben</span>
             </div>
           </div>
 
@@ -2121,9 +2113,13 @@ const pantryCheckMoving = ref(null);          // Key des gerade verschobenen Ite
 const movedPantryItems = ref(new Set());      // Bereits verschobene Items
 const highlightedItemId = ref(null);          // Item-ID die gerade aufleuchtet
 
+// Wenn der Vorratscheck neu geladen wird (z.B. nach Löschen), movedPantryItems zurücksetzen
+watch(() => shoppingStore.pantryCheck, () => {
+  movedPantryItems.value = new Set();
+});
+
 const pantryCheckTotalCount = computed(() => {
-  const recipes = shoppingStore.pantryCheck?.recipes || [];
-  return recipes.reduce((sum, r) => sum + r.ingredients.length, 0);
+  return shoppingStore.pantryCheck?.ingredients?.length || 0;
 });
 
 async function togglePantryCheck() {
@@ -2139,19 +2135,19 @@ function formatPantryAmount(amount, unit) {
   return unit ? `${rounded} ${unit}` : `${rounded}`;
 }
 
-async function moveFromPantryCheckToList(recipe, ing) {
-  const key = `${recipe.recipe_id}-${ing.name}`;
+async function moveFromPantryCheckToList(ing) {
+  const key = ing.name.toLowerCase();
   pantryCheckMoving.value = key;
   try {
     // Bei partial: fehlende Menge berechnen, bei covered: gesamte Menge
     const amountToAdd = ing.is_partial
-      ? Math.round((ing.needed_amount - (ing.covered_base_amount * (ing.needed_amount / (ing.needed_base_amount || 1)))) * 100) / 100 || ing.needed_amount
-      : ing.needed_amount;
+      ? Math.round((ing.display_amount - (ing.total_covered_base_amount * (ing.display_amount / (ing.total_needed_base_amount || 1)))) * 100) / 100 || ing.display_amount
+      : ing.display_amount;
 
     const data = await shoppingStore.moveFromPantryToList({
       ingredient_name: ing.name,
       amount: amountToAdd,
-      unit: ing.needed_unit || null,
+      unit: ing.display_unit || null,
       pantry_item_id: ing.pantry_id || null,
     });
 
