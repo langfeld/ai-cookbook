@@ -56,13 +56,22 @@ export const usePantryStore = defineStore('pantry', () => {
   async function addItem(itemData) {
     const data = await api.post('/pantry', itemData);
     await fetchItems();
+    invalidateRecipeView();
     return data;
+  }
+
+  /** Rezept-Ansicht invalidieren (falls geladen) */
+  function invalidateRecipeView() {
+    if (recipeViewData.value) {
+      fetchRecipeView(selectedWeekStart.value);
+    }
   }
 
   /** Vorrat aktualisieren */
   async function updateItem(id, itemData) {
     const data = await api.put(`/pantry/${id}`, itemData);
     await fetchItems();
+    invalidateRecipeView();
     return data;
   }
 
@@ -70,6 +79,7 @@ export const usePantryStore = defineStore('pantry', () => {
   async function useAmount(id, amount) {
     const data = await api.post(`/pantry/${id}/use`, { amount });
     await fetchItems();
+    invalidateRecipeView();
     return data;
   }
 
@@ -77,12 +87,14 @@ export const usePantryStore = defineStore('pantry', () => {
   async function removeItem(id) {
     await api.del(`/pantry/${id}`);
     items.value = items.value.filter(i => i.id !== id);
+    invalidateRecipeView();
   }
 
   /** Mehrere Vorräte auf einmal löschen */
   async function deleteItemsBatch(ids) {
     const data = await api.post('/pantry/batch-delete', { ids });
     await fetchItems();
+    invalidateRecipeView();
     return data;
   }
 
@@ -92,6 +104,7 @@ export const usePantryStore = defineStore('pantry', () => {
     formData.append('file', file);
     const data = await api.upload('/pantry/import', formData);
     await fetchItems();
+    invalidateRecipeView();
     return data;
   }
 
