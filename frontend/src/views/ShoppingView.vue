@@ -1886,6 +1886,14 @@
             Blockieren
           </button>
           <button
+            @click="deleteSelectedItems"
+            :disabled="selectedItems.length < 1"
+            class="flex items-center gap-1.5 hover:bg-red-50 dark:hover:bg-red-900/30 px-3 sm:px-4 py-1.5 border border-red-300 dark:border-red-700 rounded-lg text-red-600 dark:text-red-400 text-sm transition-colors"
+          >
+            <Trash2 class="w-4 h-4" />
+            Löschen
+          </button>
+          <button
             @click="toggleSelectMode"
             class="hover:bg-stone-100 dark:hover:bg-stone-800 px-2.5 sm:px-3 py-1.5 border border-stone-300 dark:border-stone-600 rounded-lg text-stone-600 dark:text-stone-300 text-sm transition-colors"
           >
@@ -2974,6 +2982,22 @@ function startBlockFromSelection() {
   blockSelection.value = [...selectedItems.value];
   blockMode.value = true;
   confirmBlockSelection();
+}
+
+async function deleteSelectedItems() {
+  if (selectedItems.value.length < 1) return;
+  const toDelete = [...selectedItems.value];
+  const count = toDelete.length;
+  try {
+    for (const item of toDelete) {
+      await shoppingStore.deleteItem(item.id);
+    }
+    showSuccess(`${count} Artikel gelöscht 🗑️`);
+    selectedItems.value = [];
+    selectMode.value = false;
+  } catch {
+    showError('Artikel konnten nicht gelöscht werden.');
+  }
 }
 
 // ============================================
