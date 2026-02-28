@@ -16,6 +16,7 @@ export const useMealPlanStore = defineStore('mealplan', () => {
   const reasoningSource = ref(null); // 'ai' | 'algorithm' | null
   const reasoningLoading = ref(false); // Lädt KI-Reasoning im Hintergrund?
   const planHistory = ref([]);
+  const availableWeeks = ref([]);
   const loading = ref(false);
   const generating = ref(false);
 
@@ -199,6 +200,13 @@ export const useMealPlanStore = defineStore('mealplan', () => {
     return data;
   }
 
+  /** Verfügbare Wochen mit Plänen + Rezept-Vorschau laden */
+  async function fetchAvailableWeeks() {
+    const data = await api.get('/mealplan/available-weeks');
+    availableWeeks.value = data.weeks;
+    return data;
+  }
+
   /** Plan auf eine andere Woche duplizieren */
   async function duplicatePlan(sourcePlanId, targetWeekStart) {
     const data = await api.post(`/mealplan/${sourcePlanId}/duplicate`, { targetWeekStart });
@@ -210,9 +218,9 @@ export const useMealPlanStore = defineStore('mealplan', () => {
   }
 
   return {
-    currentPlan, reasoning, reasoningSource, reasoningLoading, planHistory, loading, generating,
+    currentPlan, reasoning, reasoningSource, reasoningLoading, planHistory, availableWeeks, loading, generating,
     mealTypeLabels,
-    generatePlan, pollReasoning, fetchCurrentPlan, fetchHistory,
+    generatePlan, pollReasoning, fetchCurrentPlan, fetchHistory, fetchAvailableWeeks,
     fetchSuggestions, markCooked, updateServings, swapRecipe, addEntry, addRecipeToPlan, moveEntry, removeEntry, deletePlan,
     toggleLock, duplicatePlan,
   };

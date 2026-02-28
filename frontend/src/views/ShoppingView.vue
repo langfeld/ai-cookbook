@@ -116,14 +116,14 @@
         <div class="relative flex items-stretch w-full sm:w-auto">
           <button
             @click="generateList"
-            :disabled="shoppingStore.loading"
+            :disabled="shoppingStore.loading || !selectedWeekStart"
             class="flex sm:flex-initial flex-1 justify-center items-center gap-2 bg-primary-600 hover:bg-primary-700 disabled:opacity-50 px-4 py-2 rounded-l-xl font-medium text-white text-sm transition-colors"
           >
             <ListPlus class="w-4 h-4" />
             Aus Wochenplan erstellen
           </button>
           <button
-            @click="showGenOptions = !showGenOptions"
+            @click="showGenOptions = !showGenOptions; if (showGenOptions) loadAvailableWeeks()"
             class="flex items-center bg-primary-600 hover:bg-primary-700 px-2.5 border-primary-500 border-l rounded-r-xl text-white transition-colors"
             title="Optionen"
           >
@@ -134,25 +134,74 @@
             <div v-if="showGenOptions" class="z-30 fixed inset-0" @click="showGenOptions = false" />
           </Transition>
           <Transition name="fade">
-            <div v-if="showGenOptions" class="top-full sm:right-0 left-0 sm:left-auto z-30 absolute bg-white dark:bg-stone-800 shadow-lg mt-1.5 border border-stone-200 dark:border-stone-700 rounded-xl w-72 overflow-hidden">
+            <div v-if="showGenOptions" class="top-full sm:right-0 left-0 sm:left-auto z-30 absolute bg-white dark:bg-stone-800 shadow-lg mt-1.5 border border-stone-200 dark:border-stone-700 rounded-xl w-[calc(100vw-2rem)] sm:w-96 overflow-hidden">
               <div class="space-y-3 p-3">
                 <!-- Wochen-Auswahl -->
                 <div>
                   <p class="mb-2 font-medium text-stone-500 dark:text-stone-400 text-xs uppercase tracking-wide">Woche auswählen</p>
-                  <div class="flex items-center gap-1">
-                    <button @click="genWeekOffset--" class="hover:bg-stone-100 dark:hover:bg-stone-700 p-1.5 rounded-lg transition-colors">
-                      <ChevronLeft class="w-4 h-4 text-stone-500" />
-                    </button>
-                    <button @click="genWeekOffset = 0"
-                      class="flex-1 py-1.5 rounded-lg font-medium text-sm text-center transition-colors"
-                      :class="genWeekOffset === 0
-                        ? 'bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300'
-                        : 'hover:bg-stone-100 dark:hover:bg-stone-700 text-stone-700 dark:text-stone-200'"
+
+                  <!-- Ladezustand -->
+                  <div v-if="availableWeeksLoading" class="flex justify-center items-center py-6">
+                    <Loader2 class="w-5 h-5 text-primary-500 animate-spin" />
+                  </div>
+
+                  <!-- Keine Pläne -->
+                  <div v-else-if="mealPlanStore.availableWeeks.length === 0" class="py-4 text-center">
+                    <CalendarDays class="mx-auto mb-2 w-8 h-8 text-stone-300 dark:text-stone-600" />
+                    <p class="text-stone-500 dark:text-stone-400 text-sm">Keine Wochenpläne vorhanden</p>
+                    <p class="text-stone-400 dark:text-stone-500 text-xs">Erstelle zuerst einen Plan im Wochenplaner</p>
+                  </div>
+
+                  <!-- Wochen-Liste -->
+                  <div v-else class="space-y-1.5 max-h-64 overflow-y-auto scrollbar-thin">
+                    <button
+                      v-for="week in mealPlanStore.availableWeeks"
+                      :key="week.id"
+                      @click="selectedWeekStart = week.week_start"
+                      class="px-3 py-2.5 border rounded-lg w-full text-left transition-colors"
+                      :class="selectedWeekStart === week.week_start
+                        ? 'bg-primary-50 dark:bg-primary-900/30 border-primary-300 dark:border-primary-700'
+                        : 'hover:bg-stone-50 dark:hover:bg-stone-700/50 border-transparent'"
                     >
-                      {{ genWeekLabel }}
-                    </button>
-                    <button @click="genWeekOffset++" class="hover:bg-stone-100 dark:hover:bg-stone-700 p-1.5 rounded-lg transition-colors">
-                      <ChevronRight class="w-4 h-4 text-stone-500" />
+                      <!-- Datum + Badges -->
+                      <div class="flex items-center gap-1.5">
+                        <span class="font-medium text-sm" :class="selectedWeekStart === week.week_start
+                          ? 'text-primary-700 dark:text-primary-300'
+                          : 'text-stone-700 dark:text-stone-200'">
+                          {{ formatWeekLabel(week.week_start) }}
+                        </span>
+                        <span v-if="isCurrentWeek(week.week_start)"
+                          class="bg-primary-100 dark:bg-primary-900/50 px-1.5 py-0.5 rounded font-semibold text-[10px] text-primary-600 dark:text-primary-400">
+                          AKTUELL
+                        </span>
+                        <span class="flex-1" />
+                        <span v-if="week.has_shopping_list"
+                          class="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded font-semibold text-[10px] bg-accent-100 text-accent-700 dark:bg-accent-900/40 dark:text-accent-400 shrink-0">
+                          <ShoppingCart class="w-2.5 h-2.5" />
+                          EINGEKAUFT
+                        </span>
+                      </div>
+                      <!-- Rezept-Thumbnails -->
+                      <div v-if="week.recipes.length" class="flex items-center gap-1 mt-1.5">
+                        <template v-for="(recipe, idx) in week.recipes.slice(0, 6)" :key="recipe.recipe_id">
+                          <img
+                            v-if="recipe.image_url"
+                            :src="recipe.image_url"
+                            :alt="recipe.title"
+                            :title="recipe.title"
+                            class="rounded-md ring-1 ring-stone-200 dark:ring-stone-600 w-8 h-8 object-cover"
+                          />
+                          <div v-else
+                            :title="recipe.title"
+                            class="flex justify-center items-center bg-stone-100 dark:bg-stone-700 rounded-md w-8 h-8 text-stone-400 dark:text-stone-500 text-xs">
+                            🍽️
+                          </div>
+                        </template>
+                        <span v-if="week.recipes.length > 6"
+                          class="flex justify-center items-center bg-stone-100 dark:bg-stone-700 rounded-md w-8 h-8 font-medium text-stone-500 dark:text-stone-400 text-xs">
+                          +{{ week.recipes.length - 6 }}
+                        </span>
+                      </div>
                     </button>
                   </div>
                 </div>
@@ -166,7 +215,7 @@
                   </div>
                   <div>
                     <p class="font-medium text-stone-700 dark:text-stone-200 text-sm">Vergangene Tage</p>
-                    <p class="text-stone-400 dark:text-stone-500 text-xs">Auch zurückliegende Wochentage einbeziehen</p>
+                    <p class="text-stone-400 dark:text-stone-500 text-xs">Auch Rezepte zurückliegender Tage der gewählten Woche einbeziehen</p>
                   </div>
                 </label>
               </div>
@@ -1913,7 +1962,7 @@ import { useMealPlanStore } from '@/stores/mealplan.js';
 import { useIngredientAliasStore } from '@/stores/ingredient-aliases.js';
 import { useNotification } from '@/composables/useNotification.js';
 import { useApi } from '@/composables/useApi.js';
-import { ListPlus, Check, ShoppingBag, Plus, Minus, Package, BookOpen, BookX, ExternalLink, ShoppingCart, X, ArrowRightLeft, Search, Tag, Trash2, Star, Heart, Archive, Send, Link2, Unlink, ClipboardCopy, LogIn, LogOut, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Loader2, Terminal, Download, Settings, RefreshCw, Merge, ArrowRight, History, RotateCcw, Ban, MapPin, PenLine, Upload, AlertTriangle, Copy, Eye, EyeOff, CheckSquare, Square, ClipboardCheck } from 'lucide-vue-next';
+import { ListPlus, Check, ShoppingBag, Plus, Minus, Package, BookOpen, BookX, ExternalLink, ShoppingCart, X, ArrowRightLeft, Search, Tag, Trash2, Star, Heart, Archive, Send, Link2, Unlink, ClipboardCopy, LogIn, LogOut, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Loader2, Terminal, Download, Settings, RefreshCw, Merge, ArrowRight, History, RotateCcw, Ban, MapPin, PenLine, Upload, AlertTriangle, Copy, Eye, EyeOff, CheckSquare, Square, ClipboardCheck, CalendarDays } from 'lucide-vue-next';
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue';
 import UnitInput from '@/components/ui/UnitInput.vue';
 
@@ -1930,27 +1979,78 @@ const showHistoryDropdown = ref(false);
 const historyBtnRef = ref(null);
 const historyDropdownTop = ref(0);
 const genIncludePastDays = ref(false); // Standardmäßig: vergangene Tage NICHT einbeziehen
-const genWeekOffset = ref(0); // 0 = aktuelle Woche, -1 = letzte Woche, +1 = nächste Woche
+const selectedWeekStart = ref(null); // Ausgewählte Woche (week_start als YYYY-MM-DD)
+const availableWeeksLoading = ref(false);
 
-// Wochen-Start für die Generierung (Montag als YYYY-MM-DD)
-const genWeekStart = computed(() => {
-  const today = new Date();
-  const day = today.getDay();
-  const monday = new Date(today);
-  monday.setDate(today.getDate() - day + (day === 0 ? -6 : 1) + genWeekOffset.value * 7);
-  return monday.toISOString().split('T')[0];
-});
+// ISO-Kalenderwoche berechnen
+function getISOWeek(date) {
+  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7));
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  return Math.ceil(((d - yearStart) / 86400000 + 1) / 7);
+}
 
-// Label für die gewählte Woche
-const genWeekLabel = computed(() => {
-  const [y, m, d] = genWeekStart.value.split('-').map(Number);
+// Hilfsfunktion: Wochenlabel formatieren
+function formatWeekLabel(weekStart) {
+  const [y, m, d] = weekStart.split('-').map(Number);
   const monday = new Date(y, m - 1, d);
   const sunday = new Date(monday);
   sunday.setDate(monday.getDate() + 6);
   const fmt = (dt) => dt.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' });
-  if (genWeekOffset.value === 0) return `Diese Woche (${fmt(monday)} – ${fmt(sunday)})`;
-  return `${fmt(monday)} – ${fmt(sunday)}`;
-});
+  const kw = getISOWeek(monday);
+
+  // Prüfen ob es die aktuelle Woche ist
+  const today = new Date();
+  const dayOfWeek = today.getDay();
+  const currentMonday = new Date(today);
+  currentMonday.setDate(today.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1));
+  const currentWeekStart = currentMonday.toISOString().split('T')[0];
+
+  if (weekStart === currentWeekStart) return `KW ${kw} · Diese Woche (${fmt(monday)} – ${fmt(sunday)})`;
+
+  // Nächste Woche?
+  const nextMonday = new Date(currentMonday);
+  nextMonday.setDate(currentMonday.getDate() + 7);
+  const nextWeekStart = nextMonday.toISOString().split('T')[0];
+  if (weekStart === nextWeekStart) return `KW ${kw} · Nächste Woche (${fmt(monday)} – ${fmt(sunday)})`;
+
+  // Letzte Woche?
+  const lastMonday = new Date(currentMonday);
+  lastMonday.setDate(currentMonday.getDate() - 7);
+  const lastWeekStart = lastMonday.toISOString().split('T')[0];
+  if (weekStart === lastWeekStart) return `KW ${kw} · Letzte Woche (${fmt(monday)} – ${fmt(sunday)})`;
+
+  return `KW ${kw} · ${fmt(monday)} – ${fmt(sunday)}`;
+}
+
+// Verfügbare Wochen laden beim Öffnen des Dropdowns
+async function loadAvailableWeeks() {
+  availableWeeksLoading.value = true;
+  try {
+    await mealPlanStore.fetchAvailableWeeks();
+    // Automatisch aktuelle Woche wählen, falls vorhanden
+    if (!selectedWeekStart.value && mealPlanStore.availableWeeks.length > 0) {
+      const today = new Date();
+      const dayOfWeek = today.getDay();
+      const currentMonday = new Date(today);
+      currentMonday.setDate(today.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1));
+      const currentWeekStart = currentMonday.toISOString().split('T')[0];
+      const hasCurrentWeek = mealPlanStore.availableWeeks.find(w => w.week_start === currentWeekStart);
+      selectedWeekStart.value = hasCurrentWeek ? currentWeekStart : mealPlanStore.availableWeeks[0].week_start;
+    }
+  } finally {
+    availableWeeksLoading.value = false;
+  }
+}
+
+// Aktuelle Woche für CSS-Highlight prüfen
+function isCurrentWeek(weekStart) {
+  const today = new Date();
+  const dayOfWeek = today.getDay();
+  const currentMonday = new Date(today);
+  currentMonday.setDate(today.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1));
+  return weekStart === currentMonday.toISOString().split('T')[0];
+}
 
 // Zentrales Einstellungs-Modal
 const showSettings = ref(false);
@@ -2460,8 +2560,12 @@ async function setQuantity(item, event) {
 
 async function generateList() {
   showGenOptions.value = false;
+  if (!selectedWeekStart.value) {
+    showError('Bitte wähle eine Woche aus.');
+    return;
+  }
   // Wochenplan für die gewählte Woche laden
-  await mealPlanStore.fetchCurrentPlan(genWeekStart.value);
+  await mealPlanStore.fetchCurrentPlan(selectedWeekStart.value);
   const planId = mealPlanStore.currentPlan?.id;
   if (!planId) {
     showError('Kein Wochenplan für diese Woche vorhanden. Erstelle zuerst einen Plan im Wochenplaner.');
@@ -2768,6 +2872,8 @@ onMounted(async () => {
   aliasStore.fetchBlockedIngredients();
   // Verlauf immer laden (für History-Button)
   shoppingStore.fetchListHistory();
+  // Verfügbare Wochen vorladen (für Wochenplan → Einkaufsliste)
+  loadAvailableWeeks();
   // REWE-Status prüfen (reweEnabled)
   loadReweMarketSettings();
   // Click-Outside: Matching-Begründung schließen

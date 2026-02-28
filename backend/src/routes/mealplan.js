@@ -161,6 +161,62 @@ export default async function mealplanRoutes(fastify) {
   });
 
   // ─────────────────────────────────────────────
+  // GET /available-weeks – Wochen mit Plänen + Rezept-Thumbnails
+  // ─────────────────────────────────────────────
+  fastify.get('/available-weeks', {
+    schema: { description: 'Verfügbare Wochen mit Plänen und Rezept-Vorschau', tags: ['Wochenplan'], security: [{ bearerAuth: [] }] },
+  }, async (request) => {
+    const plans = db.prepare(`
+      SELECT mp.id, mp.week_start, COUNT(mpe.id) as meal_count
+      FROM meal_plans mp
+      LEFT JOIN meal_plan_entries mpe ON mp.id = mpe.meal_plan_id
+      WHERE mp.user_id = ?
+      GROUP BY mp.id
+      HAVING meal_count > 0
+      ORDER BY mp.week_start DESC
+    `).all(request.user.id);
+
+    // Alle Rezepte für diese Pläne in einem Query laden
+    if (plans.length === 0) return { weeks: [] };
+
+    const planIds = plans.map(p => p.id);
+    const placeholders = planIds.map(() => '?').join(',');
+    const recipes = db.prepare(`
+      SELECT DISTINCT mpe.meal_plan_id, r.id as recipe_id, r.title, r.image_url
+      FROM meal_plan_entries mpe
+      JOIN recipes r ON mpe.recipe_id = r.id
+      WHERE mpe.meal_plan_id IN (${placeholders})
+    `).all(...planIds);
+
+    // Prüfen welche Pläne bereits eine Einkaufsliste haben
+    const listsForPlans = db.prepare(`
+      SELECT meal_plan_id FROM shopping_lists
+      WHERE user_id = ? AND meal_plan_id IN (${placeholders})
+    `).all(request.user.id, ...planIds);
+    const planIdsWithList = new Set(listsForPlans.map(l => l.meal_plan_id));
+
+    // Rezepte pro Plan gruppieren (dedupliziert)
+    const recipesByPlan = {};
+    for (const r of recipes) {
+      if (!recipesByPlan[r.meal_plan_id]) recipesByPlan[r.meal_plan_id] = [];
+      const existing = recipesByPlan[r.meal_plan_id].find(x => x.recipe_id === r.recipe_id);
+      if (!existing) {
+        recipesByPlan[r.meal_plan_id].push({ recipe_id: r.recipe_id, title: r.title, image_url: r.image_url });
+      }
+    }
+
+    const weeks = plans.map(p => ({
+      id: p.id,
+      week_start: p.week_start,
+      meal_count: p.meal_count,
+      has_shopping_list: planIdsWithList.has(p.id),
+      recipes: recipesByPlan[p.id] || [],
+    }));
+
+    return { weeks };
+  });
+
+  // ─────────────────────────────────────────────
   // POST /:planId/duplicate – Plan auf eine andere Woche kopieren
   // ─────────────────────────────────────────────
   fastify.post('/:planId/duplicate', {
