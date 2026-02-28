@@ -218,6 +218,10 @@ export const useShoppingStore = defineStore('shopping', () => {
   async function moveToPantry(itemId) {
     const data = await api.post(`/shopping/item/${itemId}/to-pantry`, {});
     items.value = items.value.filter(i => i.id !== itemId);
+    // Vorratscheck aktualisieren (Vorrat hat sich geändert)
+    if (pantryCheck.value) {
+      fetchPantryCheck();
+    }
     return data;
   }
 
