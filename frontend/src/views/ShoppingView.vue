@@ -248,6 +248,106 @@
       </div>
     </Transition>
 
+    <!-- Vorratscheck Toggle -->
+    <div v-if="shoppingStore.currentList?.meal_plan_id">
+      <button
+        @click="togglePantryCheck"
+        class="flex items-center gap-2 hover:bg-stone-100 dark:hover:bg-stone-800 px-3 py-2 border border-stone-200 dark:border-stone-700 rounded-xl w-full font-medium text-stone-600 dark:text-stone-300 text-sm transition-colors"
+      >
+        <ClipboardCheck class="w-4 h-4 text-accent-600 dark:text-accent-400" />
+        <span class="flex-1 text-left">Vorratscheck</span>
+        <span v-if="pantryCheckTotalCount > 0" class="px-1.5 py-0.5 rounded-full font-semibold tabular-nums text-xs bg-accent-100 text-accent-700 dark:bg-accent-900/40 dark:text-accent-300">
+          {{ pantryCheckTotalCount }}
+        </span>
+        <Loader2 v-if="shoppingStore.pantryCheckLoading" class="w-4 h-4 text-stone-400 animate-spin" />
+        <component :is="showPantryCheck ? ChevronUp : ChevronDown" v-else class="w-4 h-4 text-stone-400" />
+      </button>
+
+      <!-- Aufklappbarer Vorratscheck-Inhalt -->
+      <Transition name="slide">
+        <div v-if="showPantryCheck && shoppingStore.pantryCheck" class="space-y-4 mt-3">
+          <!-- Info-Hinweis -->
+          <p class="text-stone-500 dark:text-stone-400 text-xs">
+            Diese Zutaten sollten im Vorrat vorhanden sein. Falls etwas fehlt, kannst du es per Klick zur Einkaufsliste hinzufügen.
+          </p>
+
+          <!-- Rezept-Karten -->
+          <div class="gap-4 space-y-4 lg:columns-2" v-if="shoppingStore.pantryCheck.recipes?.length">
+            <div
+              v-for="recipe in shoppingStore.pantryCheck.recipes"
+              :key="`${recipe.recipe_id}-${recipe.day_of_week}-${recipe.meal_type}`"
+              class="bg-white dark:bg-stone-900 border border-stone-200 dark:border-stone-800 rounded-xl overflow-hidden break-inside-avoid"
+            >
+              <!-- Rezept-Header -->
+              <div class="flex items-center gap-3 bg-stone-50 dark:bg-stone-800/60 px-4 py-2.5 border-stone-200 dark:border-stone-700 border-b">
+                <div class="bg-stone-200 dark:bg-stone-700 rounded-lg w-8 h-8 overflow-hidden shrink-0">
+                  <img v-if="recipe.recipe_image_url" :src="recipe.recipe_image_url" :alt="recipe.recipe_title" class="w-full h-full object-cover" />
+                  <span v-else class="flex justify-center items-center w-full h-full text-sm">🍽️</span>
+                </div>
+                <div class="flex-1 min-w-0">
+                  <p class="font-semibold text-stone-700 dark:text-stone-200 text-sm truncate">{{ recipe.recipe_title }}</p>
+                  <p class="text-stone-400 dark:text-stone-500 text-xs">{{ recipe.day_label }} · {{ recipe.meal_type_label }}</p>
+                </div>
+              </div>
+
+              <!-- Zutaten-Liste -->
+              <div class="divide-y divide-stone-100 dark:divide-stone-800">
+                <div
+                  v-for="ing in recipe.ingredients"
+                  :key="ing.name"
+                  :class="[
+                    'flex items-center gap-3 px-4 py-2.5 transition-all',
+                    movedPantryItems.has(`${recipe.recipe_id}-${ing.name}`)
+                      ? 'opacity-40 line-through'
+                      : ''
+                  ]"
+                >
+                  <!-- Status-Icon -->
+                  <div class="shrink-0">
+                    <Check v-if="ing.is_covered && !ing.is_partial" class="w-4 h-4 text-green-500" />
+                    <AlertTriangle v-else-if="ing.is_partial" class="w-4 h-4 text-amber-500" />
+                  </div>
+
+                  <!-- Name + Mengeninfo -->
+                  <div class="flex-1 min-w-0">
+                    <span class="text-stone-800 dark:text-stone-200 text-sm">{{ ing.name }}</span>
+                    <span class="ml-1.5 text-stone-400 dark:text-stone-500 text-xs">
+                      <template v-if="ing.is_partial">
+                        {{ formatPantryAmount(ing.covered_base_amount, ing.needed_base_unit) }} von {{ formatPantryAmount(ing.needed_amount, ing.needed_unit) }} vorhanden
+                      </template>
+                      <template v-else>
+                        {{ formatPantryAmount(ing.needed_amount, ing.needed_unit) }}
+                        <span v-if="ing.is_permanent" class="text-blue-500 dark:text-blue-400">∞</span>
+                      </template>
+                    </span>
+                  </div>
+
+                  <!-- Zur Einkaufsliste hinzufügen -->
+                  <button
+                    v-if="!movedPantryItems.has(`${recipe.recipe_id}-${ing.name}`)"
+                    @click="moveFromPantryCheckToList(recipe, ing)"
+                    :disabled="pantryCheckMoving === `${recipe.recipe_id}-${ing.name}`"
+                    class="flex items-center gap-1 hover:bg-primary-50 dark:hover:bg-primary-900/20 px-2 py-1 rounded-lg text-stone-400 hover:text-primary-600 dark:hover:text-primary-400 text-xs transition-colors shrink-0"
+                    title="Zur Einkaufsliste hinzufügen"
+                  >
+                    <Loader2 v-if="pantryCheckMoving === `${recipe.recipe_id}-${ing.name}`" class="w-3.5 h-3.5 animate-spin" />
+                    <Plus v-else class="w-3.5 h-3.5" />
+                    <span class="hidden sm:inline">Einkaufen</span>
+                  </button>
+                  <span v-else class="text-stone-400 text-xs shrink-0">✓ verschoben</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Leer-Zustand -->
+          <div v-else-if="!shoppingStore.pantryCheckLoading" class="py-4 text-stone-400 dark:text-stone-500 text-sm text-center">
+            Keine Vorräte für die Rezepte dieses Wochenplans gefunden.
+          </div>
+        </div>
+      </Transition>
+    </div>
+
     <!-- Manuell hinzufügen -->
     <form
       v-if="shoppingStore.activeList || !shoppingStore.loading"
@@ -319,12 +419,14 @@
             <div
               v-for="item in items"
               :key="item.id"
+              :data-item-id="item.id"
               @click="selectMode ? handleSelectClick(item) : null"
               :class="[
                 'transition-all last:rounded-b-xl border-2 border-transparent',
                 selectMode ? 'cursor-pointer' : '',
                 selectMode ? 'hover:bg-violet-50 dark:hover:bg-violet-900/20' : '',
                 item.is_checked ? 'opacity-50' : '',
+                highlightedItemId === item.id ? 'highlight-flash' : '',
                 selectMode && selectedItems.some(s => s.id === item.id)
                   ? 'bg-violet-50 dark:bg-violet-900/20 !border-violet-400 dark:!border-violet-500'
                   : ''
@@ -1811,7 +1913,7 @@ import { useMealPlanStore } from '@/stores/mealplan.js';
 import { useIngredientAliasStore } from '@/stores/ingredient-aliases.js';
 import { useNotification } from '@/composables/useNotification.js';
 import { useApi } from '@/composables/useApi.js';
-import { ListPlus, Check, ShoppingBag, Plus, Minus, Package, BookOpen, BookX, ExternalLink, ShoppingCart, X, ArrowRightLeft, Search, Tag, Trash2, Star, Heart, Archive, Send, Link2, Unlink, ClipboardCopy, LogIn, LogOut, ChevronDown, ChevronLeft, ChevronRight, Loader2, Terminal, Download, Settings, RefreshCw, Merge, ArrowRight, History, RotateCcw, Ban, MapPin, PenLine, Upload, AlertTriangle, Copy, Eye, EyeOff, CheckSquare, Square } from 'lucide-vue-next';
+import { ListPlus, Check, ShoppingBag, Plus, Minus, Package, BookOpen, BookX, ExternalLink, ShoppingCart, X, ArrowRightLeft, Search, Tag, Trash2, Star, Heart, Archive, Send, Link2, Unlink, ClipboardCopy, LogIn, LogOut, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Loader2, Terminal, Download, Settings, RefreshCw, Merge, ArrowRight, History, RotateCcw, Ban, MapPin, PenLine, Upload, AlertTriangle, Copy, Eye, EyeOff, CheckSquare, Square, ClipboardCheck } from 'lucide-vue-next';
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue';
 import UnitInput from '@/components/ui/UnitInput.vue';
 
@@ -2012,6 +2114,72 @@ const pickerSearch = ref('');         // Suchbegriff im Picker
 
 // Manuelles Hinzufügen
 const newItem = ref({ name: '', amount: null, unit: '' });
+
+// Vorratscheck
+const showPantryCheck = ref(false);
+const pantryCheckMoving = ref(null);          // Key des gerade verschobenen Items
+const movedPantryItems = ref(new Set());      // Bereits verschobene Items
+const highlightedItemId = ref(null);          // Item-ID die gerade aufleuchtet
+
+const pantryCheckTotalCount = computed(() => {
+  const recipes = shoppingStore.pantryCheck?.recipes || [];
+  return recipes.reduce((sum, r) => sum + r.ingredients.length, 0);
+});
+
+async function togglePantryCheck() {
+  showPantryCheck.value = !showPantryCheck.value;
+  if (showPantryCheck.value && !shoppingStore.pantryCheck) {
+    await shoppingStore.fetchPantryCheck();
+  }
+}
+
+function formatPantryAmount(amount, unit) {
+  if (!amount && amount !== 0) return '';
+  const rounded = Math.round(amount * 100) / 100;
+  return unit ? `${rounded} ${unit}` : `${rounded}`;
+}
+
+async function moveFromPantryCheckToList(recipe, ing) {
+  const key = `${recipe.recipe_id}-${ing.name}`;
+  pantryCheckMoving.value = key;
+  try {
+    // Bei partial: fehlende Menge berechnen, bei covered: gesamte Menge
+    const amountToAdd = ing.is_partial
+      ? Math.round((ing.needed_amount - (ing.covered_base_amount * (ing.needed_amount / (ing.needed_base_amount || 1)))) * 100) / 100 || ing.needed_amount
+      : ing.needed_amount;
+
+    const data = await shoppingStore.moveFromPantryToList({
+      ingredient_name: ing.name,
+      amount: amountToAdd,
+      unit: ing.needed_unit || null,
+      pantry_item_id: ing.pantry_id || null,
+    });
+
+    // Als verschoben markieren
+    movedPantryItems.value = new Set([...movedPantryItems.value, key]);
+
+    // Highlight in der Einkaufsliste auslösen
+    if (data.item?.id) {
+      highlightedItemId.value = data.item.id;
+      await nextTick();
+      const el = document.querySelector(`[data-item-id="${data.item.id}"]`);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+      setTimeout(() => {
+        if (highlightedItemId.value === data.item.id) {
+          highlightedItemId.value = null;
+        }
+      }, 1800);
+    }
+
+    showSuccess(`${ing.name} zur Einkaufsliste hinzugefügt! 🛒`);
+  } catch {
+    showError('Zutat konnte nicht verschoben werden.');
+  } finally {
+    pantryCheckMoving.value = null;
+  }
+}
 
 // "Einkauf abschließen?"-Dialog nach Bring!/REWE
 const showCompletePurchasePrompt = ref(false);
@@ -2986,5 +3154,39 @@ function formatHistoryDate(dateStr) {
 .slide-leave-to {
   opacity: 0;
   transform: translateY(-10px);
+}
+
+/* Highlight-Flash für neu aus dem Vorratscheck hinzugefügte Items */
+@keyframes highlight-flash {
+  0% {
+    background-color: rgb(187 247 208); /* green-200 */
+  }
+  100% {
+    background-color: transparent;
+  }
+}
+@media (prefers-color-scheme: dark) {
+  @keyframes highlight-flash {
+    0% {
+      background-color: rgb(6 78 59 / 0.5); /* emerald-950/50 */
+    }
+    100% {
+      background-color: transparent;
+    }
+  }
+}
+.highlight-flash {
+  animation: highlight-flash 1.8s ease-out;
+}
+:is(.dark .highlight-flash) {
+  animation: highlight-flash-dark 1.8s ease-out;
+}
+@keyframes highlight-flash-dark {
+  0% {
+    background-color: rgb(6 78 59 / 0.5);
+  }
+  100% {
+    background-color: transparent;
+  }
 }
 </style>

@@ -16,6 +16,10 @@ export const useShoppingStore = defineStore('shopping', () => {
   const loading = ref(false);
   const listHistory = ref([]);
 
+  // Vorratscheck
+  const pantryCheck = ref(null);
+  const pantryCheckLoading = ref(false);
+
   // REWE-Matching Fortschritt
   const reweProgress = ref(null); // null = kein Matching aktiv
 
@@ -48,6 +52,8 @@ export const useShoppingStore = defineStore('shopping', () => {
     try {
       const data = await api.post('/shopping/generate', { mealPlanId, name, excludePastDays });
       await fetchActiveList();
+      // Vorratscheck zurücksetzen (wird beim nächsten Aufklappen neu geladen)
+      pantryCheck.value = null;
       return data;
     } finally {
       loading.value = false;
@@ -178,6 +184,30 @@ export const useShoppingStore = defineStore('shopping', () => {
   async function deleteItem(itemId) {
     await api.del(`/shopping/item/${itemId}`);
     items.value = items.value.filter(i => i.id !== itemId);
+  }
+
+  /** Vorratscheck laden (welche Vorräte sollten für den Wochenplan vorhanden sein?) */
+  async function fetchPantryCheck() {
+    pantryCheckLoading.value = true;
+    try {
+      const data = await api.get('/shopping/pantry-check');
+      pantryCheck.value = data;
+      return data;
+    } finally {
+      pantryCheckLoading.value = false;
+    }
+  }
+
+  /** Zutat aus Vorratscheck zur Einkaufsliste verschieben */
+  async function moveFromPantryToList({ ingredient_name, amount, unit, pantry_item_id }) {
+    const data = await api.post('/shopping/pantry-check/move-to-list', {
+      ingredient_name, amount, unit, pantry_item_id,
+    });
+    // Neues Item direkt in die lokale Liste einfügen
+    if (data.item) {
+      items.value.push(data.item);
+    }
+    return data;
   }
 
   /** Item in den Vorratsschrank verschieben */
@@ -359,7 +389,10 @@ export const useShoppingStore = defineStore('shopping', () => {
   return {
     currentList, items, activeList, reweMatches, loading, reweProgress, listHistory,
     openItemsCount, estimatedTotal, reweLinkedItems,
+    // Vorratscheck
+    pantryCheck, pantryCheckLoading,
     generateList, fetchActiveList, fetchListHistory, loadList, reactivateList, toggleItem, matchWithRewe, completePurchase, addItem, deleteItem, moveToPantry,
+    fetchPantryCheck, moveFromPantryToList,
     searchReweProducts, setReweProduct, updateReweQuantity, fetchPreferences, deletePreference, updatePreference, clearAllPreferences,
     // Bring!
     bringStatus, bringLists, bringSending, bringImporting,

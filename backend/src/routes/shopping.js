@@ -9,6 +9,7 @@ import db from '../config/database.js';
 import { generateShoppingList, saveShoppingList, processPurchase } from '../services/shopping-list.js';
 import { buildReweProductUrl, calculatePackagesNeeded, parsePackageSize } from '../services/rewe-api.js';
 import { convertToBaseUnit, getUnitType, normalizeUnit, unitsCompatible } from '../utils/helpers.js';
+import { calculatePantryAllocations } from '../services/pantry-allocation.js';
 
 export default async function shoppingRoutes(fastify) {
   fastify.addHook('onRequest', fastify.authenticate);
@@ -635,6 +636,130 @@ export default async function shoppingRoutes(fastify) {
       mealPlanLocked,
       mealPlanId: list?.meal_plan_id || null,
     };
+  });
+
+  // ─────────────────────────────────────────────
+  // GET /pantry-check – Vorratscheck für aktive Einkaufsliste
+  // ─────────────────────────────────────────────
+  fastify.get('/pantry-check', {
+    schema: {
+      description: 'Vorratscheck: Welche Zutaten sollten im Vorrat vorhanden sein?',
+      tags: ['Einkaufsliste'],
+      security: [{ bearerAuth: [] }],
+    },
+  }, async (request, reply) => {
+    const userId = request.user.id;
+
+    // Aktive Einkaufsliste finden
+    const list = db.prepare(
+      'SELECT * FROM shopping_lists WHERE user_id = ? AND is_active = 1 ORDER BY created_at DESC LIMIT 1'
+    ).get(userId);
+
+    if (!list || !list.meal_plan_id) {
+      return { recipes: [] };
+    }
+
+    // Allokation berechnen (shared Service)
+    const { recipes } = calculatePantryAllocations(userId, list.meal_plan_id);
+
+    // Nur Rezepte mit mindestens einer gedeckten/teilweise gedeckten Zutat
+    const filteredRecipes = recipes
+      .map(recipe => ({
+        recipe_id: recipe.recipe_id,
+        recipe_title: recipe.recipe_title,
+        recipe_image_url: recipe.recipe_image_url,
+        day_of_week: recipe.day_of_week,
+        day_label: recipe.day_label,
+        meal_type: recipe.meal_type,
+        meal_type_label: recipe.meal_type_label,
+        ingredients: recipe.ingredients.filter(ing =>
+          (ing.is_covered || ing.is_partial) && !ing.is_blocked
+        ),
+      }))
+      .filter(recipe => recipe.ingredients.length > 0);
+
+    return { recipes: filteredRecipes };
+  });
+
+  // ─────────────────────────────────────────────
+  // POST /pantry-check/move-to-list – Zutat aus Vorratscheck zur Einkaufsliste
+  // ─────────────────────────────────────────────
+  fastify.post('/pantry-check/move-to-list', {
+    schema: {
+      description: 'Zutat aus Vorratscheck zur Einkaufsliste hinzufügen und Vorrat anpassen',
+      tags: ['Einkaufsliste'],
+      security: [{ bearerAuth: [] }],
+      body: {
+        type: 'object',
+        required: ['ingredient_name', 'amount', 'unit'],
+        properties: {
+          ingredient_name: { type: 'string', minLength: 1 },
+          amount: { type: 'number', minimum: 0 },
+          unit: { type: 'string' },
+          pantry_item_id: { type: ['integer', 'null'] },
+        },
+      },
+    },
+  }, async (request, reply) => {
+    const userId = request.user.id;
+    const { ingredient_name, amount, unit, pantry_item_id } = request.body;
+
+    // Aktive Liste finden
+    let list = db.prepare(
+      'SELECT * FROM shopping_lists WHERE user_id = ? AND is_active = 1 ORDER BY created_at DESC LIMIT 1'
+    ).get(userId);
+
+    if (!list) {
+      return reply.status(404).send({ error: 'Keine aktive Einkaufsliste vorhanden' });
+    }
+
+    // Atomare Transaktion: Zutat zur Liste + Vorrat anpassen
+    const result = db.transaction(() => {
+      // 1. Zutat zur Einkaufsliste hinzufügen
+      const { lastInsertRowid: itemId } = db.prepare(`
+        INSERT INTO shopping_list_items (shopping_list_id, ingredient_name, amount, unit, recipe_ids, source)
+        VALUES (?, ?, ?, ?, '[]', 'pantry-check')
+      `).run(list.id, ingredient_name.trim(), amount || null, unit || null);
+
+      // 2. Vorrat anpassen (falls pantry_item_id angegeben und nicht permanent)
+      let pantryRemaining = null;
+      if (pantry_item_id) {
+        const pantryItem = db.prepare(
+          'SELECT * FROM pantry WHERE id = ? AND user_id = ?'
+        ).get(pantry_item_id, userId);
+
+        if (pantryItem && !pantryItem.is_permanent && amount > 0) {
+          const newAmount = Math.max(0, pantryItem.amount - amount);
+          if (newAmount <= 0) {
+            db.prepare('DELETE FROM pantry WHERE id = ?').run(pantry_item_id);
+            pantryRemaining = 0;
+          } else {
+            db.prepare(
+              'UPDATE pantry SET amount = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
+            ).run(newAmount, pantry_item_id);
+            pantryRemaining = newAmount;
+          }
+        } else if (pantryItem) {
+          pantryRemaining = pantryItem.amount;
+        }
+      }
+
+      return {
+        item: {
+          id: Number(itemId),
+          ingredient_name: ingredient_name.trim(),
+          amount: amount || null,
+          unit: unit || null,
+          is_checked: 0,
+          recipes: [],
+          source: 'pantry-check',
+          pantry_deducted: 0,
+        },
+        pantry_remaining: pantryRemaining,
+      };
+    })();
+
+    return result;
   });
 
   // ─────────────────────────────────────────────

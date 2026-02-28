@@ -13,6 +13,16 @@ Die Einkaufsliste wird **direkt aus dem Wochenplan** generiert:
 
 Vorhandene Vorräte werden automatisch abgezogen, mit Anzeige, was abgezogen wurde.
 
+## Vorratscheck
+
+Aufklappbare Sektion in der Einkaufsliste, die zeigt, welche Zutaten für die Rezepte des Wochenplans **im Vorrat vorhanden sein sollten**:
+
+- Pro Rezept: Zutatenliste mit Status (**gedeckt** oder **teilweise vorhanden**)
+- Berechnung basiert auf den freien Vorräten (nicht bereits anderen Rezepten zugeordnet)
+- Nicht mehr vorhandene Zutaten per Klick direkt **zur Einkaufsliste hinzufügen**
+- Vorrat wird dabei automatisch angepasst
+- Neu hinzugefügte Artikel werden in der richtigen Kategorie eingefügt und **kurz hervorgehoben**
+
 ## Gruppierung nach Abteilungen
 
 Items werden nach Supermarkt-Abteilungen sortiert:

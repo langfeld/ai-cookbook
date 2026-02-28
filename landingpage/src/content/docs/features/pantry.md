@@ -30,6 +30,7 @@ Teilmengen entnehmen — z. B. „150 g von 500 g Mehl verbrauchen".
 - **Vorratsmengen** werden direkt in der Rezept-Detailansicht angezeigt
 - Beim **Kochen** (auch ohne Wochenplan) werden verwendete Zutaten automatisch abgezogen
 - Im **Mengenanpassungsmodus** zeigt das Eingabefeld den verfügbaren Vorrat farbkodiert an
+- **Vorratscheck** in der Einkaufsliste — zeigt erwartete Vorräte für den Wochenplan, fehlende Zutaten können direkt zur Einkaufsliste verschoben werden
 
 ## Export / Import
 
