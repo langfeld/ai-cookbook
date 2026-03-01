@@ -101,10 +101,11 @@ function generateReweUserscript(apiBaseUrl, apiKey) {
   /* ─── Konfiguration ─── */
   const API_BASE = '${apiBaseUrl}';
 
-  /* API-Key: Beim ersten Install wird der Key aus dem Script eingebettet.
-     Danach wird er in GM_storage gespeichert und kann jederzeit aktualisiert werden. */
+  /* API-Key: Beim Install/Update wird der Key aus dem Script eingebettet.
+     Wenn sich der eingebettete Key ändert (z. B. nach Neu-Generierung),
+     wird er automatisch in GM_storage aktualisiert. */
   const EMBEDDED_KEY = '${apiKey}';
-  if (EMBEDDED_KEY && !GM_getValue('zj_api_key', '')) {
+  if (EMBEDDED_KEY && GM_getValue('zj_api_key', '') !== EMBEDDED_KEY) {
     GM_setValue('zj_api_key', EMBEDDED_KEY);
   }
 
@@ -418,9 +419,9 @@ function generateReweUserscript(apiBaseUrl, apiKey) {
         showApiKeyDialog(err.message === 'NO_API_KEY'
           ? 'Kein API-Key hinterlegt.'
           : 'API-Key ungültig oder widerrufen.');
-      } else {
-        setStatus('<div class="ac-error-box">❌ ' + escapeHtml(err.message) + '<br><br>Ist der Zauberjournal Server erreichbar?</div>');
+        return;
       }
+      setStatus('<div class="ac-error-box">❌ ' + escapeHtml(err.message) + '<br><br>Ist der Zauberjournal Server erreichbar?</div>');
       footer.innerHTML = \`<button class="ac-btn ac-btn-secondary" id="ac-btn-load">🔄 Erneut versuchen</button>\`;
       document.getElementById('ac-btn-load').onclick = loadProducts;
     }

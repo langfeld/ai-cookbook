@@ -2824,7 +2824,19 @@ async function copyApiKey() {
     await navigator.clipboard.writeText(apiKeyValue.value);
     showSuccess('API-Key in die Zwischenablage kopiert!');
   } catch {
-    showError('Kopieren fehlgeschlagen.');
+    // Fallback für unsicheren Kontext (HTTP) oder fehlende Clipboard-API
+    try {
+      const textarea = document.createElement('textarea');
+      textarea.value = apiKeyValue.value;
+      textarea.style.cssText = 'position:fixed;opacity:0;left:-9999px';
+      document.body.appendChild(textarea);
+      textarea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textarea);
+      showSuccess('API-Key in die Zwischenablage kopiert!');
+    } catch {
+      showError('Kopieren fehlgeschlagen.');
+    }
   }
 }
 
