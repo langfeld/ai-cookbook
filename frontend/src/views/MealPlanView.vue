@@ -1121,6 +1121,7 @@
       @close="showLoadDialog = false"
       @navigate-to-week="navigateToWeek"
       @plan-copied="onPlanCopied"
+      @plan-deleted="onPlanDeleted"
     />
 
     <!-- Portionen-Popup -->
@@ -1275,7 +1276,11 @@ const currentWeekStart = computed(() => {
   const monday = new Date(today);
   const day = today.getDay();
   monday.setDate(today.getDate() - day + (day === 0 ? -6 : 1) + weekOffset.value * 7);
-  return monday.toISOString().split('T')[0];
+  // Lokales Datum verwenden (toISOString() konvertiert nach UTC und kann das Datum verschieben)
+  const y = monday.getFullYear();
+  const m = String(monday.getMonth() + 1).padStart(2, '0');
+  const d = String(monday.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
 });
 
 const weekDays = computed(() => {
@@ -1295,7 +1300,13 @@ const weekDays = computed(() => {
 
 const weekLabel = computed(() => {
   if (!weekDays.value.length) return '';
-  return `${weekDays.value[0].date} – ${weekDays.value[6].date}`;
+  const monday = weekDays.value[0].dateObj;
+  // ISO-Kalenderwoche berechnen
+  const d = new Date(Date.UTC(monday.getFullYear(), monday.getMonth(), monday.getDate()));
+  d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7));
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  const kw = Math.ceil(((d - yearStart) / 86400000 + 1) / 7);
+  return `KW ${kw}: ${weekDays.value[0].date} – ${weekDays.value[6].date}`;
 });
 
 // ─── Wochen-Navigation: Plan laden bei Wechsel ───
@@ -1331,6 +1342,16 @@ function navigateToWeek(weekStart) {
 
 /** Nach Plan-Kopie: Daten neu laden */
 async function onPlanCopied() {
+  await store.fetchCurrentPlan(currentWeekStart.value);
+  store.fetchHistory();
+}
+
+/** Nach Plan-Löschung: Daten neu laden */
+async function onPlanDeleted(deletedPlan) {
+  // Wenn der gelöschte Plan der aktuell angezeigte ist → View zurücksetzen
+  if (deletedPlan && deletedPlan.week_start === currentWeekStart.value) {
+    store.currentPlan = null;
+  }
   await store.fetchCurrentPlan(currentWeekStart.value);
   store.fetchHistory();
 }

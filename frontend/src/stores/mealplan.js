@@ -197,6 +197,12 @@ export const useMealPlanStore = defineStore('mealplan', () => {
     if (currentPlan.value && currentPlan.value.id === planId) {
       currentPlan.value.is_locked = data.is_locked;
     }
+    // availableWeeks synchronisieren (für ShoppingView-Dropdown)
+    const weekEntry = availableWeeks.value.find(w => w.id === planId);
+    if (weekEntry) weekEntry.is_locked = data.is_locked;
+    // planHistory synchronisieren (für LoadPlanDialog)
+    const historyEntry = planHistory.value.find(p => p.id === planId);
+    if (historyEntry) historyEntry.is_locked = data.is_locked;
     return data;
   }
 

@@ -167,7 +167,7 @@ export default async function mealplanRoutes(fastify) {
     schema: { description: 'Verfügbare Wochen mit Plänen und Rezept-Vorschau', tags: ['Wochenplan'], security: [{ bearerAuth: [] }] },
   }, async (request) => {
     const plans = db.prepare(`
-      SELECT mp.id, mp.week_start, COUNT(mpe.id) as meal_count
+      SELECT mp.id, mp.week_start, mp.is_locked, COUNT(mpe.id) as meal_count
       FROM meal_plans mp
       LEFT JOIN meal_plan_entries mpe ON mp.id = mpe.meal_plan_id
       WHERE mp.user_id = ?
@@ -208,6 +208,7 @@ export default async function mealplanRoutes(fastify) {
     const weeks = plans.map(p => ({
       id: p.id,
       week_start: p.week_start,
+      is_locked: !!p.is_locked,
       meal_count: p.meal_count,
       has_shopping_list: planIdsWithList.has(p.id),
       recipes: recipesByPlan[p.id] || [],
@@ -415,6 +416,10 @@ export default async function mealplanRoutes(fastify) {
     const plan = db.prepare('SELECT id FROM meal_plans WHERE id = ? AND user_id = ?').get(planId, userId);
     if (!plan) return reply.status(404).send({ error: 'Plan nicht gefunden' });
 
+    // Rezept-Ownership prüfen
+    const recipe = db.prepare('SELECT id FROM recipes WHERE id = ? AND user_id = ?').get(recipe_id, userId);
+    if (!recipe) return reply.status(404).send({ error: 'Rezept nicht gefunden' });
+
     // Prüfen ob Slot schon belegt ist
     const existing = db.prepare(
       'SELECT id FROM meal_plan_entries WHERE meal_plan_id = ? AND day_of_week = ? AND meal_type = ?'
@@ -449,9 +454,25 @@ export default async function mealplanRoutes(fastify) {
       description: 'Wochenplan-Eintrag ändern (Rezept tauschen, Slot ändern)',
       tags: ['Wochenplan'],
       security: [{ bearerAuth: [] }],
+      body: {
+        type: 'object',
+        properties: {
+          recipe_id: { type: 'integer' },
+          day_of_week: { type: 'integer', minimum: 0, maximum: 6 },
+          meal_type: { type: 'string', enum: ['fruehstueck', 'mittag', 'abendessen', 'snack'] },
+          servings: { type: 'integer', minimum: 1, maximum: 100 },
+        },
+      },
     },
   }, async (request, reply) => {
     const { recipe_id, servings, day_of_week, meal_type } = request.body;
+    const userId = request.user.id;
+
+    // Rezept-Ownership prüfen, falls recipe_id geändert wird
+    if (recipe_id) {
+      const recipe = db.prepare('SELECT id FROM recipes WHERE id = ? AND user_id = ?').get(recipe_id, userId);
+      if (!recipe) return reply.status(404).send({ error: 'Rezept nicht gefunden' });
+    }
 
     const result = db.prepare(`
       UPDATE meal_plan_entries
@@ -460,7 +481,7 @@ export default async function mealplanRoutes(fastify) {
           day_of_week = COALESCE(?, day_of_week),
           meal_type = COALESCE(?, meal_type)
       WHERE id = ? AND meal_plan_id IN (SELECT id FROM meal_plans WHERE user_id = ?)
-    `).run(recipe_id, servings, day_of_week, meal_type, request.params.entryId, request.user.id);
+    `).run(recipe_id, servings, day_of_week, meal_type, request.params.entryId, userId);
 
     if (result.changes === 0) return reply.status(404).send({ error: 'Eintrag nicht gefunden' });
 
@@ -488,6 +509,14 @@ export default async function mealplanRoutes(fastify) {
       description: 'Eintrag in anderen Slot verschieben (Drag & Drop)',
       tags: ['Wochenplan'],
       security: [{ bearerAuth: [] }],
+      body: {
+        type: 'object',
+        required: ['day_of_week', 'meal_type'],
+        properties: {
+          day_of_week: { type: 'integer', minimum: 0, maximum: 6 },
+          meal_type: { type: 'string', enum: ['fruehstueck', 'mittag', 'abendessen', 'snack'] },
+        },
+      },
     },
   }, async (request, reply) => {
     const { day_of_week, meal_type } = request.body;
@@ -503,13 +532,15 @@ export default async function mealplanRoutes(fastify) {
     ).get(planId, day_of_week, meal_type, entryId);
 
     if (existingTarget) {
-      const source = db.prepare('SELECT day_of_week, meal_type FROM meal_plan_entries WHERE id = ?').get(entryId);
-      db.prepare('UPDATE meal_plan_entries SET day_of_week = ?, meal_type = ? WHERE id = ?')
-        .run(source.day_of_week, source.meal_type, existingTarget.id);
+      const source = db.prepare('SELECT day_of_week, meal_type FROM meal_plan_entries WHERE id = ? AND meal_plan_id = ?').get(entryId, planId);
+      if (!source) return reply.status(404).send({ error: 'Eintrag nicht gefunden' });
+      db.prepare('UPDATE meal_plan_entries SET day_of_week = ?, meal_type = ? WHERE id = ? AND meal_plan_id = ?')
+        .run(source.day_of_week, source.meal_type, existingTarget.id, planId);
     }
 
-    db.prepare('UPDATE meal_plan_entries SET day_of_week = ?, meal_type = ? WHERE id = ?')
-      .run(day_of_week, meal_type, entryId);
+    const moveResult = db.prepare('UPDATE meal_plan_entries SET day_of_week = ?, meal_type = ? WHERE id = ? AND meal_plan_id = ?')
+      .run(day_of_week, meal_type, entryId, planId);
+    if (moveResult.changes === 0) return reply.status(404).send({ error: 'Eintrag nicht gefunden' });
 
     const weekStart = db.prepare('SELECT week_start FROM meal_plans WHERE id = ?').get(planId).week_start;
     const updatedPlan = getMealPlan(userId, weekStart);
@@ -689,8 +720,10 @@ export default async function mealplanRoutes(fastify) {
   fastify.delete('/:id', {
     schema: { description: 'Wochenplan löschen', tags: ['Wochenplan'], security: [{ bearerAuth: [] }] },
   }, async (request, reply) => {
-    const result = db.prepare('DELETE FROM meal_plans WHERE id = ? AND user_id = ?').run(request.params.id, request.user.id);
-    if (result.changes === 0) return reply.status(404).send({ error: 'Plan nicht gefunden' });
+    const plan = db.prepare('SELECT id, is_locked FROM meal_plans WHERE id = ? AND user_id = ?').get(request.params.id, request.user.id);
+    if (!plan) return reply.status(404).send({ error: 'Plan nicht gefunden' });
+    if (plan.is_locked) return reply.status(409).send({ error: 'Fixierter Wochenplan kann nicht gelöscht werden. Bitte zuerst die Fixierung aufheben.' });
+    db.prepare('DELETE FROM meal_plans WHERE id = ?').run(plan.id);
     return { message: 'Wochenplan gelöscht' };
   });
 

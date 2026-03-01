@@ -9,6 +9,17 @@ Die Einkaufsliste wird **direkt aus dem Wochenplan** generiert:
 - Intelligente **Duplikat-Konsolidierung** — gleiche Zutaten werden zusammengefasst
 - **Einheiten-Normalisierung** — g + kg, ml + l etc. werden umgerechnet
 
+## Wochenplan-Auswahl
+
+Beim Generieren aus dem Wochenplan wird eine übersichtliche **Wochenauswahl** angeboten:
+- Nur Wochen mit tatsächlich vorhandenen Plänen werden angezeigt
+- **Kalenderwoche** (KW) + Datumsspanne für schnelle Orientierung
+- **Rezept-Vorschau** mit Thumbnails der geplanten Gerichte
+- **AKTUELL**-Badge für die laufende Woche
+- **EINGEKAUFT**-Badge für Wochen, die bereits eine Einkaufsliste haben
+- Option: **Vergangene Tage einbeziehen** (Toggle — standardmäßig aus)
+- **Wochenplan löschen** — Papierkorb-Icon direkt neben jedem Plan (mit Bestätigungsdialog)
+
 ## Vorratsabgleich
 
 Vorhandene Vorräte werden automatisch abgezogen, mit Anzeige, was abgezogen wurde.

@@ -79,7 +79,7 @@ const app = Fastify({
 
 // CORS für Frontend-Zugriff
 await app.register(cors, {
-  origin: config.isDev ? true : (process.env.FRONTEND_URL || true),
+  origin: config.isDev ? true : (process.env.FRONTEND_URL || false),
   credentials: true,
 });
 

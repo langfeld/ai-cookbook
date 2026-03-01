@@ -76,7 +76,10 @@ export default async function recipeBlockRoutes(fastify) {
     // Ablaufdatum berechnen
     const blockedUntil = new Date();
     blockedUntil.setDate(blockedUntil.getDate() + weeks * 7);
-    const blockedUntilStr = blockedUntil.toISOString().split('T')[0];
+    const y = blockedUntil.getFullYear();
+    const m = String(blockedUntil.getMonth() + 1).padStart(2, '0');
+    const dd = String(blockedUntil.getDate()).padStart(2, '0');
+    const blockedUntilStr = `${y}-${m}-${dd}`;
 
     // Upsert: Falls Sperre existiert, aktualisieren
     const existing = db.prepare(

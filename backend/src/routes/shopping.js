@@ -599,6 +599,10 @@ export default async function shoppingRoutes(fastify) {
     const listId = Number(request.params.listId);
     let { purchasedItems, includeAll = false } = request.body;
 
+    // Ownership-Check: Liste muss dem User gehören
+    const listOwner = db.prepare('SELECT id FROM shopping_lists WHERE id = ? AND user_id = ?').get(listId, userId);
+    if (!listOwner) return { error: 'Liste nicht gefunden', pantryItemsAdded: 0 };
+
     // Wenn keine Items mitgeschickt wurden, Items aus der DB nehmen
     if (!purchasedItems?.length) {
       const condition = includeAll ? '' : ' AND is_checked = 1';

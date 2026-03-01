@@ -93,6 +93,16 @@
                     <Copy v-else class="w-3.5 h-3.5" />
                     <span>Auf aktuelle Woche kopieren</span>
                   </button>
+
+                  <!-- Spacer -->
+                  <span class="flex-1" />
+
+                  <!-- Plan löschen (nicht bei fixierten Plänen) -->
+                  <button v-if="!plan.is_locked" @click="startDelete(plan)"
+                    class="flex items-center gap-1 hover:bg-red-50 dark:hover:bg-red-950 px-2 py-1.5 rounded-lg text-stone-400 hover:text-red-500 dark:hover:text-red-400 text-xs transition-colors"
+                    title="Plan löschen">
+                    <Trash2 class="w-3.5 h-3.5" />
+                  </button>
                 </div>
               </div>
             </div>
@@ -101,7 +111,7 @@
       </div>
     </Transition>
 
-    <!-- Bestätigungs-Dialog -->
+    <!-- Bestätigungs-Dialog: Kopieren -->
     <Transition name="modal">
       <div v-if="confirmDialog.show" class="z-60 fixed inset-0 flex justify-center items-center p-4">
         <div class="fixed inset-0 bg-black/50 backdrop-blur-sm" @click="confirmDialog.show = false" />
@@ -130,6 +140,34 @@
         </div>
       </div>
     </Transition>
+
+    <!-- Bestätigungs-Dialog: Löschen -->
+    <Transition name="modal">
+      <div v-if="deleteDialog.show" class="z-60 fixed inset-0 flex justify-center items-center p-4">
+        <div class="fixed inset-0 bg-black/50 backdrop-blur-sm" @click="deleteDialog.show = false" />
+        <div class="z-10 relative bg-white dark:bg-stone-900 shadow-2xl p-6 rounded-2xl w-full max-w-sm">
+          <h3 class="mb-2 font-semibold text-red-600 dark:text-red-400 text-base">🗑️ Plan löschen?</h3>
+          <p class="mb-1 text-stone-600 dark:text-stone-400 text-sm">
+            Wochenplan <strong>{{ deleteDialog.label }}</strong> unwiderruflich löschen?
+          </p>
+          <p class="mb-4 text-stone-400 dark:text-stone-500 text-xs">
+            Verknüpfte Einkaufslisten bleiben erhalten.
+          </p>
+          <div class="flex justify-end gap-2">
+            <button @click="deleteDialog.show = false"
+              class="hover:bg-stone-100 dark:hover:bg-stone-800 px-4 py-2 rounded-lg text-stone-600 dark:text-stone-400 text-sm transition-colors">
+              Abbrechen
+            </button>
+            <button @click="doDelete" :disabled="deleting"
+              class="flex items-center gap-1.5 bg-red-600 hover:bg-red-700 disabled:opacity-50 px-4 py-2 rounded-lg font-medium text-white text-sm transition-colors">
+              <Loader2 v-if="deleting" class="w-4 h-4 animate-spin" />
+              <Trash2 v-else class="w-4 h-4" />
+              Löschen
+            </button>
+          </div>
+        </div>
+      </div>
+    </Transition>
   </Teleport>
 </template>
 
@@ -137,13 +175,13 @@
 import { ref, computed } from 'vue';
 import { useMealPlanStore } from '@/stores/mealplan.js';
 import { useNotification } from '@/composables/useNotification.js';
-import { X, Eye, Copy, Clock, UtensilsCrossed, Lock, Loader2 } from 'lucide-vue-next';
+import { X, Eye, Copy, Clock, UtensilsCrossed, Lock, Loader2, Trash2 } from 'lucide-vue-next';
 
 const props = defineProps({
   show: { type: Boolean, default: false },
   currentWeekStart: { type: String, required: true },
 });
-const emit = defineEmits(['close', 'navigate-to-week', 'plan-copied']);
+const emit = defineEmits(['close', 'navigate-to-week', 'plan-copied', 'plan-deleted']);
 
 const store = useMealPlanStore();
 const { showSuccess, showError } = useNotification();
@@ -151,6 +189,8 @@ const { showSuccess, showError } = useNotification();
 const copying = ref(false);
 const copyingPlanId = ref(null);
 const confirmDialog = ref({ show: false, plan: null, sourceLabel: '', targetLabel: '' });
+const deleteDialog = ref({ show: false, plan: null, label: '' });
+const deleting = ref(false);
 
 const plans = computed(() => store.planHistory || []);
 
@@ -216,6 +256,30 @@ async function doCopy() {
   } finally {
     copying.value = false;
     copyingPlanId.value = null;
+  }
+}
+
+function startDelete(plan) {
+  deleteDialog.value = { show: true, plan, label: formatWeek(plan.week_start) };
+}
+
+async function doDelete() {
+  const plan = deleteDialog.value.plan;
+  if (!plan) return;
+
+  deleting.value = true;
+  deleteDialog.value.show = false;
+
+  try {
+    await store.deletePlan(plan.id);
+    // Historie neu laden
+    await store.fetchHistory();
+    showSuccess('Wochenplan gelöscht');
+    emit('plan-deleted', plan);
+  } catch (err) {
+    showError(err.message || 'Löschen fehlgeschlagen');
+  } finally {
+    deleting.value = false;
   }
 }
 </script>

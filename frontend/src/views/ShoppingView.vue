@@ -146,7 +146,15 @@
                   </div>
 
                   <!-- Keine Pläne -->
-                  <div v-else-if="mealPlanStore.availableWeeks.length === 0" class="py-4 text-center">
+                  <div v-else-if="availableWeeksError" class="py-4 text-center">
+                    <AlertTriangle class="mx-auto mb-2 w-8 h-8 text-amber-400 dark:text-amber-500" />
+                    <p class="text-stone-500 dark:text-stone-400 text-sm">Wochenpläne konnten nicht geladen werden</p>
+                    <button @click="loadAvailableWeeks()" class="bg-primary-600 hover:bg-primary-700 mt-2 px-3 py-1.5 rounded-lg font-medium text-white text-xs transition-colors">
+                      <RefreshCw class="inline mr-1 w-3 h-3" />
+                      Erneut versuchen
+                    </button>
+                  </div>
+                  <div v-else-if="unlockedWeeks.length === 0" class="py-4 text-center">
                     <CalendarDays class="mx-auto mb-2 w-8 h-8 text-stone-300 dark:text-stone-600" />
                     <p class="text-stone-500 dark:text-stone-400 text-sm">Keine Wochenpläne vorhanden</p>
                     <p class="text-stone-400 dark:text-stone-500 text-xs">Erstelle zuerst einen Plan im Wochenplaner</p>
@@ -154,16 +162,16 @@
 
                   <!-- Wochen-Liste -->
                   <div v-else class="space-y-1.5 max-h-64 overflow-y-auto scrollbar-thin">
-                    <button
-                      v-for="week in mealPlanStore.availableWeeks"
+                    <div
+                      v-for="week in unlockedWeeks"
                       :key="week.id"
-                      @click="selectedWeekStart = week.week_start"
-                      class="px-3 py-2.5 border rounded-lg w-full text-left transition-colors"
+                      class="group/week px-3 py-2.5 border rounded-lg w-full text-left transition-colors cursor-pointer"
                       :class="selectedWeekStart === week.week_start
                         ? 'bg-primary-50 dark:bg-primary-900/30 border-primary-300 dark:border-primary-700'
                         : 'hover:bg-stone-50 dark:hover:bg-stone-700/50 border-transparent'"
+                      @click="selectedWeekStart = week.week_start"
                     >
-                      <!-- Datum + Badges -->
+                      <!-- Datum + Badges + Löschen -->
                       <div class="flex items-center gap-1.5">
                         <span class="font-medium text-sm" :class="selectedWeekStart === week.week_start
                           ? 'text-primary-700 dark:text-primary-300'
@@ -175,11 +183,7 @@
                           AKTUELL
                         </span>
                         <span class="flex-1" />
-                        <span v-if="week.has_shopping_list"
-                          class="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded font-semibold text-[10px] bg-accent-100 text-accent-700 dark:bg-accent-900/40 dark:text-accent-400 shrink-0">
-                          <ShoppingCart class="w-2.5 h-2.5" />
-                          EINGEKAUFT
-                        </span>
+
                       </div>
                       <!-- Rezept-Thumbnails -->
                       <div v-if="week.recipes.length" class="flex items-center gap-1 mt-1.5">
@@ -202,7 +206,7 @@
                           +{{ week.recipes.length - 6 }}
                         </span>
                       </div>
-                    </button>
+                    </div>
                   </div>
                 </div>
 
@@ -1700,6 +1704,7 @@
       @confirm="executeClearAllPrefs"
     />
 
+
     <!-- REWE Bestell-Warnung (fehlende Zuordnungen / hohe Mengen) -->
     <Teleport to="body">
       <Transition name="fade">
@@ -1962,7 +1967,7 @@ import { useMealPlanStore } from '@/stores/mealplan.js';
 import { useIngredientAliasStore } from '@/stores/ingredient-aliases.js';
 import { useNotification } from '@/composables/useNotification.js';
 import { useApi } from '@/composables/useApi.js';
-import { ListPlus, Check, ShoppingBag, Plus, Minus, Package, BookOpen, BookX, ExternalLink, ShoppingCart, X, ArrowRightLeft, Search, Tag, Trash2, Star, Heart, Archive, Send, Link2, Unlink, ClipboardCopy, LogIn, LogOut, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Loader2, Terminal, Download, Settings, RefreshCw, Merge, ArrowRight, History, RotateCcw, Ban, MapPin, PenLine, Upload, AlertTriangle, Copy, Eye, EyeOff, CheckSquare, Square, ClipboardCheck, CalendarDays } from 'lucide-vue-next';
+import { ListPlus, Check, ShoppingBag, Plus, Minus, Package, BookOpen, BookX, ExternalLink, ShoppingCart, X, ArrowRightLeft, Search, Tag, Trash2, Star, Heart, Archive, Send, Link2, Unlink, ClipboardCopy, LogIn, LogOut, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Loader2, Terminal, Download, Settings, RefreshCw, Merge, ArrowRight, History, RotateCcw, Ban, MapPin, PenLine, Upload, AlertTriangle, Copy, Eye, EyeOff, CheckSquare, Square, ClipboardCheck, CalendarDays, Lock } from 'lucide-vue-next';
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue';
 import UnitInput from '@/components/ui/UnitInput.vue';
 
@@ -1981,6 +1986,8 @@ const historyDropdownTop = ref(0);
 const genIncludePastDays = ref(false); // Standardmäßig: vergangene Tage NICHT einbeziehen
 const selectedWeekStart = ref(null); // Ausgewählte Woche (week_start als YYYY-MM-DD)
 const availableWeeksLoading = ref(false);
+const unlockedWeeks = computed(() => mealPlanStore.availableWeeks.filter(w => !w.is_locked));
+
 
 // ISO-Kalenderwoche berechnen
 function getISOWeek(date) {
@@ -1988,6 +1995,23 @@ function getISOWeek(date) {
   d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7));
   const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
   return Math.ceil(((d - yearStart) / 86400000 + 1) / 7);
+}
+
+// Datum als YYYY-MM-DD in lokaler Zeitzone formatieren (toISOString() konvertiert nach UTC und kann das Datum verschieben)
+function toLocalYMD(date) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+// Montag der aktuellen Woche berechnen
+function getCurrentMonday() {
+  const today = new Date();
+  const dayOfWeek = today.getDay();
+  const monday = new Date(today);
+  monday.setDate(today.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1));
+  return monday;
 }
 
 // Hilfsfunktion: Wochenlabel formatieren
@@ -1999,45 +2023,45 @@ function formatWeekLabel(weekStart) {
   const fmt = (dt) => dt.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' });
   const kw = getISOWeek(monday);
 
-  // Prüfen ob es die aktuelle Woche ist
-  const today = new Date();
-  const dayOfWeek = today.getDay();
-  const currentMonday = new Date(today);
-  currentMonday.setDate(today.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1));
-  const currentWeekStart = currentMonday.toISOString().split('T')[0];
+  const currentWeekStart = toLocalYMD(getCurrentMonday());
 
   if (weekStart === currentWeekStart) return `KW ${kw} · Diese Woche (${fmt(monday)} – ${fmt(sunday)})`;
 
   // Nächste Woche?
-  const nextMonday = new Date(currentMonday);
-  nextMonday.setDate(currentMonday.getDate() + 7);
-  const nextWeekStart = nextMonday.toISOString().split('T')[0];
-  if (weekStart === nextWeekStart) return `KW ${kw} · Nächste Woche (${fmt(monday)} – ${fmt(sunday)})`;
+  const nextMonday = new Date(getCurrentMonday());
+  nextMonday.setDate(nextMonday.getDate() + 7);
+  if (weekStart === toLocalYMD(nextMonday)) return `KW ${kw} · Nächste Woche (${fmt(monday)} – ${fmt(sunday)})`;
 
   // Letzte Woche?
-  const lastMonday = new Date(currentMonday);
-  lastMonday.setDate(currentMonday.getDate() - 7);
-  const lastWeekStart = lastMonday.toISOString().split('T')[0];
-  if (weekStart === lastWeekStart) return `KW ${kw} · Letzte Woche (${fmt(monday)} – ${fmt(sunday)})`;
+  const lastMonday = new Date(getCurrentMonday());
+  lastMonday.setDate(lastMonday.getDate() - 7);
+  if (weekStart === toLocalYMD(lastMonday)) return `KW ${kw} · Letzte Woche (${fmt(monday)} – ${fmt(sunday)})`;
 
   return `KW ${kw} · ${fmt(monday)} – ${fmt(sunday)}`;
 }
 
 // Verfügbare Wochen laden beim Öffnen des Dropdowns
+const availableWeeksError = ref(false);
 async function loadAvailableWeeks() {
   availableWeeksLoading.value = true;
+  availableWeeksError.value = false;
   try {
     await mealPlanStore.fetchAvailableWeeks();
-    // Automatisch aktuelle Woche wählen, falls vorhanden
-    if (!selectedWeekStart.value && mealPlanStore.availableWeeks.length > 0) {
-      const today = new Date();
-      const dayOfWeek = today.getDay();
-      const currentMonday = new Date(today);
-      currentMonday.setDate(today.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1));
-      const currentWeekStart = currentMonday.toISOString().split('T')[0];
-      const hasCurrentWeek = mealPlanStore.availableWeeks.find(w => w.week_start === currentWeekStart);
-      selectedWeekStart.value = hasCurrentWeek ? currentWeekStart : mealPlanStore.availableWeeks[0].week_start;
+    // Automatisch beste Woche wählen
+    if (unlockedWeeks.value.length > 0) {
+      const currentWeekStart = toLocalYMD(getCurrentMonday());
+
+      // Prüfen ob die aktuelle Auswahl noch gültig ist
+      const selectionStillValid = selectedWeekStart.value
+        && unlockedWeeks.value.some(w => w.week_start === selectedWeekStart.value);
+
+      if (!selectionStillValid) {
+        const hasCurrentWeek = unlockedWeeks.value.find(w => w.week_start === currentWeekStart);
+        selectedWeekStart.value = hasCurrentWeek ? currentWeekStart : unlockedWeeks.value[0].week_start;
+      }
     }
+  } catch {
+    availableWeeksError.value = true;
   } finally {
     availableWeeksLoading.value = false;
   }
@@ -2045,11 +2069,7 @@ async function loadAvailableWeeks() {
 
 // Aktuelle Woche für CSS-Highlight prüfen
 function isCurrentWeek(weekStart) {
-  const today = new Date();
-  const dayOfWeek = today.getDay();
-  const currentMonday = new Date(today);
-  currentMonday.setDate(today.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1));
-  return weekStart === currentMonday.toISOString().split('T')[0];
+  return weekStart === toLocalYMD(getCurrentMonday());
 }
 
 // Zentrales Einstellungs-Modal
@@ -2564,13 +2584,28 @@ async function generateList() {
     showError('Bitte wähle eine Woche aus.');
     return;
   }
-  // Wochenplan für die gewählte Woche laden
-  await mealPlanStore.fetchCurrentPlan(selectedWeekStart.value);
-  const planId = mealPlanStore.currentPlan?.id;
+
+  // Plan-ID direkt aus den verfügbaren Wochen nehmen (kein Extra-API-Call nötig)
+  const selectedWeek = mealPlanStore.availableWeeks.find(w => w.week_start === selectedWeekStart.value);
+  const planId = selectedWeek?.id;
+
   if (!planId) {
+    // Fallback: Wochen neu laden und nochmal versuchen
+    try {
+      await mealPlanStore.fetchAvailableWeeks();
+      const retryWeek = mealPlanStore.availableWeeks.find(w => w.week_start === selectedWeekStart.value);
+      if (retryWeek?.id) {
+        return doGenerateList(retryWeek.id);
+      }
+    } catch { /* wird von useApi angezeigt */ }
     showError('Kein Wochenplan für diese Woche vorhanden. Erstelle zuerst einen Plan im Wochenplaner.');
     return;
   }
+
+  await doGenerateList(planId);
+}
+
+async function doGenerateList(planId) {
   try {
     const data = await shoppingStore.generateList(planId, {
       excludePastDays: !genIncludePastDays.value,
@@ -2579,6 +2614,8 @@ async function generateList() {
       ? `Einkaufsliste erstellt! 📝 (${data.skippedDays} vergangene Tage übersprungen)`
       : 'Einkaufsliste erstellt! 📝';
     showSuccess(msg);
+    // Verfügbare Wochen aktualisieren (EINGEKAUFT-Badge)
+    mealPlanStore.fetchAvailableWeeks();
   } catch {
     // Fehler wird von useApi angezeigt
   }

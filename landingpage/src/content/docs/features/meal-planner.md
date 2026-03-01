@@ -56,3 +56,12 @@ Wochenplan manuell fixieren, um versehentliche Änderungen zu verhindern.
 ### Auto-Lock
 
 Wird der Einkauf einer verknüpften Einkaufsliste abgeschlossen, wird der zugehörige Wochenplan **automatisch gesperrt**.
+
+## Plan löschen
+
+Einzelne Wochenpläne können gelöscht werden:
+- Löschen-Button direkt im **Wochenplaner** (Header-Leiste)
+- Löschen auch über die **Einkaufsliste** möglich (Papierkorb-Icon in der Wochenauswahl)
+- Verknüpfte **Einkaufslisten bleiben erhalten** (Verknpfung wird aufgehoben)
+- Gesperrte Pläne müssen erst entsperrt werden
+- Bestätigungsdialog vor dem Löschen
