@@ -971,7 +971,7 @@
                   @input="onSwapSearchInput($event.target.value)"
                   placeholder="Rezept suchen…"
                   data-testid="swap-search-input"
-                  class="border-stone-200 dark:border-stone-700 bg-stone-50 dark:bg-stone-800 py-2 pr-3 pl-9 border rounded-xl w-full text-sm text-stone-800 dark:text-stone-200 placeholder-stone-400 focus:outline-none focus:ring-2 focus:ring-primary-400"
+                  class="bg-stone-50 dark:bg-stone-800 py-2 pr-3 pl-9 border border-stone-200 dark:border-stone-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-400 w-full text-stone-800 dark:text-stone-200 text-sm placeholder-stone-400"
                 />
               </div>
             </div>
