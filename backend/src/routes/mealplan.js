@@ -8,7 +8,7 @@
 
 import db from '../config/database.js';
 import { generateWeekPlan, generateReasoning, saveMealPlan, getMealPlan, getSuggestions } from '../services/meal-planner.js';
-import { getWeekStart, scaleIngredient, convertToBaseUnit, normalizeUnit, unitsCompatible } from '../utils/helpers.js';
+import { getWeekStart, scaleIngredient, convertToBaseUnit, normalizeUnit, unitsCompatible, comparePantryAmount } from '../utils/helpers.js';
 
 export default async function mealplanRoutes(fastify) {
   fastify.addHook('onRequest', fastify.authenticate);
@@ -620,9 +620,6 @@ export default async function mealplanRoutes(fastify) {
 
       if (!scaledAmount || scaledAmount <= 0) continue;
 
-      // In Basiseinheit konvertieren (kg→g, TL→g, l→ml etc.)
-      const normalized = convertToBaseUnit(scaledAmount, ing.unit);
-
       // Passenden Vorrat suchen
       const pantryItem = db.prepare(
         'SELECT * FROM pantry WHERE user_id = ? AND LOWER(ingredient_name) = LOWER(?)'
@@ -631,25 +628,24 @@ export default async function mealplanRoutes(fastify) {
       if (!pantryItem) continue; // Kein Vorrat vorhanden → nichts abziehen
       if (pantryItem.is_permanent) continue; // Dauerhafte Vorräte nicht verbrauchen
 
-      // Vorrat in gleiche Einheit konvertieren
+      // Vergleich inkl. Küchenstandard-Tabelle (Stück↔g, Zehe↔g etc.)
+      const result = comparePantryAmount(
+        ing.name, scaledAmount, ing.unit, pantryItem.amount, pantryItem.unit
+      );
+      if (!result.compatible) continue;
+
+      // Pantry in Basiseinheit für DB-Update
       const pantryNormalized = convertToBaseUnit(pantryItem.amount, pantryItem.unit);
-
-      // Kompatibilität prüfen (g===g, oder g↔ml mit Näherung 1:1)
-      const compat = unitsCompatible(pantryNormalized.unit, normalized.unit);
-      if (!compat.compatible) continue;
-
-      // Zutatenmenge ggf. mit Faktor umrechnen
-      const adjustedAmount = normalized.amount * compat.factor;
 
       if (newState === 1) {
         // Gekocht → Vorrat abziehen
-        const newAmount = Math.max(0, pantryNormalized.amount - adjustedAmount);
+        const newAmount = Math.max(0, pantryNormalized.amount - result.pantryBaseDeduction);
         db.prepare('UPDATE pantry SET amount = ?, unit = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
           .run(newAmount, pantryNormalized.unit, pantryItem.id);
         pantryUpdated++;
       } else {
         // Rückgängig → Vorrat wieder gutschreiben
-        const newAmount = pantryNormalized.amount + adjustedAmount;
+        const newAmount = pantryNormalized.amount + result.pantryBaseDeduction;
         db.prepare('UPDATE pantry SET amount = ?, unit = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
           .run(newAmount, pantryNormalized.unit, pantryItem.id);
         pantryUpdated++;

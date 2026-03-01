@@ -11,7 +11,7 @@
  */
 
 import db from '../config/database.js';
-import { normalizeUnit, scaleIngredient, convertToBaseUnit, unitsCompatible } from '../utils/helpers.js';
+import { normalizeUnit, scaleIngredient, convertToBaseUnit, unitsCompatible, comparePantryAmount } from '../utils/helpers.js';
 import { parsePackageSize } from './rewe-api.js';
 import { getAIProvider } from './ai/provider.js';
 
@@ -210,6 +210,7 @@ export async function generateShoppingList(userId, mealPlanId, options = {}) {
   ).all(userId);
 
   const adjustedItems = [];
+  const needsAIEstimate = []; // Items wo statische Tabelle nicht hilft
 
   for (const item of aggregated) {
     let remainingAmount = item.amount;
@@ -228,24 +229,29 @@ export async function generateShoppingList(userId, mealPlanId, options = {}) {
         pantryDeducted = remainingAmount;
         remainingAmount = 0;
       } else {
-        // Beide Mengen in Basiseinheiten konvertieren (TL→ml, EL→ml, Prise→g, kg→g, l→ml)
-        const itemBase = convertToBaseUnit(remainingAmount, normalizeUnit(item.unit));
-        const pantryBase = convertToBaseUnit(matchingPantry.amount, normalizeUnit(matchingPantry.unit));
-        const compat = unitsCompatible(itemBase.unit, pantryBase.unit);
+        // Mengen vergleichen – inkl. Küchenstandard-Tabelle für Stück↔g etc.
+        const result = comparePantryAmount(
+          item.name,
+          remainingAmount,
+          normalizeUnit(item.unit),
+          matchingPantry.amount,
+          normalizeUnit(matchingPantry.unit),
+        );
 
-        if (compat.compatible) {
-          // Kompatible Einheiten → abziehen (in Basiseinheiten vergleichen)
-          const deductionBase = Math.min(pantryBase.amount, itemBase.amount);
-          // Zurückrechnen in die Originaleinheit des Items
-          const ratio = itemBase.amount > 0 ? deductionBase / itemBase.amount : 0;
-          const deduction = remainingAmount * ratio;
-          remainingAmount -= deduction;
-          pantryDeducted = deduction;
-          // Rundungsfehler bereinigen
-          if (remainingAmount < 0.01) remainingAmount = 0;
+        if (result.compatible) {
+          pantryDeducted = result.deduction;
+          remainingAmount = result.remaining;
         } else {
-          // Wirklich inkompatible Einheiten (z.B. Stück vs g) → Hinweis
-          pantryNote = `Im Vorrat: ${matchingPantry.amount} ${matchingPantry.unit || 'Stk'} (andere Einheit)`.trim();
+          // Statische Tabelle hat keine Konvertierung → KI-Fallback merken
+          needsAIEstimate.push({
+            index: adjustedItems.length, // Position im adjustedItems-Array
+            item,
+            remainingAmount,
+            pantry: matchingPantry,
+            recipeUnit: normalizeUnit(item.unit),
+            pantryUnit: normalizeUnit(matchingPantry.unit),
+          });
+          pantryNote = result.pantryNote;
         }
       }
     }
@@ -258,6 +264,77 @@ export async function generateShoppingList(userId, mealPlanId, options = {}) {
       pantryNote,
       needsToBuy: remainingAmount > 0,
     });
+  }
+
+  // --- 3b. KI-Fallback für unbekannte Einheiten-Konvertierungen ---
+  if (needsAIEstimate.length > 0) {
+    try {
+      const ai = getAIProvider({ simple: true });
+      const queries = needsAIEstimate.map(e => ({
+        name: e.item.name,
+        amount: e.remainingAmount,
+        unit: e.recipeUnit || 'Stück',
+        pantry_amount: e.pantry.amount,
+        pantry_unit: e.pantryUnit || 'Stück',
+      }));
+
+      const prompt = `Schätze für diese Zutaten, wie viel Gramm ein Stück bzw. eine Einheit wiegt.
+
+Zutaten:
+${JSON.stringify(queries, null, 2)}
+
+Antworte als JSON-Array. Für jede Zutat:
+- "name": exakter Zutatname aus der Eingabe
+- "piece_g": geschätztes Gewicht eines Stücks in Gramm (0 wenn nicht sinnvoll schätzbar)
+
+Beispiel: [{ "name": "Avocado", "piece_g": 200 }]
+
+Nur Standardgewichte. Bei Unsicherheit lieber 0 angeben.`;
+
+      const estimates = await ai.chatJSON(prompt, { temperature: 0.1, maxTokens: 1024 });
+
+      if (Array.isArray(estimates)) {
+        for (const est of estimates) {
+          if (!est.piece_g || est.piece_g <= 0) continue;
+          const match = needsAIEstimate.find(e => e.item.name.toLowerCase() === est.name?.toLowerCase());
+          if (!match) continue;
+
+          const idx = match.index;
+          const adjusted = adjustedItems[idx];
+          if (!adjusted) continue;
+
+          // Konvertierung Stück↔g mit KI-geschätztem Gewicht
+          const recipeUnit = match.recipeUnit || '';
+          const pantryUnit = match.pantryUnit || '';
+          let factor = null;
+
+          if (recipeUnit === '' && (pantryUnit === 'g' || pantryUnit === 'ml')) {
+            factor = est.piece_g; // Stück → g
+          } else if ((recipeUnit === 'g' || recipeUnit === 'ml') && pantryUnit === '') {
+            factor = 1 / est.piece_g; // g → Stück
+          }
+
+          if (factor) {
+            const neededBase = convertToBaseUnit(match.remainingAmount, recipeUnit);
+            const pantryBase = convertToBaseUnit(match.pantry.amount, pantryUnit);
+            const neededInPantryUnit = neededBase.amount * factor;
+            const deductionInPantryUnit = Math.min(pantryBase.amount, neededInPantryUnit);
+            const ratio = neededInPantryUnit > 0 ? deductionInPantryUnit / neededInPantryUnit : 0;
+            const deduction = match.remainingAmount * ratio;
+            let remaining = match.remainingAmount - deduction;
+            if (remaining < 0.01) remaining = 0;
+
+            adjusted.pantryDeducted = deduction;
+            adjusted.amount = Math.max(0, remaining);
+            adjusted.pantryNote = null;
+            adjusted.needsToBuy = remaining > 0;
+          }
+        }
+      }
+    } catch (err) {
+      console.warn('⚠️ KI-Fallback für Einheiten-Konvertierung fehlgeschlagen:', err.message);
+      // Kein Abbruch – Items behalten ihre pantryNote als Hinweis
+    }
   }
 
   return {

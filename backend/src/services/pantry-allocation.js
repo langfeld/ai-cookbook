@@ -11,6 +11,7 @@
 
 import db from '../config/database.js';
 import { scaleIngredient, convertToBaseUnit, normalizeUnit, unitsCompatible } from '../utils/helpers.js';
+import { estimateConversion } from '../utils/ingredient-weights.js';
 
 /** Meal-Type Sortierungswert (chronologische Reihenfolge) */
 const MEAL_TYPE_ORDER = { fruehstueck: 0, mittag: 1, abendessen: 2, snack: 3 };
@@ -163,8 +164,24 @@ export function calculatePantryAllocations(userId, mealPlanId) {
             pool.remaining = Math.max(0, pool.remaining - neededAmount);
           }
         } else {
-          unitMismatch = true;
-          pantryId = pool.pantry_id;
+          // Küchenstandard-Tabelle für Stück↔g, Zehe↔g etc.
+          const estimate = estimateConversion(ing.name, neededUnit, pool.base_unit);
+          if (estimate) {
+            compatible = true;
+            pantryId = pool.pantry_id;
+            const neededInPoolUnit = neededAmount * estimate.factor;
+            const availableInPoolUnit = pool.remaining;
+            const coveredInPoolUnit = Math.min(neededInPoolUnit, availableInPoolUnit);
+            // Zurück in Rezept-Einheit
+            const ratio = neededInPoolUnit > 0 ? coveredInPoolUnit / neededInPoolUnit : 0;
+            covered = neededAmount * ratio;
+            if (!pool.is_permanent) {
+              pool.remaining = Math.max(0, pool.remaining - neededInPoolUnit);
+            }
+          } else {
+            unitMismatch = true;
+            pantryId = pool.pantry_id;
+          }
         }
       }
 

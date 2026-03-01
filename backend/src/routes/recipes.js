@@ -22,7 +22,7 @@ import { config } from '../config/env.js';
 import { writeFileSync, readFileSync, existsSync } from 'fs';
 import { resolve, join } from 'path';
 import sharp from 'sharp';
-import { generateId, safePath, getWeekStart, scaleIngredient, convertToBaseUnit, unitsCompatible, sanitize, isPrivateUrl, validateDate } from '../utils/helpers.js';
+import { generateId, safePath, getWeekStart, scaleIngredient, convertToBaseUnit, unitsCompatible, comparePantryAmount, sanitize, isPrivateUrl, validateDate } from '../utils/helpers.js';
 
 const ALLOWED_MIMES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/heic', 'image/heif']);
 const VALID_DIFFICULTIES = new Set(['easy', 'medium', 'hard', 'einfach', 'mittel', 'schwer']);
@@ -98,8 +98,6 @@ function deductPantryForRecipe(userId, recipeId, originalServings, targetServing
 
     if (!scaledAmount || scaledAmount <= 0) continue;
 
-    const normalized = convertToBaseUnit(scaledAmount, ing.unit);
-
     const pantryItem = db.prepare(
       'SELECT * FROM pantry WHERE user_id = ? AND LOWER(ingredient_name) = LOWER(?)'
     ).get(userId, ing.name);
@@ -107,12 +105,14 @@ function deductPantryForRecipe(userId, recipeId, originalServings, targetServing
     if (!pantryItem) continue;
     if (pantryItem.is_permanent) continue;
 
-    const pantryNormalized = convertToBaseUnit(pantryItem.amount, pantryItem.unit);
-    const compat = unitsCompatible(pantryNormalized.unit, normalized.unit);
-    if (!compat.compatible) continue;
+    // Vergleich inkl. Küchenstandard-Tabelle (Stück↔g, Zehe↔g etc.)
+    const result = comparePantryAmount(
+      ing.name, scaledAmount, ing.unit, pantryItem.amount, pantryItem.unit
+    );
+    if (!result.compatible) continue;
 
-    const adjustedAmount = normalized.amount * compat.factor;
-    const newAmount = Math.max(0, pantryNormalized.amount - adjustedAmount);
+    const pantryNormalized = convertToBaseUnit(pantryItem.amount, pantryItem.unit);
+    const newAmount = Math.max(0, pantryNormalized.amount - result.pantryBaseDeduction);
     db.prepare('UPDATE pantry SET amount = ?, unit = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
       .run(newAmount, pantryNormalized.unit, pantryItem.id);
     pantryUpdated++;

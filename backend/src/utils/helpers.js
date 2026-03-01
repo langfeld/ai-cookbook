@@ -6,6 +6,7 @@
 
 import { resolve, relative } from 'path';
 import { randomBytes } from 'crypto';
+import { estimateConversion } from './ingredient-weights.js';
 
 /**
  * Generiert einen kryptographisch sicheren zufälligen String als ID.
@@ -228,7 +229,6 @@ export function getUnitType(unit) {
 
 /**
  * Prüft ob zwei Einheiten einfach kompatibel sind (identisch oder g↔ml).
- * Wird nur noch als schneller Check verwendet; die KI übernimmt komplexe Fälle.
  */
 export function unitsCompatible(unitA, unitB) {
   if (unitA === unitB) return { compatible: true, factor: 1 };
@@ -236,6 +236,67 @@ export function unitsCompatible(unitA, unitB) {
     return { compatible: true, factor: 1 };
   }
   return { compatible: false, factor: 0 };
+}
+
+/**
+ * Vergleicht Rezept-Bedarf mit Pantry-Bestand für eine bestimmte Zutat.
+ * Nutzt erst direkte Einheiten-Kompatibilität, dann die Küchenstandard-Tabelle
+ * als Fallback für inkompatible Einheiten (z.B. Stück↔g, Zehe↔Stück).
+ *
+ * @param {string} ingredientName - Zutatname (für Tabellen-Lookup)
+ * @param {number} neededAmount - Benötigte Menge (Originaleinheit)
+ * @param {string} neededUnit - Benötigte Einheit (roh, nicht normalisiert)
+ * @param {number} pantryAmount - Vorhandene Menge im Vorrat
+ * @param {string} pantryUnit - Einheit im Vorrat (roh, nicht normalisiert)
+ * @returns {{ compatible: boolean, deduction: number, remaining: number, estimated: boolean, pantryNote: string|null, pantryBaseDeduction: number, pantryBaseUnit: string }}
+ */
+export function comparePantryAmount(ingredientName, neededAmount, neededUnit, pantryAmount, pantryUnit) {
+  // 1. Beide in Basiseinheiten konvertieren (TL→ml, kg→g, etc.)
+  const neededBase = convertToBaseUnit(neededAmount, neededUnit);
+  const pantryBase = convertToBaseUnit(pantryAmount, pantryUnit);
+
+  // 2. Direkte Kompatibilität prüfen (g↔g, ml↔ml, g↔ml)
+  const compat = unitsCompatible(neededBase.unit, pantryBase.unit);
+
+  if (compat.compatible) {
+    const deductionBase = Math.min(pantryBase.amount, neededBase.amount);
+    const ratio = neededBase.amount > 0 ? deductionBase / neededBase.amount : 0;
+    const deduction = neededAmount * ratio;
+    let remaining = neededAmount - deduction;
+    if (remaining < 0.01) remaining = 0;
+    return {
+      compatible: true, deduction, remaining, estimated: false, pantryNote: null,
+      pantryBaseDeduction: deductionBase, pantryBaseUnit: pantryBase.unit,
+    };
+  }
+
+  // 3. Küchenstandard-Tabelle: Rezept-Einheit → Pantry-Einheit konvertieren
+  const estimate = estimateConversion(ingredientName, neededBase.unit, pantryBase.unit);
+
+  if (estimate) {
+    // neededAmount in Pantry-Einheit umrechnen
+    const neededInPantryUnit = neededBase.amount * estimate.factor;
+    const deductionInPantryUnit = Math.min(pantryBase.amount, neededInPantryUnit);
+    const ratio = neededInPantryUnit > 0 ? deductionInPantryUnit / neededInPantryUnit : 0;
+    const deduction = neededAmount * ratio;
+    let remaining = neededAmount - deduction;
+    if (remaining < 0.01) remaining = 0;
+    return {
+      compatible: true, deduction, remaining, estimated: true, pantryNote: null,
+      pantryBaseDeduction: deductionInPantryUnit, pantryBaseUnit: pantryBase.unit,
+    };
+  }
+
+  // 4. Keine Konvertierung möglich → Hinweis
+  return {
+    compatible: false,
+    deduction: 0,
+    remaining: neededAmount,
+    estimated: false,
+    pantryNote: `Im Vorrat: ${pantryAmount} ${pantryUnit || 'Stk'} (andere Einheit)`.trim(),
+    pantryBaseDeduction: 0,
+    pantryBaseUnit: pantryBase.unit,
+  };
 }
 
 /**
