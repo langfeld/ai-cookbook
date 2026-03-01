@@ -281,7 +281,10 @@ function weightedRandomPick(recipes, context) {
 /**
  * Liefert bewertete Rezeptvorschläge für einen bestimmten Slot.
  */
-export function getSuggestions(userId, { dayIdx = 0, mealType = 'mittag', excludeRecipeIds = [], planId = null, limit = 8 } = {}) {
+export function getSuggestions(userId, { dayIdx = 0, mealType = 'mittag', excludeRecipeIds = [], planId = null, limit = 8, search = null } = {}) {
+  const isSearch = search && search.trim().length > 0;
+  const searchTerm = isSearch ? `%${search.trim().toLowerCase()}%` : null;
+
   const recipes = db.prepare(`
     SELECT r.*, GROUP_CONCAT(DISTINCT c.name) as category_names,
       (SELECT COUNT(*) FROM cooking_history ch WHERE ch.recipe_id = r.id) as cook_count,
@@ -320,11 +323,12 @@ export function getSuggestions(userId, { dayIdx = 0, mealType = 'mittag', exclud
 
   const scored = recipes
     .filter(r => !excludeSet.has(r.id))
+    .filter(r => !isSearch || r.title.toLowerCase().includes(searchTerm.replace(/%/g, '')))
     .map(r => {
       const ingredients = db.prepare('SELECT name FROM ingredients WHERE recipe_id = ?').all(r.id);
       return { ...r, categories: r.category_names || '', ingredientNames: ingredients.map(i => i.name.toLowerCase()) };
     })
-    .filter(r => mealTypeFitness(r, mealType) !== 'mismatch') // Harter Filter!
+    .filter(r => isSearch || mealTypeFitness(r, mealType) !== 'mismatch') // Harter Filter nur ohne Suche!
     .map(recipe => {
       const context = { dayIdx, mealType, usedRecipeIds: new Set(), usedIngredients: new Set(), pantrySet, previousMealCategory: null };
       const score = scoreRecipe(recipe, context);

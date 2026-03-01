@@ -961,43 +961,100 @@
               </button>
             </div>
 
-            <div class="flex-1 p-5 overflow-y-auto">
-              <p v-if="swapModal.loading" class="py-8 text-stone-500 text-sm text-center">Vorschläge werden geladen…</p>
-              <p v-else-if="!swapModal.suggestions.length" class="py-8 text-stone-400 text-sm text-center">
-                Keine passenden Rezepte für diesen Slot gefunden.<br>
-                <span class="text-xs">Lege mehr Rezepte mit passenden Kategorien an.</span>
+            <!-- Suchfeld -->
+            <div class="px-5 pt-4 pb-2">
+              <div class="relative">
+                <Search class="top-1/2 left-3 absolute w-4 h-4 text-stone-400 -translate-y-1/2 pointer-events-none" />
+                <input
+                  type="text"
+                  :value="swapSearch"
+                  @input="onSwapSearchInput($event.target.value)"
+                  placeholder="Rezept suchen…"
+                  data-testid="swap-search-input"
+                  class="border-stone-200 dark:border-stone-700 bg-stone-50 dark:bg-stone-800 py-2 pr-3 pl-9 border rounded-xl w-full text-sm text-stone-800 dark:text-stone-200 placeholder-stone-400 focus:outline-none focus:ring-2 focus:ring-primary-400"
+                />
+              </div>
+            </div>
+
+            <div class="flex-1 px-5 pb-5 overflow-y-auto">
+              <!-- Lade-Zustand -->
+              <p v-if="swapModal.loading || swapSearchLoading" class="py-8 text-stone-500 text-sm text-center">
+                {{ swapSearch ? 'Suche läuft…' : 'Vorschläge werden geladen…' }}
               </p>
-              <div v-else class="space-y-2">
-                <button v-for="s in swapModal.suggestions" :key="s.id"
-                  @click="doSwap(s.id)"
-                  class="group swap-suggestion">
-                  <div class="relative rounded-lg w-16 h-12 overflow-hidden shrink-0">
-                    <img v-if="s.image_url" :src="s.image_url" class="w-full h-full object-cover" loading="lazy" />
-                    <div v-else class="flex justify-center items-center bg-stone-100 dark:bg-stone-800 w-full h-full">
-                      <UtensilsCrossed class="w-4 h-4 text-stone-300" />
+
+              <!-- Suchergebnisse -->
+              <template v-else-if="swapSearch.trim()">
+                <p v-if="!swapSearchResults.length" class="py-8 text-stone-400 text-sm text-center">
+                  Keine Rezepte für „{{ swapSearch }}“ gefunden.
+                </p>
+                <div v-else class="space-y-2">
+                  <p class="mb-1 text-stone-400 text-xs">{{ swapSearchResults.length }} Ergebnis{{ swapSearchResults.length !== 1 ? 'se' : '' }}</p>
+                  <button v-for="s in swapSearchResults" :key="s.id"
+                    @click="doSwap(s.id)"
+                    data-testid="swap-search-result"
+                    class="group swap-suggestion">
+                    <div class="relative rounded-lg w-16 h-12 overflow-hidden shrink-0">
+                      <img v-if="s.image_url" :src="s.image_url" class="w-full h-full object-cover" loading="lazy" />
+                      <div v-else class="flex justify-center items-center bg-stone-100 dark:bg-stone-800 w-full h-full">
+                        <UtensilsCrossed class="w-4 h-4 text-stone-300" />
+                      </div>
                     </div>
-                  </div>
-                  <div class="flex-1 min-w-0">
-                    <div class="font-medium text-stone-800 dark:text-stone-200 text-sm truncate">{{ s.title }}</div>
-                    <div class="flex items-center gap-2 text-stone-400 text-xs">
-                      <span v-if="s.total_time"><Clock class="inline w-3 h-3" /> {{ s.total_time }} min</span>
-                      <span v-if="s.difficulty">{{ s.difficulty }}</span>
+                    <div class="flex-1 min-w-0">
+                      <div class="font-medium text-stone-800 dark:text-stone-200 text-sm truncate">{{ s.title }}</div>
+                      <div class="flex items-center gap-2 text-stone-400 text-xs">
+                        <span v-if="s.total_time"><Clock class="inline w-3 h-3" /> {{ s.total_time }} min</span>
+                        <span v-if="s.difficulty">{{ s.difficulty }}</span>
+                      </div>
                     </div>
-                    <div v-if="s.hints?.length" class="flex flex-wrap gap-x-2.5 gap-y-0.5 mt-1">
-                      <span v-for="(h, hi) in s.hints.slice(0, 3)" :key="hi"
-                        class="text-[0.65rem] text-stone-500 dark:text-stone-400 whitespace-nowrap">
-                        {{ h.icon }} {{ h.text }}
+                    <div class="flex flex-col items-end gap-1 shrink-0">
+                      <Star v-if="s.is_favorite" class="fill-amber-400 w-4 h-4 text-amber-400" />
+                      <span class="bg-stone-100 dark:bg-stone-800 px-1.5 py-0.5 rounded font-mono text-[0.6rem] text-stone-400 dark:text-stone-500">
+                        {{ s.score }}
                       </span>
                     </div>
-                  </div>
-                  <div class="flex flex-col items-end gap-1 shrink-0">
-                    <Star v-if="s.is_favorite" class="fill-amber-400 w-4 h-4 text-amber-400" />
-                    <span class="bg-stone-100 dark:bg-stone-800 px-1.5 py-0.5 rounded font-mono text-[0.6rem] text-stone-400 dark:text-stone-500">
-                      {{ s.score }}
-                    </span>
-                  </div>
-                </button>
-              </div>
+                  </button>
+                </div>
+              </template>
+
+              <!-- Standard-Vorschläge -->
+              <template v-else>
+                <p v-if="!swapModal.suggestions.length" class="py-8 text-stone-400 text-sm text-center">
+                  Keine passenden Rezepte für diesen Slot gefunden.<br>
+                  <span class="text-xs">Lege mehr Rezepte mit passenden Kategorien an.</span>
+                </p>
+                <div v-else class="space-y-2">
+                  <button v-for="s in swapModal.suggestions" :key="s.id"
+                    @click="doSwap(s.id)"
+                    data-testid="swap-suggestion"
+                    class="group swap-suggestion">
+                    <div class="relative rounded-lg w-16 h-12 overflow-hidden shrink-0">
+                      <img v-if="s.image_url" :src="s.image_url" class="w-full h-full object-cover" loading="lazy" />
+                      <div v-else class="flex justify-center items-center bg-stone-100 dark:bg-stone-800 w-full h-full">
+                        <UtensilsCrossed class="w-4 h-4 text-stone-300" />
+                      </div>
+                    </div>
+                    <div class="flex-1 min-w-0">
+                      <div class="font-medium text-stone-800 dark:text-stone-200 text-sm truncate">{{ s.title }}</div>
+                      <div class="flex items-center gap-2 text-stone-400 text-xs">
+                        <span v-if="s.total_time"><Clock class="inline w-3 h-3" /> {{ s.total_time }} min</span>
+                        <span v-if="s.difficulty">{{ s.difficulty }}</span>
+                      </div>
+                      <div v-if="s.hints?.length" class="flex flex-wrap gap-x-2.5 gap-y-0.5 mt-1">
+                        <span v-for="(h, hi) in s.hints.slice(0, 3)" :key="hi"
+                          class="text-[0.65rem] text-stone-500 dark:text-stone-400 whitespace-nowrap">
+                          {{ h.icon }} {{ h.text }}
+                        </span>
+                      </div>
+                    </div>
+                    <div class="flex flex-col items-end gap-1 shrink-0">
+                      <Star v-if="s.is_favorite" class="fill-amber-400 w-4 h-4 text-amber-400" />
+                      <span class="bg-stone-100 dark:bg-stone-800 px-1.5 py-0.5 rounded font-mono text-[0.6rem] text-stone-400 dark:text-stone-500">
+                        {{ s.score }}
+                      </span>
+                    </div>
+                  </button>
+                </div>
+              </template>
             </div>
           </div>
         </div>
@@ -1184,7 +1241,7 @@ import {
   Sparkles, ChevronLeft, ChevronRight, Check, Eye, RefreshCw,
   X, Clock, ChefHat, UtensilsCrossed, Plus, Minus, Star, Trash2,
   LayoutGrid, CalendarDays, Settings, Settings2, FolderOpen, Info,
-  Ban, ShieldOff, Lock, Unlock, Users, ChevronDown, FolderSearch, EllipsisVertical,
+  Ban, ShieldOff, Lock, Unlock, Users, ChevronDown, FolderSearch, EllipsisVertical, Search,
 } from 'lucide-vue-next';
 
 const router = useRouter();
@@ -1247,6 +1304,10 @@ watch([genMealTypes, genPersons, visibleSlots, genSourceMode, genCollectionIds, 
 }, { deep: true });
 
 const swapModal = ref({ show: false, entry: null, suggestions: [], loading: false });
+const swapSearch = ref('');
+const swapSearchResults = ref([]);
+const swapSearchLoading = ref(false);
+let swapSearchTimer = null;
 const dragSource = ref(null);
 const dragTarget = ref(null);
 
@@ -1491,6 +1552,37 @@ async function openSwapModal(entry) {
 
 function closeSwapModal() {
   swapModal.value = { show: false, entry: null, suggestions: [], loading: false };
+  swapSearch.value = '';
+  swapSearchResults.value = [];
+  swapSearchLoading.value = false;
+  if (swapSearchTimer) { clearTimeout(swapSearchTimer); swapSearchTimer = null; }
+}
+
+function onSwapSearchInput(val) {
+  swapSearch.value = val;
+  if (swapSearchTimer) clearTimeout(swapSearchTimer);
+  if (!val.trim()) {
+    swapSearchResults.value = [];
+    swapSearchLoading.value = false;
+    return;
+  }
+  swapSearchLoading.value = true;
+  swapSearchTimer = setTimeout(async () => {
+    try {
+      const entry = swapModal.value.entry;
+      const excludeIds = entry?.recipe_id ? [entry.recipe_id] : [];
+      const results = await store.fetchSuggestions({
+        dayIdx: entry?.day_of_week ?? 0,
+        mealType: entry?.meal_type ?? 'mittag',
+        excludeRecipeIds: excludeIds,
+        planId: currentPlan.value?.id,
+        search: val.trim(),
+      });
+      swapSearchResults.value = results || [];
+    } finally {
+      swapSearchLoading.value = false;
+    }
+  }, 300);
 }
 
 async function doSwap(newRecipeId) {

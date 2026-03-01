@@ -95,10 +95,11 @@ export const useMealPlanStore = defineStore('mealplan', () => {
   }
 
   /** Rezeptvorschläge für einen Slot */
-  async function fetchSuggestions({ dayIdx, mealType, excludeRecipeIds = [], planId = null }) {
+  async function fetchSuggestions({ dayIdx, mealType, excludeRecipeIds = [], planId = null, search = null }) {
     const params = new URLSearchParams({ dayIdx, mealType, limit: 8 });
     if (excludeRecipeIds.length) params.set('excludeRecipeIds', excludeRecipeIds.join(','));
     if (planId) params.set('planId', planId);
+    if (search) params.set('search', search);
     const data = await api.get(`/mealplan/suggestions?${params}`);
     return data.suggestions;
   }
