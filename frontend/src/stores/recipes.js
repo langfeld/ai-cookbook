@@ -193,11 +193,28 @@ export const useRecipesStore = defineStore('recipes', () => {
     return data;
   }
 
+  /** Prüft ob ein Rezept in einem fixierten, ungekochten Wochenplan steht */
+  async function checkRevisionConflicts(recipeId) {
+    return await api.get(`/recipes/${recipeId}/revision-check`);
+  }
+
+  /** Rezept per KI überarbeiten (überschreiben oder als Kopie) */
+  async function reviseRecipe(recipeId, instructions, mode) {
+    const data = await api.post(`/recipes/${recipeId}/revise`, { instructions, mode });
+    if (mode === 'overwrite' && data.recipe) {
+      // Aktuelles Rezept im Store aktualisieren
+      currentRecipe.value = data.recipe;
+    }
+    await fetchRecipes().catch(() => {});
+    return data;
+  }
+
   return {
     recipes, currentRecipe, categories, loading, filters,
     totalRecipes, favoriteRecipes, recentRecipes,
     fetchRecipes, fetchRecipe, createRecipe, updateRecipe, deleteRecipe, deleteRecipesBatch,
     importFromPhoto, importFromText, importFromUrl, toggleFavorite, markAsCooked,
     fetchCategories, createCategory, exportRecipes, importRecipes,
+    checkRevisionConflicts, reviseRecipe,
   };
 });

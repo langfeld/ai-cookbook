@@ -233,7 +233,14 @@
         <div class="flex flex-col gap-6">
           <!-- Zubereitung -->
           <div class="flex-1 bg-white dark:bg-stone-900 p-5 border border-stone-200 dark:border-stone-800 rounded-xl">
-            <h2 class="mb-5 font-semibold text-stone-800 dark:text-stone-100 text-lg">👨‍🍳 Zubereitung</h2>
+            <div class="flex justify-between items-center mb-5">
+              <h2 class="font-semibold text-stone-800 dark:text-stone-100 text-lg">👨‍🍳 Zubereitung</h2>
+              <button @click="showRevisionModal = true"
+                class="flex items-center gap-1.5 hover:bg-primary-50 dark:hover:bg-primary-900/30 px-2.5 py-1.5 border border-stone-200 hover:border-primary-300 dark:border-stone-700 dark:hover:border-primary-700 rounded-lg font-medium text-stone-500 hover:text-primary-600 dark:hover:text-primary-400 dark:text-stone-400 text-xs transition-colors"
+                title="Rezept per KI überarbeiten">
+                <Sparkles class="w-3.5 h-3.5" /> KI-Überarbeitung
+              </button>
+            </div>
             <div class="space-y-8">
               <div v-for="step in recipe.steps" :key="step.id" class="flex gap-3">
                 <div class="flex justify-center items-center bg-primary-100 dark:bg-primary-900/50 mt-0.5 rounded-full w-7 h-7 shrink-0">
@@ -255,6 +262,15 @@
 
         </div>
       </div>
+
+      <!-- ═══════════════════ KI-ÜBERARBEITUNG MODAL ═══════════════════ -->
+      <RecipeRevisionModal
+        v-if="recipe?.id"
+        v-model="showRevisionModal"
+        :recipe-id="recipe.id"
+        @revised="onRevised"
+        @created="onRevisionCopy"
+      />
     </div>
 
     <!-- Laden -->
@@ -427,11 +443,12 @@ import { useRecipesStore } from '@/stores/recipes.js';
 import { useMealPlanStore } from '@/stores/mealplan.js';
 import { usePantryStore } from '@/stores/pantry.js';
 import { useNotification } from '@/composables/useNotification.js';
-import { Star, Clock, Users, ChefHat, Pencil, Plus, Minus, Trash2, CalendarPlus, X, ChevronLeft, ChevronRight, Maximize, Warehouse, RotateCcw, Smartphone, EllipsisVertical } from 'lucide-vue-next';
+import { Star, Clock, Users, ChefHat, Pencil, Plus, Minus, Trash2, CalendarPlus, X, ChevronLeft, ChevronRight, Maximize, Warehouse, RotateCcw, Smartphone, EllipsisVertical, Sparkles } from 'lucide-vue-next';
 import { useWakeLock } from '@/composables/useWakeLock.js';
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue';
 import AddToCollection from '@/components/collections/AddToCollection.vue';
 import CookingMode from '@/components/recipes/CookingMode.vue';
+import RecipeRevisionModal from '@/components/recipes/RecipeRevisionModal.vue';
 import { useIngredientIcons } from '@/composables/useIngredientIcons.js';
 import { apiRaw } from '@/composables/useApi.js';
 import { formatAmount } from '@/utils/formatAmount.js';
@@ -460,6 +477,7 @@ const isTouchDevice = ref(
 );
 const pendingSwapData = ref(null);
 const showCookingMode = ref(false);
+const showRevisionModal = ref(false);
 
 // ─── Zutaten-Anpassungsmodus ───
 const adjustmentMode = ref(false);
@@ -813,6 +831,19 @@ async function deleteRecipe() {
   } finally {
     deleting.value = false;
   }
+}
+
+/** KI-Überarbeitung: Rezept wurde überschrieben → neu laden */
+async function onRevised() {
+  await recipesStore.fetchRecipe(route.params.id);
+  if (recipe.value) {
+    adjustedServings.value = recipe.value.servings;
+  }
+}
+
+/** KI-Überarbeitung: Kopie erstellt → zum neuen Rezept navigieren */
+function onRevisionCopy(newRecipeId) {
+  router.push({ name: 'recipe-detail', params: { id: newRecipeId } });
 }
 
 onMounted(async () => {

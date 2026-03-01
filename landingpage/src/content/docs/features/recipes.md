@@ -18,6 +18,16 @@ Unterstützt **Multi-Bild-Upload** für Rezepte, die über mehrere Seiten gehen.
 
 Alternativ ein Rezept als **Freitext** beschreiben — die KI strukturiert es automatisch in das Rezeptformat mit Zutaten, Schritten und Metadaten.
 
+## KI-Überarbeitung
+
+Bestehende Rezepte per KI umschreiben lassen — direkt aus der Rezeptansicht:
+
+- **Freitext-Anweisungen** — beschreibe die gewünschten Änderungen (z.B. „Bohnen anbraten statt marinieren, mit Soja-Sauce")
+- **Überschreiben oder Kopie** — wähle ob das Original aktualisiert oder ein neues Rezept erstellt wird
+- **Wochenplan-Konfliktprüfung** — Warnung wenn das Rezept in einem fixierten, noch ungekochten Wochenplan steht (bereits gekochte Einträge lösen keine Warnung aus)
+- **Konsistente Überarbeitung** — Titel, Beschreibung, Zutaten und Zubereitungsschritte werden zusammenhängend angepasst; Bild und Kategorien bleiben erhalten
+- **Sicherheit** — Rate-Limit (5 Anfragen / 15 Min.), Eingabelimit (2000 Zeichen), KI-Output wird sanitiert und strukturell validiert
+
 ## Bildzuschnitt
 
 Integrierter Cropper mit:

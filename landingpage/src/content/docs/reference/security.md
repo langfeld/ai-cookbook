@@ -21,6 +21,11 @@ JWT-Tokens in URL-Query-Parametern werden in Server-Logs automatisch als `token=
 ## Rate-Limiting
 
 - API-Key Generierung und Widerruf: **max. 5 Anfragen pro Stunde**
+- KI-Rezeptüberarbeitung: **max. 5 Anfragen pro 15 Minuten**
+
+## KI-Prompt-Schutz
+
+Bei der KI-Rezeptüberarbeitung werden Nutzer-Eingaben in **Delimiter-Blöcke** eingebettet und dürfen nur als inhaltliche Anweisung interpretiert werden. Der System-Prompt weist die KI explizit an, Anweisungen außerhalb des Rezept-Kontexts zu ignorieren. Der KI-Output wird durch `sanitizeAiRecipe()` sanitiert (Längenlimits, Typ-Validierung, Wertebereichsprüfung) und zusätzlich strukturell validiert (mind. 1 Zutat, 1 Zubereitungsschritt, nicht-leerer Titel).
 
 ## Datenbankindex
 

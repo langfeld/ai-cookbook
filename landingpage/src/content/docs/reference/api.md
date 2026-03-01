@@ -29,6 +29,8 @@ description: Vollständige API-Referenz aller Endpunkte.
 | `POST` | `/:id/image` | Bild hochladen/ersetzen |
 | `POST` | `/:id/favorite` | Favorit togglen |
 | `POST` | `/:id/cooked` | Als gekocht markieren (mit Vorratsabzug) |
+| `GET` | `/:id/revision-check` | Prüft Wochenplan-Konflikte vor KI-Überarbeitung |
+| `POST` | `/:id/revise` | Rezept per KI überarbeiten (Rate-Limit: 5/15min) |
 | `GET` | `/export` | Eigene Rezepte als JSON exportieren |
 | `POST` | `/import` | Rezepte aus JSON importieren (max. 100) |
 

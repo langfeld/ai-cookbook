@@ -16,7 +16,7 @@
  */
 
 import db from '../config/database.js';
-import { parseRecipeFromImage, parseRecipeFromText, parseRecipeFromUrl, suggestCategories } from '../services/recipe-parser.js';
+import { parseRecipeFromImage, parseRecipeFromText, parseRecipeFromUrl, suggestCategories, reviseRecipe } from '../services/recipe-parser.js';
 // autoGenerateConversions entfernt – natürliche Einheiten + KI-Aggregation statt manueller Umrechnungstabelle
 import { config } from '../config/env.js';
 import { writeFileSync, readFileSync, existsSync } from 'fs';
@@ -648,6 +648,201 @@ export default async function recipesRoutes(fastify) {
 
     const recipeId = transaction();
     return reply.status(201).send({ id: recipeId, recipe: parsedRecipe });
+  });
+
+  /**
+   * GET /api/recipes/:id/revision-check
+   * Prüft ob ein Rezept in einem fixierten, noch ungekochten Wochenplan steht
+   */
+  fastify.get('/:id/revision-check', {
+    schema: {
+      description: 'Prüfe ob Rezept in fixiertem Wochenplan (Konflikt-Check)',
+      tags: ['Rezepte'],
+      security: [{ bearerAuth: [] }],
+      params: {
+        type: 'object',
+        properties: { id: { type: 'integer' } },
+      },
+    },
+  }, async (request, reply) => {
+    const userId = request.user.id;
+    const recipeId = request.params.id;
+
+    // Ownership-Check
+    const existing = db.prepare('SELECT id FROM recipes WHERE id = ? AND user_id = ?').get(recipeId, userId);
+    if (!existing) {
+      return reply.status(404).send({ error: 'Rezept nicht gefunden' });
+    }
+
+    const weekStart = getWeekStart();
+
+    // Finde fixierte, ungekochte Einträge mit diesem Rezept (aktuelle oder zukünftige Wochen)
+    const conflicts = db.prepare(`
+      SELECT mp.week_start, mpe.day_of_week, mpe.meal_type
+      FROM meal_plan_entries mpe
+      JOIN meal_plans mp ON mpe.meal_plan_id = mp.id
+      WHERE mpe.recipe_id = ?
+        AND mp.user_id = ?
+        AND mp.is_locked = 1
+        AND mpe.is_cooked = 0
+        AND mp.week_start >= ?
+    `).all(recipeId, userId, weekStart);
+
+    return {
+      hasConflict: conflicts.length > 0,
+      conflictDetails: conflicts.map(c => ({
+        weekStart: c.week_start,
+        dayOfWeek: c.day_of_week,
+        mealType: c.meal_type,
+      })),
+    };
+  });
+
+  /**
+   * POST /api/recipes/:id/revise
+   * Rezept per KI überarbeiten (überschreiben oder als Kopie)
+   */
+  fastify.post('/:id/revise', {
+    config: {
+      rateLimit: { max: 5, timeWindow: '15 minutes' },
+    },
+    schema: {
+      description: 'Rezept per KI überarbeiten',
+      tags: ['Rezepte'],
+      security: [{ bearerAuth: [] }],
+      params: {
+        type: 'object',
+        properties: { id: { type: 'integer' } },
+      },
+      body: {
+        type: 'object',
+        required: ['instructions', 'mode'],
+        properties: {
+          instructions: { type: 'string', minLength: 3, maxLength: 2000 },
+          mode: { type: 'string', enum: ['overwrite', 'copy'] },
+        },
+      },
+    },
+  }, async (request, reply) => {
+    const userId = request.user.id;
+    const recipeId = request.params.id;
+    const { instructions, mode } = request.body;
+
+    // Bestehendes Rezept vollständig laden (Ownership-Check)
+    const recipe = db.prepare('SELECT * FROM recipes WHERE id = ? AND user_id = ?').get(recipeId, userId);
+    if (!recipe) {
+      return reply.status(404).send({ error: 'Rezept nicht gefunden' });
+    }
+
+    const ingredients = db.prepare('SELECT * FROM ingredients WHERE recipe_id = ? ORDER BY group_name, sort_order').all(recipeId);
+    const steps = db.prepare('SELECT * FROM cooking_steps WHERE recipe_id = ? ORDER BY step_number').all(recipeId);
+
+    // KI-Überarbeitung
+    const rawRevised = await reviseRecipe({ ...recipe, ingredients, steps }, instructions);
+    const revised = sanitizeAiRecipe(rawRevised);
+
+    // Strukturelle Validierung: KI muss ein gültiges Rezept liefern
+    if (!revised.title || revised.title === 'Unbenanntes Rezept') {
+      return reply.status(422).send({ error: 'KI-Überarbeitung hat keinen gültigen Titel erzeugt.' });
+    }
+    if (!revised.ingredients.length) {
+      return reply.status(422).send({ error: 'KI-Überarbeitung hat keine Zutaten erzeugt.' });
+    }
+    if (!revised.steps.length) {
+      return reply.status(422).send({ error: 'KI-Überarbeitung hat keine Zubereitungsschritte erzeugt.' });
+    }
+
+    if (mode === 'overwrite') {
+      // In-Place Update (gleiche Logik wie PUT /:id)
+      const totalTime = (revised.prep_time || 0) + (revised.cook_time || 0);
+
+      const transaction = db.transaction(() => {
+        db.prepare(`
+          UPDATE recipes SET title=?, description=?, servings=?, prep_time=?, cook_time=?, total_time=?, difficulty=?, updated_at=CURRENT_TIMESTAMP
+          WHERE id = ?
+        `).run(revised.title, revised.description, revised.servings, revised.prep_time, revised.cook_time, totalTime, revised.difficulty, recipeId);
+
+        // Zutaten ersetzen
+        db.prepare('DELETE FROM ingredients WHERE recipe_id = ?').run(recipeId);
+        const insertIng = db.prepare(
+          'INSERT INTO ingredients (recipe_id, name, amount, unit, group_name, sort_order, is_optional, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+        );
+        revised.ingredients.forEach((ing, idx) => {
+          insertIng.run(recipeId, ing.name, ing.amount, ing.unit, ing.group_name, idx, ing.is_optional, ing.notes);
+        });
+
+        // Steps ersetzen
+        db.prepare('DELETE FROM cooking_steps WHERE recipe_id = ?').run(recipeId);
+        const insertStep = db.prepare(
+          'INSERT INTO cooking_steps (recipe_id, step_number, title, instruction, duration_minutes) VALUES (?, ?, ?, ?, ?)'
+        );
+        revised.steps.forEach((step, idx) => {
+          insertStep.run(recipeId, idx + 1, step.title, step.instruction, step.duration_minutes);
+        });
+      });
+
+      transaction();
+
+      // Aktualisiertes Rezept zurückgeben
+      const updatedRecipe = db.prepare('SELECT * FROM recipes WHERE id = ?').get(recipeId);
+      const updatedIngredients = db.prepare('SELECT * FROM ingredients WHERE recipe_id = ? ORDER BY group_name, sort_order').all(recipeId);
+      const updatedSteps = db.prepare('SELECT * FROM cooking_steps WHERE recipe_id = ? ORDER BY step_number').all(recipeId);
+      const categories = db.prepare('SELECT c.* FROM categories c JOIN recipe_categories rc ON c.id = rc.category_id WHERE rc.recipe_id = ?').all(recipeId);
+
+      return {
+        message: 'Rezept erfolgreich überarbeitet!',
+        recipe: { ...updatedRecipe, ingredients: updatedIngredients, steps: updatedSteps, categories },
+      };
+    } else {
+      // Kopie erstellen
+      const transaction = db.transaction(() => {
+        const result = db.prepare(`
+          INSERT INTO recipes (user_id, title, description, servings, prep_time, cook_time, total_time, difficulty, image_url, source_url, ai_generated, notes)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
+        `).run(
+          userId, revised.title, revised.description, revised.servings,
+          revised.prep_time, revised.cook_time,
+          (revised.prep_time || 0) + (revised.cook_time || 0),
+          revised.difficulty,
+          recipe.image_url, recipe.source_url,
+          recipe.notes ? `Überarbeitet aus: ${sanitize(recipe.title, 200)}\n${recipe.notes}` : `Überarbeitet aus: ${sanitize(recipe.title, 200)}`
+        );
+
+        const newRecipeId = result.lastInsertRowid;
+
+        // Kategorien vom Original kopieren
+        const origCats = db.prepare('SELECT category_id FROM recipe_categories WHERE recipe_id = ?').all(recipeId);
+        const insertCat = db.prepare('INSERT OR IGNORE INTO recipe_categories (recipe_id, category_id) VALUES (?, ?)');
+        for (const cat of origCats) {
+          insertCat.run(newRecipeId, cat.category_id);
+        }
+
+        // Zutaten einfügen
+        const insertIng = db.prepare(
+          'INSERT INTO ingredients (recipe_id, name, amount, unit, group_name, sort_order, is_optional, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+        );
+        revised.ingredients.forEach((ing, idx) => {
+          insertIng.run(newRecipeId, ing.name, ing.amount, ing.unit, ing.group_name, idx, ing.is_optional, ing.notes);
+        });
+
+        // Steps einfügen
+        const insertStep = db.prepare(
+          'INSERT INTO cooking_steps (recipe_id, step_number, title, instruction, duration_minutes) VALUES (?, ?, ?, ?, ?)'
+        );
+        revised.steps.forEach((step, idx) => {
+          insertStep.run(newRecipeId, idx + 1, step.title, step.instruction, step.duration_minutes);
+        });
+
+        return newRecipeId;
+      });
+
+      const newRecipeId = transaction();
+
+      return reply.status(201).send({
+        message: 'Rezept-Kopie erfolgreich erstellt!',
+        id: newRecipeId,
+      });
+    }
   });
 
   /**
