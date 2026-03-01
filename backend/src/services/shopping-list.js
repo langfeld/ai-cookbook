@@ -11,7 +11,7 @@
  */
 
 import db from '../config/database.js';
-import { normalizeUnit, scaleIngredient } from '../utils/helpers.js';
+import { normalizeUnit, scaleIngredient, convertToBaseUnit, unitsCompatible } from '../utils/helpers.js';
 import { parsePackageSize } from './rewe-api.js';
 import { getAIProvider } from './ai/provider.js';
 
@@ -216,32 +216,35 @@ export async function generateShoppingList(userId, mealPlanId, options = {}) {
     let pantryDeducted = 0;
     let pantryNote = null;
 
-    const matchingPantry = pantryItems.find(
-      p => p.ingredient_name.toLowerCase() === item.name.toLowerCase()
-    );
+    // Pantry-Match suchen (auch Alias-aufgelöste Namen berücksichtigen)
+    const matchingPantry = pantryItems.find(p => {
+      const pantryName = (aliasMap.get(p.ingredient_name.toLowerCase()) || p.ingredient_name).toLowerCase();
+      const itemName = item.name.toLowerCase();
+      return pantryName === itemName || p.ingredient_name.toLowerCase() === itemName;
+    });
 
     if (matchingPantry && remainingAmount) {
       if (matchingPantry.is_permanent) {
         pantryDeducted = remainingAmount;
         remainingAmount = 0;
       } else {
-        const pantryUnit = normalizeUnit(matchingPantry.unit);
-        const itemUnit = item.unit || '';
+        // Beide Mengen in Basiseinheiten konvertieren (TL→ml, EL→ml, Prise→g, kg→g, l→ml)
+        const itemBase = convertToBaseUnit(remainingAmount, normalizeUnit(item.unit));
+        const pantryBase = convertToBaseUnit(matchingPantry.amount, normalizeUnit(matchingPantry.unit));
+        const compat = unitsCompatible(itemBase.unit, pantryBase.unit);
 
-        if (pantryUnit === itemUnit || (!pantryUnit && !itemUnit)) {
-          // Identische Einheiten → direkt abziehen
-          const deduction = Math.min(matchingPantry.amount, remainingAmount);
+        if (compat.compatible) {
+          // Kompatible Einheiten → abziehen (in Basiseinheiten vergleichen)
+          const deductionBase = Math.min(pantryBase.amount, itemBase.amount);
+          // Zurückrechnen in die Originaleinheit des Items
+          const ratio = itemBase.amount > 0 ? deductionBase / itemBase.amount : 0;
+          const deduction = remainingAmount * ratio;
           remainingAmount -= deduction;
           pantryDeducted = deduction;
-        } else if (
-          (pantryUnit === 'g' && itemUnit === 'ml') || (pantryUnit === 'ml' && itemUnit === 'g')
-        ) {
-          // g↔ml Näherung
-          const deduction = Math.min(matchingPantry.amount, remainingAmount);
-          remainingAmount -= deduction;
-          pantryDeducted = deduction;
+          // Rundungsfehler bereinigen
+          if (remainingAmount < 0.01) remainingAmount = 0;
         } else {
-          // Inkompatible Einheiten → Hinweis
+          // Wirklich inkompatible Einheiten (z.B. Stück vs g) → Hinweis
           pantryNote = `Im Vorrat: ${matchingPantry.amount} ${matchingPantry.unit || 'Stk'} (andere Einheit)`.trim();
         }
       }

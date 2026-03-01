@@ -190,14 +190,18 @@ export function normalizeUnit(unit) {
 }
 
 /**
- * Konvertiert Mengen in eine einheitliche Basis für einfache Fälle.
- * Nur für kg→g und l→ml. Keine erzwungene Konvertierung von EL/TL.
- * Wird intern als Hilfsfunktion verwendet (nicht mehr für Einkaufslisten-Aggregation).
+ * Konvertiert Mengen in eine einheitliche Basis für Vergleiche.
+ * Unterstützt: kg→g, l→ml, TL→ml, EL→ml, Prise→g.
+ * Die Löffel-/Prisen-Konvertierungen sind Näherungen (Standard-Kochwerte),
+ * reichen aber für Vorratscheck und Einkaufslisten-Abgleich aus.
  */
 export function convertToBaseUnit(amount, unit) {
   const conversions = {
     kg: { base: 'g', factor: 1000 },
     l: { base: 'ml', factor: 1000 },
+    TL: { base: 'ml', factor: 5 },
+    EL: { base: 'ml', factor: 15 },
+    Prise: { base: 'g', factor: 0.3 },
   };
 
   const normalized = normalizeUnit(unit);
