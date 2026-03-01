@@ -579,7 +579,12 @@ const plannerWeekLabel = computed(() => {
   const sunday = new Date(monday);
   sunday.setDate(monday.getDate() + 6);
   const fmt = (dt) => `${dt.getDate()}.${dt.getMonth() + 1}.`;
-  return `${fmt(monday)} – ${fmt(sunday)}${sunday.getFullYear()}`;
+  // ISO-8601 Kalenderwoche berechnen (Donnerstag der Woche bestimmt das Jahr/KW)
+  const thursday = new Date(monday);
+  thursday.setDate(monday.getDate() + 3);
+  const jan1 = new Date(thursday.getFullYear(), 0, 1);
+  const kw = Math.ceil(((thursday - jan1) / 86400000 + jan1.getDay() + 1) / 7);
+  return `KW ${kw}: ${fmt(monday)} – ${fmt(sunday)}${sunday.getFullYear()}`;
 });
 
 async function addToPlan() {
