@@ -127,12 +127,11 @@
               </div>
               <div v-if="!selectMode" class="flex gap-1">
                 <button
-                  v-if="!item.is_permanent"
                   @click="openUseModal(item)"
-                  class="p-1.5 rounded-lg text-accent-600 hover:bg-accent-50 dark:hover:bg-accent-900/20"
-                  title="Verbrauchen"
+                  class="hover:bg-primary-50 dark:hover:bg-primary-900/20 p-1.5 rounded-lg text-primary-600"
+                  title="Bearbeiten"
                 >
-                  <Minus class="w-3.5 h-3.5" />
+                  <Pencil class="w-3.5 h-3.5" />
                 </button>
                 <button
                   @click="removeItem(item)"
@@ -364,12 +363,11 @@
                 </div>
                 <div v-if="!selectMode" class="flex gap-1">
                   <button
-                    v-if="!item.is_permanent"
                     @click="openUseModal(item)"
-                    class="p-1.5 rounded-lg text-accent-600 hover:bg-accent-50 dark:hover:bg-accent-900/20"
-                    title="Verbrauchen"
+                    class="hover:bg-primary-50 dark:hover:bg-primary-900/20 p-1.5 rounded-lg text-primary-600"
+                    title="Bearbeiten"
                   >
-                    <Minus class="w-3.5 h-3.5" />
+                    <Pencil class="w-3.5 h-3.5" />
                   </button>
                   <button
                     @click="removeItem(item)"
@@ -488,16 +486,7 @@
             {{ useModal.item?.ingredient_name }}
           </h2>
           <!-- Modus-Toggle -->
-          <div class="flex bg-stone-100 dark:bg-stone-800 p-1 rounded-lg">
-            <button
-              @click="useModal.mode = 'use'"
-              :class="[
-                'flex-1 py-1.5 text-sm font-medium rounded-md transition-colors',
-                useModal.mode === 'use'
-                  ? 'bg-white dark:bg-stone-700 text-stone-800 dark:text-stone-100 shadow-sm'
-                  : 'text-stone-500 dark:text-stone-400 hover:text-stone-700 dark:hover:text-stone-300'
-              ]"
-            >Verbrauchen</button>
+          <div v-if="!useModal.item?.is_permanent" class="flex bg-stone-100 dark:bg-stone-800 p-1 rounded-lg">
             <button
               @click="useModal.mode = 'adjust'"
               :class="[
@@ -507,9 +496,18 @@
                   : 'text-stone-500 dark:text-stone-400 hover:text-stone-700 dark:hover:text-stone-300'
               ]"
             >Bestand anpassen</button>
+            <button
+              @click="useModal.mode = 'use'"
+              :class="[
+                'flex-1 py-1.5 text-sm font-medium rounded-md transition-colors',
+                useModal.mode === 'use'
+                  ? 'bg-white dark:bg-stone-700 text-stone-800 dark:text-stone-100 shadow-sm'
+                  : 'text-stone-500 dark:text-stone-400 hover:text-stone-700 dark:hover:text-stone-300'
+              ]"
+            >Verbrauchen</button>
           </div>
           <!-- Verbrauchen-Modus -->
-          <template v-if="useModal.mode === 'use'">
+          <template v-if="useModal.mode === 'use' && !useModal.item?.is_permanent">
             <p class="text-stone-500 text-sm">
               Vorrätig: {{ useModal.item?.amount }} {{ useModal.item?.unit }}
             </p>
@@ -528,7 +526,7 @@
           </template>
           <!-- Bestand-anpassen-Modus -->
           <template v-else>
-            <div class="gap-3 grid grid-cols-2">
+            <div v-if="!useModal.item?.is_permanent" class="gap-3 grid grid-cols-2">
               <div>
                 <label class="block mb-1 text-stone-600 dark:text-stone-400 text-sm">Menge</label>
                 <input v-model.number="useModal.newAmount" type="number" step="0.01" min="0" class="form-input" />
@@ -537,6 +535,13 @@
                 <label class="block mb-1 text-stone-600 dark:text-stone-400 text-sm">Einheit</label>
                 <UnitInput v-model="useModal.newUnit" placeholder="Einheit" />
               </div>
+            </div>
+            <div>
+              <label class="block mb-1 text-stone-600 dark:text-stone-400 text-sm">Kategorie</label>
+              <select v-model="useModal.newCategory" class="form-input">
+                <option value="">Sonstiges</option>
+                <option v-for="cat in pantryCategories" :key="cat" :value="cat">{{ cat }}</option>
+              </select>
             </div>
             <div class="flex gap-2">
               <button
@@ -611,7 +616,7 @@ import { useShoppingStore } from '@/stores/shopping.js';
 import { useNotification } from '@/composables/useNotification.js';
 import { apiRaw } from '@/composables/useApi.js';
 import { formatAmount } from '@/utils/formatAmount.js';
-import { Plus, Minus, Trash2, AlertTriangle, Download, Infinity, Check, CheckSquare, Square, UtensilsCrossed, LayoutGrid, ChevronLeft, ChevronRight, ChevronDown, CheckCircle2, ShoppingCart } from 'lucide-vue-next';
+import { Plus, Minus, Pencil, Trash2, AlertTriangle, Download, Infinity, Check, CheckSquare, Square, UtensilsCrossed, LayoutGrid, ChevronLeft, ChevronRight, ChevronDown, CheckCircle2, ShoppingCart } from 'lucide-vue-next';
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue';
 import UnitInput from '@/components/ui/UnitInput.vue';
 
@@ -621,7 +626,7 @@ const { showSuccess, showError } = useNotification();
 
 const search = ref('');
 const showAddModal = ref(false);
-const useModal = reactive({ show: false, item: null, amount: 0, mode: 'use', newAmount: 0, newUnit: '' });
+const useModal = reactive({ show: false, item: null, amount: 0, mode: 'use', newAmount: 0, newUnit: '', newCategory: '' });
 
 // Mehrfachauswahl
 const selectMode = ref(false);
@@ -823,9 +828,10 @@ function isExpiringSoon(dateStr) {
 function openUseModal(item) {
   useModal.item = item;
   useModal.amount = item.amount;
-  useModal.mode = 'use';
+  useModal.mode = 'adjust';
   useModal.newAmount = item.amount;
   useModal.newUnit = item.unit;
+  useModal.newCategory = item.category || '';
   useModal.show = true;
 }
 
@@ -859,11 +865,17 @@ async function useAmount() {
 
 async function adjustAmount() {
   try {
-    await pantryStore.updateItem(useModal.item.id, {
+    const updateData = {
       amount: useModal.newAmount,
       unit: useModal.newUnit,
-    });
-    showSuccess(`Bestand auf ${useModal.newAmount} ${useModal.newUnit} angepasst`);
+      category: useModal.newCategory || 'Sonstiges',
+    };
+    if (useModal.item.is_permanent) {
+      delete updateData.amount;
+      delete updateData.unit;
+    }
+    await pantryStore.updateItem(useModal.item.id, updateData);
+    showSuccess(`${useModal.item.ingredient_name} aktualisiert`);
     useModal.show = false;
   } catch {
     // Fehler wird von useApi angezeigt
