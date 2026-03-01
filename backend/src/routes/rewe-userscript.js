@@ -324,7 +324,8 @@ function generateReweUserscript(apiBaseUrl, apiKey) {
   }
 
   function setStatus(html) {
-    document.getElementById('ac-status').innerHTML = html;
+    const body = document.getElementById('ac-panel-body');
+    if (body) body.innerHTML = '<div class="ac-status" id="ac-status">' + html + '</div>';
   }
 
   function updateBadge(count) {
@@ -395,7 +396,8 @@ function generateReweUserscript(apiBaseUrl, apiKey) {
 
       if (data.error) {
         setStatus('<div class="ac-error-box">' + escapeHtml(data.error) + '</div>');
-        footer.innerHTML = '<button class="ac-btn ac-btn-secondary" onclick="document.getElementById(\\'ac-btn-load\\').click()">🔄 Erneut versuchen</button>';
+        footer.innerHTML = \`<button class="ac-btn ac-btn-secondary" id="ac-btn-load">🔄 Erneut versuchen</button>\`;
+        document.getElementById('ac-btn-load').onclick = loadProducts;
         return;
       }
 
