@@ -27,7 +27,7 @@ description: Zauberjournal — KI-gestützte Rezeptverwaltung mit Wochenplaner, 
 | **Backend** | Fastify + Node.js 22 |
 | **Datenbank** | SQLite (WAL-Modus) |
 | **KI** | Kimi / OpenAI / Anthropic / Ollama — austauschbar |
-| **Offline** | IndexedDB Queue + Pinia Persistence + Auto-Sync |
+| **Offline** | PWA Service Worker + IndexedDB Queue + Pinia Persistence |
 | **Container** | Docker (Single-Container) |
 
 ## Schnellstart
