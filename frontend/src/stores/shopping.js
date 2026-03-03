@@ -106,6 +106,13 @@ export const useShoppingStore = defineStore('shopping', () => {
 
   /** Item abhaken (offline-fähig) */
   async function toggleItem(itemId) {
+    // Temp-Items (offline erstellt) → nur lokal toggeln, kein Server-Call
+    if (typeof itemId === 'string' && itemId.startsWith('temp-')) {
+      const item = items.value.find(i => i.id === itemId);
+      if (item) item.is_checked = item.is_checked ? 0 : 1;
+      return;
+    }
+
     // Optimistic UI sofort
     const item = items.value.find(i => i.id === itemId);
     if (!item) return;

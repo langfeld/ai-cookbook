@@ -32,6 +32,9 @@
               <span v-if="pendingCount > 0" class="bg-white/20 ml-1 px-2 py-0.5 rounded-full font-medium text-xs">
                 {{ pendingCount }} ausstehend
               </span>
+              <span v-if="failedCount > 0" class="bg-red-600/40 ml-1 px-2 py-0.5 rounded-full font-medium text-xs">
+                {{ failedCount }} fehlgeschlagen
+              </span>
             </div>
           </Transition>
 
@@ -42,6 +45,35 @@
               class="top-0 right-0 left-0 z-50 fixed bg-emerald-500 dark:bg-emerald-600 shadow-md px-4 py-1.5 text-white text-sm text-center"
             >
               ✓ Wieder online – alles synchronisiert
+            </div>
+          </Transition>
+
+          <!-- Token-abgelaufen Banner -->
+          <Transition name="slide-down">
+            <div
+              v-if="authExpired && isOnline"
+              class="top-0 right-0 left-0 z-50 fixed flex justify-center items-center gap-2 bg-red-500 dark:bg-red-600 shadow-md px-4 py-1.5 text-white text-sm text-center"
+            >
+              <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M5.07 19h13.86c1.54 0 2.5-1.67 1.73-3L13.73 4c-.77-1.33-2.69-1.33-3.46 0L3.34 16c-.77 1.33.19 3 1.73 3z" />
+              </svg>
+              <span>Sitzung abgelaufen – bitte erneut anmelden, um {{ pendingCount }} Änderung{{ pendingCount !== 1 ? 'en' : '' }} zu synchronisieren</span>
+            </div>
+          </Transition>
+
+          <!-- Fehlgeschlagene Actions Banner -->
+          <Transition name="slide-down">
+            <div
+              v-if="failedCount > 0 && isOnline && !authExpired"
+              class="top-0 right-0 left-0 z-50 fixed flex justify-center items-center gap-2 bg-red-500 dark:bg-red-600 shadow-md px-4 py-1.5 text-white text-sm text-center"
+            >
+              <span>{{ failedCount }} Offline-Änderung{{ failedCount !== 1 ? 'en' : '' }} fehlgeschlagen</span>
+              <button
+                class="bg-white/20 hover:bg-white/30 ml-1 px-3 py-0.5 rounded font-medium text-xs transition-colors"
+                @click="syncManager.retryFailed()"
+              >
+                Erneut versuchen
+              </button>
             </div>
           </Transition>
 
@@ -91,12 +123,13 @@
  * - Prüft Auth-Status beim Start
  * - Verwaltet Sidebar und Theme
  */
-import { ref, onMounted, watch } from 'vue';
+import { ref, computed, onMounted, watch } from 'vue';
 import { RouterView, useRouter } from 'vue-router';
 import { useAuthStore } from '@/stores/auth.js';
 import { useTheme } from '@/composables/useTheme.js';
 import { useNetworkStatus } from '@/composables/useNetworkStatus.js';
 import { offlineQueue } from '@/services/offlineQueue.js';
+import { syncManager } from '@/services/syncManager.js';
 import AppSidebar from '@/components/layout/AppSidebar.vue';
 import AppHeader from '@/components/layout/AppHeader.vue';
 import NotificationToast from '@/components/layout/NotificationToast.vue';
@@ -104,7 +137,11 @@ import NotificationToast from '@/components/layout/NotificationToast.vue';
 const authStore = useAuthStore();
 const { isDark } = useTheme();
 const { isOnline, justReconnected } = useNetworkStatus();
-const { pendingCount } = offlineQueue;
+const { pendingCount, pendingActions } = offlineQueue;
+const failedCount = computed(() =>
+  pendingActions.value.filter(a => a.status === 'failed').length
+);
+const { authExpired } = syncManager;
 const sidebarCollapsed = ref(false);
 const mobileMenuOpen = ref(false);
 const mainContent = ref(null);

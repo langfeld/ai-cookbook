@@ -14,6 +14,7 @@ import { useNotification } from '@/composables/useNotification.js';
 
 const isSyncing = ref(false);
 const syncError = ref(null);
+const authExpired = ref(false);
 const MAX_RETRIES = 3;
 
 // Registry: type → async handler function
@@ -50,6 +51,14 @@ async function executeAction(action) {
   } catch (err) {
     const retries = (action.retries || 0) + 1;
 
+    // 401 = Token abgelaufen → Queue pausieren, NICHT löschen
+    if (err.message?.includes('401') || err.message?.includes('Sitzung abgelaufen') || err.message?.includes('abgelaufen')) {
+      console.warn(`[SyncManager] Token abgelaufen. Pausiere Queue – bitte erneut anmelden.`);
+      await offlineQueue.updateStatus(action.id, 'pending', action.retries || 0);
+      authExpired.value = true;
+      return 'auth-expired';
+    }
+
     // 404 = Ressource existiert nicht mehr → Action verwerfen
     if (err.message?.includes('404') || err.message?.includes('Nicht gefunden')) {
       console.warn(`[SyncManager] Ressource nicht gefunden für "${action.type}". Verwerfe Action.`);
@@ -76,6 +85,7 @@ async function executeAction(action) {
 async function processQueue() {
   if (isSyncing.value) return;
   if (!networkState.isOnline.value) return;
+  if (authExpired.value) return; // Token abgelaufen → warte auf Re-Login
 
   const pending = offlineQueue.pendingActions.value.filter(a => a.status === 'pending');
   if (pending.length === 0) return;
@@ -95,8 +105,11 @@ async function processQueue() {
         break;
       }
 
-      const success = await executeAction(action);
-      if (success) {
+      const result = await executeAction(action);
+      if (result === 'auth-expired') {
+        // Token abgelaufen → Queue nicht weiter verarbeiten
+        break;
+      } else if (result === true) {
         successCount++;
       } else {
         failCount++;
@@ -164,10 +177,22 @@ async function init() {
   await offlineQueue.loadQueue();
 
   // Bei Netzwerkrückkehr automatisch synchronisieren
+  // Web Locks API: verhindert gleichzeitige Queue-Verarbeitung in mehreren Tabs
   watch(networkState.isOnline, (online) => {
     if (online) {
-      // Kurz warten bis die Verbindung stabil ist
-      setTimeout(() => processQueue(), 1000);
+      setTimeout(() => {
+        if (navigator.locks) {
+          navigator.locks.request('zauberjournal-sync-queue', { ifAvailable: true }, async (lock) => {
+            if (!lock) {
+              console.log('[SyncManager] Anderer Tab synchronisiert bereits.');
+              return;
+            }
+            await processQueue();
+          });
+        } else {
+          processQueue();
+        }
+      }, 1000);
     }
   });
 
@@ -191,8 +216,10 @@ async function retryFailed() {
 export const syncManager = {
   isSyncing: readonly(isSyncing),
   syncError: readonly(syncError),
+  authExpired: readonly(authExpired),
   registerHandler,
   processQueue,
   retryFailed,
+  clearAuthExpired() { authExpired.value = false; },
   init,
 };

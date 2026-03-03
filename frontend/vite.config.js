@@ -30,7 +30,23 @@ export default defineConfig({
         // Runtime-Caching für API-Responses (optional, kurze TTL)
         runtimeCaching: [
           {
-            urlPattern: /^https?:\/\/.*\/api\//,
+            // User-Uploads (Rezeptbilder, Zutat-Icons) – CacheFirst
+            urlPattern: /\/api\/uploads\//,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'user-uploads',
+              expiration: {
+                maxEntries: 300,
+                maxAgeSeconds: 60 * 60 * 24 * 30, // 30 Tage
+              },
+              cacheableResponse: {
+                statuses: [0, 200],
+              },
+            },
+          },
+          {
+            // API-Responses – NetworkFirst mit Fallback
+            urlPattern: /\/api\/(?!uploads\/)/,
             handler: 'NetworkFirst',
             options: {
               cacheName: 'api-cache',

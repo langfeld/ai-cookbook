@@ -65,7 +65,12 @@ async function enqueue(action) {
     await set(`${QUEUE_PREFIX}${id}`, queueItem);
     pendingActions.value = [...pendingActions.value, queueItem];
   } catch (err) {
-    console.error('[OfflineQueue] Fehler beim Enqueue:', err);
+    // QuotaExceededError abfangen: Speicher voll
+    if (err?.name === 'QuotaExceededError' || err?.message?.includes('quota')) {
+      console.error('[OfflineQueue] Speicher voll – Action konnte nicht gespeichert werden:', err);
+    } else {
+      console.error('[OfflineQueue] Fehler beim Enqueue:', err);
+    }
   }
 
   return id;

@@ -87,8 +87,13 @@ async function apiFetch(url, options = {}) {
     break;
   }
 
-  // 401 -> Token abgelaufen, abmelden
+  // 401 -> Token abgelaufen
   if (response.status === 401 && authStore.token) {
+    // Nicht sofort ausloggen, falls Offline-Queue noch Actions hat
+    const { offlineQueue } = await import('@/services/offlineQueue.js');
+    if (offlineQueue.pendingCount.value > 0) {
+      throw new Error('Sitzung abgelaufen (401). Bitte erneut anmelden.');
+    }
     authStore.logout();
     throw new Error('Sitzung abgelaufen. Bitte erneut anmelden.');
   }

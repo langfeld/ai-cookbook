@@ -63,15 +63,28 @@ export const useAuthStore = defineStore('auth', () => {
 
   /**
    * Auth-Status prüfen (beim App-Start)
+   * Offline: Token behalten und darauf vertrauen, statt auszuloggen.
    */
   async function checkAuth() {
     if (!token.value) return;
 
+    // Offline → Token vertrauen, nicht prüfen
+    if (!navigator.onLine) return;
+
     try {
       const data = await apiRaw('/auth/me');
       user.value = data.user;
-    } catch {
-      // Token ungültig -> abmelden
+    } catch (err) {
+      // Netzwerkfehler → Token behalten (könnte noch gültig sein)
+      const msg = err?.message || '';
+      const isNetworkError = !navigator.onLine
+        || msg.includes('nicht erreichbar')
+        || msg.includes('Failed to fetch')
+        || msg.includes('NetworkError')
+        || msg.includes('Load failed');
+      if (isNetworkError) return;
+
+      // Token tatsächlich ungültig → abmelden
       logout();
     }
   }
@@ -87,12 +100,21 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   /**
-   * Auth-Daten setzen und Token persistieren
+   * Auth-Daten setzen und Token persistieren.
+   * Bei Re-Login nach Token-Ablauf: authExpired zurücksetzen und Queue erneut verarbeiten.
    */
   function setAuth(newToken, userData) {
     token.value = newToken;
     user.value = userData;
     localStorage.setItem('zauberjournal-token', newToken);
+
+    // Falls Token abgelaufen war → Sync-Queue erneut anstoßen
+    import('@/services/syncManager.js').then(({ syncManager }) => {
+      if (syncManager.authExpired.value) {
+        syncManager.clearAuthExpired();
+        syncManager.processQueue();
+      }
+    });
   }
 
   return {
