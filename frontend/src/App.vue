@@ -23,13 +23,13 @@
           <Transition name="slide-down">
             <div
               v-if="!isOnline"
-              class="fixed top-0 left-0 right-0 z-50 bg-amber-500 dark:bg-amber-600 text-white text-center text-sm py-1.5 px-4 flex items-center justify-center gap-2 shadow-md"
+              class="top-0 right-0 left-0 z-50 fixed flex justify-center items-center gap-2 bg-amber-500 dark:bg-amber-600 shadow-md px-4 py-1.5 text-white text-sm text-center"
             >
               <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 5.636a9 9 0 010 12.728M5.636 5.636a9 9 0 000 12.728M12 12h.01" />
               </svg>
               <span>Offline – Änderungen werden bei Verbindung synchronisiert</span>
-              <span v-if="pendingCount > 0" class="ml-1 bg-white/20 rounded-full px-2 py-0.5 text-xs font-medium">
+              <span v-if="pendingCount > 0" class="bg-white/20 ml-1 px-2 py-0.5 rounded-full font-medium text-xs">
                 {{ pendingCount }} ausstehend
               </span>
             </div>
@@ -39,7 +39,7 @@
           <Transition name="slide-down">
             <div
               v-if="justReconnected && pendingCount === 0"
-              class="fixed top-0 left-0 right-0 z-50 bg-emerald-500 dark:bg-emerald-600 text-white text-center text-sm py-1.5 px-4 shadow-md"
+              class="top-0 right-0 left-0 z-50 fixed bg-emerald-500 dark:bg-emerald-600 shadow-md px-4 py-1.5 text-white text-sm text-center"
             >
               ✓ Wieder online – alles synchronisiert
             </div>
