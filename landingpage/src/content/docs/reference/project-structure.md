@@ -80,8 +80,18 @@ zauberjournal/
 │       │   ├── PantryView.vue
 │       │   ├── UserDataManagementView.vue  # Meine Daten
 │       │   └── admin/          # Admin-Dashboard, Users, Settings, Icons, Data
-│       ├── stores/             # Pinia Stores
-│       ├── composables/        # useApi, useTheme, useNotification, etc.
+│       ├── stores/             # Pinia Stores (mit Offline-Persistenz)
+│       ├── services/
+│       │   ├── offlineQueue.js  # IndexedDB-basierte Action-Queue (idb-keyval)
+│       │   ├── syncManager.js   # Queue-Abarbeitung bei Netzwerkrückkehr
+│       │   └── syncHandlers.js  # Handler für jeden offline-fähigen Action-Typ
+│       ├── composables/
+│       │   ├── useApi.js        # API-Client (apiFetch + Convenience-Methoden)
+│       │   ├── useNetworkStatus.js # Reaktiver Online/Offline-Status
+│       │   ├── useNotification.js # Toast-Benachrichtigungen
+│       │   ├── useTheme.js      # Dark-Mode-Verwaltung
+│       │   ├── useIngredientIcons.js # Zutaten-Emoji-Caching
+│       │   └── useWakeLock.js   # Wake Lock für Kochmodus
 │       └── router/index.js
 │
 └── landingpage/                # Astro 5 Landing Page + Starlight Docs

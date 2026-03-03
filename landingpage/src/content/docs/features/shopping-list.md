@@ -95,3 +95,15 @@ Alle blockierten Zutaten einsehen und einzeln freigeben.
 ## In Vorratsschrank verschieben
 
 Einzelne Artikel direkt vom Einkaufszettel in den Vorratsschrank übertragen — noch vor dem Einkaufsabschluss.
+
+## Offline-Modus
+
+Die Einkaufsliste funktioniert auch **ohne Netzwerkverbindung**:
+
+- **Artikel abhaken** — optimistisches UI-Update, Aktion wird in IndexedDB-Queue gespeichert
+- **Artikel hinzufügen/löschen** — ebenfalls offline verfügbar, automatisch synchronisiert
+- **Sync-Indikator** — Wolken-Icon an Artikeln mit ausstehender Synchronisation
+- **Offline-Banner** — zeigt Status und Anzahl ausstehender Änderungen
+- **Automatische Synchronisation** — Queue wird bei Netzwerkrückkehr automatisch abgearbeitet (FIFO)
+- **Idempotente API** — Backend-Endpunkte sind idempotent, sodass doppelte Syncs keine Probleme verursachen
+- **Online-only Features** — REWE-Abgleich, Wochenplan-Generierung und Bring!-Senden werden offline deaktiviert

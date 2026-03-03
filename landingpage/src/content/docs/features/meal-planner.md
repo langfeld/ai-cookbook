@@ -62,6 +62,16 @@ Wird der Einkauf einer verknüpften Einkaufsliste abgeschlossen, wird der zugeh�
 Einzelne Wochenpläne können gelöscht werden:
 - Löschen-Button direkt im **Wochenplaner** (Header-Leiste)
 - Löschen auch über die **Einkaufsliste** möglich (Papierkorb-Icon in der Wochenauswahl)
-- Verknüpfte **Einkaufslisten bleiben erhalten** (Verknpfung wird aufgehoben)
+- Verknüpfte **Einkaufslisten bleiben erhalten** (Verknüpfung wird aufgehoben)
 - Gesperrte Pläne müssen erst entsperrt werden
 - Bestätigungsdialog vor dem Löschen
+
+## Offline-Modus
+
+Der aktuelle Wochenplan ist auch **ohne Netzwerkverbindung** verfügbar:
+
+- **Lokaler Cache** — Plan-Daten werden via Pinia-Persistenz in localStorage gespeichert
+- **Gekocht-Markierung** — offline toggle-bar, wird bei Reconnect synchronisiert
+- **Portionen ändern** — offline möglich, Queue-basierte Synchronisation
+- **Optimistisches UI** — Änderungen werden sofort angezeigt, unabhängig vom Netzwerkstatus
+- **Online-only Features** — Plan-Generierung, Rezept tauschen und Drag & Drop bleiben online-only

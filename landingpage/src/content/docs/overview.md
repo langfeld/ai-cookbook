@@ -13,6 +13,7 @@ description: Zauberjournal — KI-gestützte Rezeptverwaltung mit Wochenplaner, 
 - **REWE-Integration** — Automatisches AI-Produktmatching, Preisoptimierung, Tampermonkey-Userscript
 - **Bring!-Anbindung** — Einkaufsliste per Klick an die Bring!-App senden
 - **Vorratsschrank** — Ablaufdaten, Teilmengen, automatischer Nachschub aus Einkäufen
+- **Offline-Modus** — Einkaufsliste und Wochenplan offline nutzbar, automatische Synchronisation bei Reconnect
 - **Backup & Export** — Komplett-Backup aller Daten als JSON
 - **Self-Hosted** — Ein Container, ein Volume, NAS-ready (PUID/PGID)
 - **Mehrbenutzerfähig** — Admin-Bereich mit Rollen und Benutzerverwaltung
@@ -26,6 +27,7 @@ description: Zauberjournal — KI-gestützte Rezeptverwaltung mit Wochenplaner, 
 | **Backend** | Fastify + Node.js 22 |
 | **Datenbank** | SQLite (WAL-Modus) |
 | **KI** | Kimi / OpenAI / Anthropic / Ollama — austauschbar |
+| **Offline** | IndexedDB Queue + Pinia Persistence + Auto-Sync |
 | **Container** | Docker (Single-Container) |
 
 ## Schnellstart

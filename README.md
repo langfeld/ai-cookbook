@@ -7,13 +7,14 @@ Eine KI-gestützte Rezeptverwaltung mit intelligentem Wochenplaner, Kochmodus, E
 ![Fastify](https://img.shields.io/badge/Fastify-5-000000?logo=fastify&logoColor=white)
 ![SQLite](https://img.shields.io/badge/SQLite-3-003B57?logo=sqlite&logoColor=white)
 ![Docker](https://img.shields.io/badge/Docker-ghcr.io-2496ED?logo=docker&logoColor=white)
+![Offline-First](https://img.shields.io/badge/Offline--First-PWA_ready-FF6F00?logo=googlechrome&logoColor=white)
 ![Bring!](https://img.shields.io/badge/Bring!-Integration-4CAF50?logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCI+PHRleHQgeT0iMTgiIGZvbnQtc2l6ZT0iMTgiPvCfm42uPC90ZXh0Pjwvc3ZnPg==&logoColor=white)
 ![Tampermonkey](https://img.shields.io/badge/Tampermonkey-Userscript-00485B?logo=tampermonkey&logoColor=white)
 
 ---
 
 <p align="center">
-  <strong>KI-Rezeptimport</strong> · <strong>Wochenplaner</strong> · <strong>Einkaufsliste</strong> · <strong>REWE & Bring!</strong> · <strong>Vorratsschrank</strong> · <strong>Kochmodus</strong> · <strong>Backup & Export</strong>
+  <strong>KI-Rezeptimport</strong> · <strong>Wochenplaner</strong> · <strong>Einkaufsliste</strong> · <strong>REWE & Bring!</strong> · <strong>Vorratsschrank</strong> · <strong>Kochmodus</strong> · <strong>Offline-Modus</strong> · <strong>Backup & Export</strong>
 </p>
 
 <p align="center">
