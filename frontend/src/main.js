@@ -16,6 +16,26 @@ import { registerSyncHandlers } from './services/syncHandlers.js';
 // Tailwind CSS 4 Styles laden
 import './assets/styles/main.css';
 
+// PWA Service Worker (vite-plugin-pwa, falls im Build vorhanden)
+if ('serviceWorker' in navigator) {
+  import('virtual:pwa-register').then(({ registerSW }) => {
+    registerSW({
+      immediate: true,
+      onRegisteredSW(swUrl, registration) {
+        // Alle 60 Min. auf Updates prüfen
+        if (registration) {
+          setInterval(() => registration.update(), 60 * 60 * 1000);
+        }
+      },
+      onOfflineReady() {
+        console.log('[PWA] App bereit für Offline-Nutzung');
+      },
+    });
+  }).catch(() => {
+    // Im Dev-Modus ist das virtual-Modul evtl. nicht verfügbar
+  });
+}
+
 // Vue App erstellen
 const app = createApp(App);
 
