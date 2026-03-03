@@ -116,6 +116,12 @@
 
         <!-- Benachrichtigungen -->
         <NotificationToast />
+
+        <!-- PWA Install-Banner (unten) -->
+        <PwaInstallBanner />
+
+        <!-- PWA Update-Banner (oben, überlagert alles) -->
+        <PwaUpdateBanner />
       </template>
     </div>
   </div>
@@ -137,6 +143,8 @@ import { syncManager } from '@/services/syncManager.js';
 import AppSidebar from '@/components/layout/AppSidebar.vue';
 import AppHeader from '@/components/layout/AppHeader.vue';
 import NotificationToast from '@/components/layout/NotificationToast.vue';
+import PwaInstallBanner from '@/components/layout/PwaInstallBanner.vue';
+import PwaUpdateBanner from '@/components/layout/PwaUpdateBanner.vue';
 
 const authStore = useAuthStore();
 const { isDark } = useTheme();

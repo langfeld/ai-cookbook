@@ -91,6 +91,27 @@ export default defineConfig({
             purpose: 'maskable',
           },
         ],
+        shortcuts: [
+          {
+            name: 'Rezepte',
+            short_name: 'Rezepte',
+            url: '/recipes',
+            icons: [{ src: '/pwa-192x192.png', sizes: '192x192' }],
+          },
+          {
+            name: 'Einkaufsliste',
+            short_name: 'Einkauf',
+            url: '/shopping',
+            icons: [{ src: '/pwa-192x192.png', sizes: '192x192' }],
+          },
+          {
+            name: 'Wochenplan',
+            short_name: 'Wochenplan',
+            url: '/mealplan',
+            icons: [{ src: '/pwa-192x192.png', sizes: '192x192' }],
+          },
+        ],
+        categories: ['food', 'lifestyle', 'utilities'],
       },
     }),
   ],

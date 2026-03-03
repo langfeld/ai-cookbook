@@ -12,6 +12,7 @@ import router from './router/index.js';
 import App from './App.vue';
 import { syncManager } from './services/syncManager.js';
 import { registerSyncHandlers } from './services/syncHandlers.js';
+import { setUpdateCallback, signalUpdate } from './composables/useAppUpdate.js';
 
 // Tailwind CSS 4 Styles laden
 import './assets/styles/main.css';
@@ -19,7 +20,7 @@ import './assets/styles/main.css';
 // PWA Service Worker (vite-plugin-pwa, falls im Build vorhanden)
 if ('serviceWorker' in navigator) {
   import('virtual:pwa-register').then(({ registerSW }) => {
-    registerSW({
+    const updateSW = registerSW({
       immediate: true,
       onRegisteredSW(swUrl, registration) {
         // Alle 60 Min. auf Updates prüfen
@@ -27,10 +28,16 @@ if ('serviceWorker' in navigator) {
           setInterval(() => registration.update(), 60 * 60 * 1000);
         }
       },
+      onNeedRefresh() {
+        // Neuer SW bereit → Update-Banner anzeigen
+        signalUpdate();
+      },
       onOfflineReady() {
         console.log('[PWA] App bereit für Offline-Nutzung');
       },
     });
+    // Update-Funktion an Composable weitergeben
+    setUpdateCallback(updateSW);
   }).catch(() => {
     // Im Dev-Modus ist das virtual-Modul evtl. nicht verfügbar
   });
