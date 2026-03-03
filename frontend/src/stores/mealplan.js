@@ -8,7 +8,8 @@
 
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
-import { useApi } from '@/composables/useApi.js';
+import { useApi, apiRaw } from '@/composables/useApi.js';
+import { offlineQueue } from '@/services/offlineQueue.js';
 
 export const useMealPlanStore = defineStore('mealplan', () => {
   const currentPlan = ref(null);
@@ -19,6 +20,7 @@ export const useMealPlanStore = defineStore('mealplan', () => {
   const availableWeeks = ref([]);
   const loading = ref(false);
   const generating = ref(false);
+  const lastFetched = ref(null); // Timestamp des letzten Fetches
 
   const api = useApi();
 
@@ -73,6 +75,7 @@ export const useMealPlanStore = defineStore('mealplan', () => {
       const params = weekStart ? `?weekStart=${weekStart}` : '';
       const data = await api.get(`/mealplan${params}`);
       currentPlan.value = data.plan;
+      lastFetched.value = Date.now();
       // Gespeichertes Reasoning aus der DB wiederherstellen
       if (data.plan?.reasoning) {
         reasoning.value = data.plan.reasoning;
@@ -82,6 +85,12 @@ export const useMealPlanStore = defineStore('mealplan', () => {
         reasoningSource.value = null;
       }
       return data;
+    } catch (err) {
+      // Bei Netzwerkfehler: gecachte Daten behalten
+      if (!navigator.onLine && currentPlan.value) {
+        return { plan: currentPlan.value };
+      }
+      throw err;
     } finally {
       loading.value = false;
     }
@@ -104,27 +113,76 @@ export const useMealPlanStore = defineStore('mealplan', () => {
     return data.suggestions;
   }
 
-  /** Eintrag als gekocht togglen */
+  /** Eintrag als gekocht togglen (offline-fähig) */
   async function markCooked(planId, entryId) {
-    const data = await api.post(`/mealplan/${planId}/entry/${entryId}/cooked`);
-    // Bei Tausch: kompletten Plan übernehmen (Positionen haben sich geändert)
-    if (data.swapped && data.plan && currentPlan.value) {
-      currentPlan.value = data.plan;
-    } else if (currentPlan.value?.entries) {
-      const entry = currentPlan.value.entries.find(e => e.id === entryId);
-      if (entry) entry.is_cooked = data.is_cooked;
+    // Optimistic UI sofort
+    let entry = null;
+    if (currentPlan.value?.entries) {
+      entry = currentPlan.value.entries.find(e => e.id === entryId);
     }
-    return data;
+    const newState = entry?.is_cooked ? 0 : 1;
+    if (entry) entry.is_cooked = newState;
+
+    try {
+      const data = await apiRaw(`/mealplan/${planId}/entry/${entryId}/cooked`, { method: 'POST', body: { is_cooked: newState } });
+      // Bei Tausch: kompletten Plan übernehmen (Positionen haben sich geändert)
+      if (data.swapped && data.plan && currentPlan.value) {
+        currentPlan.value = data.plan;
+      } else if (currentPlan.value?.entries) {
+        const e = currentPlan.value.entries.find(e => e.id === entryId);
+        if (e) e.is_cooked = data.is_cooked;
+      }
+      return data;
+    } catch (err) {
+      if (offlineQueue.isOfflineError(err)) {
+        await offlineQueue.enqueue({
+          type: 'mealplan:markCooked',
+          payload: { planId, entryId, is_cooked: newState },
+          storeName: 'mealplan',
+        });
+        return { is_cooked: newState }; // Optimistic UI bleibt
+      }
+      // Anderer Fehler: Rollback
+      if (entry) entry.is_cooked = newState ? 0 : 1;
+      throw err;
+    }
   }
 
-  /** Portionen eines Eintrags ändern */
+  /** Portionen eines Eintrags ändern (offline-fähig) */
   async function updateServings(planId, entryId, servings) {
-    const data = await api.put(`/mealplan/${planId}/entry/${entryId}`, { servings });
-    if (currentPlan.value?.entries && data.entry) {
-      const idx = currentPlan.value.entries.findIndex(e => e.id === entryId);
-      if (idx !== -1) currentPlan.value.entries[idx] = data.entry;
+    // Optimistic UI
+    let oldServings = null;
+    if (currentPlan.value?.entries) {
+      const entry = currentPlan.value.entries.find(e => e.id === entryId);
+      if (entry) {
+        oldServings = entry.servings;
+        entry.servings = servings;
+      }
     }
-    return data;
+
+    try {
+      const data = await apiRaw(`/mealplan/${planId}/entry/${entryId}`, { method: 'PUT', body: { servings } });
+      if (currentPlan.value?.entries && data.entry) {
+        const idx = currentPlan.value.entries.findIndex(e => e.id === entryId);
+        if (idx !== -1) currentPlan.value.entries[idx] = data.entry;
+      }
+      return data;
+    } catch (err) {
+      if (offlineQueue.isOfflineError(err)) {
+        await offlineQueue.enqueue({
+          type: 'mealplan:updateServings',
+          payload: { planId, entryId, servings },
+          storeName: 'mealplan',
+        });
+        return { entry: { id: entryId, servings } };
+      }
+      // Rollback
+      if (oldServings !== null && currentPlan.value?.entries) {
+        const entry = currentPlan.value.entries.find(e => e.id === entryId);
+        if (entry) entry.servings = oldServings;
+      }
+      throw err;
+    }
   }
 
   /** Rezept eines Eintrags tauschen */
@@ -225,10 +283,14 @@ export const useMealPlanStore = defineStore('mealplan', () => {
   }
 
   return {
-    currentPlan, reasoning, reasoningSource, reasoningLoading, planHistory, availableWeeks, loading, generating,
+    currentPlan, reasoning, reasoningSource, reasoningLoading, planHistory, availableWeeks, loading, generating, lastFetched,
     mealTypeLabels,
     generatePlan, pollReasoning, fetchCurrentPlan, fetchHistory, fetchAvailableWeeks,
     fetchSuggestions, markCooked, updateServings, swapRecipe, addEntry, addRecipeToPlan, moveEntry, removeEntry, deletePlan,
     toggleLock, duplicatePlan,
   };
+}, {
+  persist: {
+    pick: ['currentPlan', 'availableWeeks', 'planHistory', 'lastFetched'],
+  },
 });

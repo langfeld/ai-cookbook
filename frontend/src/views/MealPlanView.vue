@@ -45,7 +45,8 @@
         </button>
         <!-- Split-Button: Generieren + Einstellungen -->
         <div class="flex sm:flex-initial flex-1 shadow-sm rounded-xl overflow-hidden">
-          <button @click="showGenerateModal = true" :disabled="store.generating"
+          <button @click="showGenerateModal = true" :disabled="store.generating || !isOnline"
+            :title="!isOnline ? 'Internetverbindung erforderlich' : ''"
             class="flex sm:flex-initial flex-1 justify-center items-center gap-2 bg-primary-600 hover:bg-primary-700 disabled:opacity-50 px-3 sm:px-4 py-2 font-medium text-white text-sm transition-colors">
             <Sparkles class="w-4 h-4" :class="{ 'animate-pulse': store.generating }" />
             <span class="hidden sm:inline">{{ store.generating ? 'Wird erstellt…' : 'Plan generieren' }}</span>
@@ -1235,6 +1236,8 @@ import { useRecipesStore } from '@/stores/recipes.js';
 import { useCollectionsStore } from '@/stores/collections.js';
 import { useRecipeBlocksStore } from '@/stores/recipe-blocks.js';
 import { useNotification } from '@/composables/useNotification.js';
+import { useNetworkStatus } from '@/composables/useNetworkStatus.js';
+import { offlineQueue } from '@/services/offlineQueue.js';
 import LoadPlanDialog from '@/components/mealplan/LoadPlanDialog.vue';
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue';
 import {
@@ -1257,6 +1260,7 @@ const difficultyClasses = {
 };
 const blocksStore = useRecipeBlocksStore();
 const { showSuccess } = useNotification();
+const { isOnline } = useNetworkStatus();
 
 // ─── State ───
 const weekOffset = ref(0);

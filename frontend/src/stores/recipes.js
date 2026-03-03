@@ -217,4 +217,8 @@ export const useRecipesStore = defineStore('recipes', () => {
     fetchCategories, createCategory, exportRecipes, importRecipes,
     checkRevisionConflicts, reviseRecipe,
   };
+}, {
+  persist: {
+    pick: ['recipes', 'categories'],
+  },
 });

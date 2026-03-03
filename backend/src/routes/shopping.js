@@ -267,15 +267,31 @@ export default async function shoppingRoutes(fastify) {
 
   /**
    * PUT /api/shopping/item/:id/check
-   * Einkaufsitem abhaken/entabhaken
+   * Einkaufsitem abhaken/entabhaken (idempotent für Offline-Sync)
    */
   fastify.put('/item/:id/check', {
-    schema: { description: 'Item abhaken', tags: ['Einkaufsliste'], security: [{ bearerAuth: [] }] },
+    schema: {
+      description: 'Item abhaken (idempotent)',
+      tags: ['Einkaufsliste'],
+      security: [{ bearerAuth: [] }],
+    },
   }, async (request) => {
-    db.prepare(`
-      UPDATE shopping_list_items SET is_checked = NOT is_checked
-      WHERE id = ? AND shopping_list_id IN (SELECT id FROM shopping_lists WHERE user_id = ?)
-    `).run(request.params.id, request.user.id);
+    const body = request.body || {};
+    const is_checked = typeof body.is_checked === 'number' ? body.is_checked : undefined;
+
+    if (is_checked !== undefined) {
+      // Idempotenter Modus: expliziter Zielwert (für Offline-Queue)
+      db.prepare(`
+        UPDATE shopping_list_items SET is_checked = ?
+        WHERE id = ? AND shopping_list_id IN (SELECT id FROM shopping_lists WHERE user_id = ?)
+      `).run(is_checked, request.params.id, request.user.id);
+    } else {
+      // Legacy-Modus: Toggle (Rückwärtskompatibilität)
+      db.prepare(`
+        UPDATE shopping_list_items SET is_checked = NOT is_checked
+        WHERE id = ? AND shopping_list_id IN (SELECT id FROM shopping_lists WHERE user_id = ?)
+      `).run(request.params.id, request.user.id);
+    }
 
     return { message: 'Status aktualisiert' };
   });

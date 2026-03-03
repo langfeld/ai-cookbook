@@ -549,10 +549,14 @@ export default async function mealplanRoutes(fastify) {
   });
 
   // ─────────────────────────────────────────────
-  // POST /:planId/entry/:entryId/cooked – Toggle
+  // POST /:planId/entry/:entryId/cooked – Toggle (idempotent für Offline-Sync)
   // ─────────────────────────────────────────────
   fastify.post('/:planId/entry/:entryId/cooked', {
-    schema: { description: 'Gekocht-Status togglen + Vorräte anpassen', tags: ['Wochenplan'], security: [{ bearerAuth: [] }] },
+    schema: {
+      description: 'Gekocht-Status togglen + Vorräte anpassen (idempotent)',
+      tags: ['Wochenplan'],
+      security: [{ bearerAuth: [] }],
+    },
   }, async (request) => {
     const userId = request.user.id;
     const entry = db.prepare(`
@@ -564,7 +568,15 @@ export default async function mealplanRoutes(fastify) {
 
     if (!entry) return { error: 'Eintrag nicht gefunden' };
 
-    const newState = entry.is_cooked ? 0 : 1;
+    // Idempotenter Modus: expliziter Zielwert, oder Legacy-Toggle
+    const body = request.body || {};
+    const requestedState = typeof body.is_cooked === 'number' ? body.is_cooked : undefined;
+    const newState = requestedState !== undefined ? requestedState : (entry.is_cooked ? 0 : 1);
+
+    // Idempotenz-Prüfung: Wenn Status bereits dem Zielwert entspricht, nichts tun
+    if (entry.is_cooked === newState) {
+      return { is_cooked: newState, idempotent: true };
+    }
 
     // ── Tausch-Logik: Rezept von anderem Tag auf heute verschieben ──
     let swapped = false;

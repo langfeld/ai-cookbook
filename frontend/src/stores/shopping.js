@@ -6,8 +6,9 @@
 
 import { defineStore } from 'pinia';
 import { ref, computed } from 'vue';
-import { useApi } from '@/composables/useApi.js';
+import { useApi, apiRaw } from '@/composables/useApi.js';
 import { useAuthStore } from '@/stores/auth.js';
+import { offlineQueue } from '@/services/offlineQueue.js';
 
 export const useShoppingStore = defineStore('shopping', () => {
   const currentList = ref(null);
@@ -15,6 +16,7 @@ export const useShoppingStore = defineStore('shopping', () => {
   const reweMatches = ref([]);
   const loading = ref(false);
   const listHistory = ref([]);
+  const lastFetched = ref(null); // Timestamp des letzten Fetches
 
   // Vorratscheck
   const pantryCheck = ref(null);
@@ -60,12 +62,25 @@ export const useShoppingStore = defineStore('shopping', () => {
     }
   }
 
-  /** Aktive Einkaufsliste laden */
-  async function fetchActiveList() {
-    const data = await api.get('/shopping/list');
-    currentList.value = data.list;
-    items.value = data.items || [];
-    return data;
+  /** Aktive Einkaufsliste laden (mit Stale-While-Revalidate) */
+  async function fetchActiveList({ background = false } = {}) {
+    try {
+      const data = await api.get('/shopping/list');
+      currentList.value = data.list;
+      items.value = data.items || [];
+      lastFetched.value = Date.now();
+      return data;
+    } catch (err) {
+      // Bei Netzwerkfehler: gecachte Daten behalten
+      if (background && currentList.value) {
+        console.warn('[Shopping] Hintergrund-Refresh fehlgeschlagen, verwende Cache');
+        return { list: currentList.value, items: items.value };
+      }
+      if (!navigator.onLine && currentList.value) {
+        return { list: currentList.value, items: items.value };
+      }
+      throw err;
+    }
   }
 
   /** Alle Einkaufslisten (Verlauf) laden */
@@ -89,11 +104,30 @@ export const useShoppingStore = defineStore('shopping', () => {
     await fetchActiveList();
   }
 
-  /** Item abhaken */
+  /** Item abhaken (offline-fähig) */
   async function toggleItem(itemId) {
-    await api.put(`/shopping/item/${itemId}/check`);
+    // Optimistic UI sofort
     const item = items.value.find(i => i.id === itemId);
-    if (item) item.is_checked = item.is_checked ? 0 : 1;
+    if (!item) return;
+    const newState = item.is_checked ? 0 : 1;
+    item.is_checked = newState;
+
+    try {
+      await apiRaw(`/shopping/item/${itemId}/check`, { method: 'PUT', body: { is_checked: newState } });
+    } catch (err) {
+      // Bei Netzwerkfehler: in Offline-Queue schieben
+      if (offlineQueue.isOfflineError(err)) {
+        await offlineQueue.enqueue({
+          type: 'shopping:toggleItem',
+          payload: { itemId, is_checked: newState },
+          storeName: 'shopping',
+        });
+        return; // Kein Fehler – Optimistic UI bleibt
+      }
+      // Anderer Fehler: Optimistic UI zurückrollen
+      item.is_checked = newState ? 0 : 1;
+      throw err;
+    }
   }
 
   /** REWE-Produkte matchen (mit SSE-Fortschritt) */
@@ -168,25 +202,68 @@ export const useShoppingStore = defineStore('shopping', () => {
     return data;
   }
 
-  /** Manuell ein Item zur Einkaufsliste hinzufügen */
+  /** Manuell ein Item zur Einkaufsliste hinzufügen (offline-fähig) */
   async function addItem({ ingredient_name, amount, unit }) {
-    const data = await api.post('/shopping/item/add', { ingredient_name, amount, unit });
-    // Neues Item direkt in die lokale Liste einfügen
-    items.value.push(data);
-    // Falls vorher keine Liste existierte, Liste neu laden
-    if (!currentList.value) {
-      await fetchActiveList();
+    try {
+      const data = await apiRaw('/shopping/item/add', { method: 'POST', body: { ingredient_name, amount, unit } });
+      items.value.push(data);
+      if (!currentList.value) {
+        await fetchActiveList();
+      }
+      return data;
+    } catch (err) {
+      if (offlineQueue.isOfflineError(err)) {
+        // Optimistic: lokales Placeholder-Item erstellen
+        const tempItem = {
+          id: `temp-${Date.now()}`,
+          ingredient_name,
+          amount: amount || null,
+          unit: unit || null,
+          is_checked: 0,
+          recipe_ids: '[]',
+          source: 'manual',
+          _offline: true,
+        };
+        items.value.push(tempItem);
+        await offlineQueue.enqueue({
+          type: 'shopping:addItem',
+          payload: { ingredient_name, amount, unit, tempId: tempItem.id },
+          storeName: 'shopping',
+        });
+        return tempItem;
+      }
+      throw err;
     }
-    return data;
   }
 
-  /** Item von der Einkaufsliste löschen */
+  /** Item von der Einkaufsliste löschen (offline-fähig) */
   async function deleteItem(itemId) {
-    await api.del(`/shopping/item/${itemId}`);
+    // Optimistic UI sofort
+    const removedItem = items.value.find(i => i.id === itemId);
     items.value = items.value.filter(i => i.id !== itemId);
-    // Vorratscheck aktualisieren (falls geladen), damit „verschoben"-Status stimmt
-    if (pantryCheck.value) {
-      fetchPantryCheck();
+
+    // Temp-Items (offline erstellt) brauchen keinen Server-Call
+    if (typeof itemId === 'string' && itemId.startsWith('temp-')) {
+      return;
+    }
+
+    try {
+      await apiRaw(`/shopping/item/${itemId}`, { method: 'DELETE' });
+      if (pantryCheck.value) {
+        fetchPantryCheck();
+      }
+    } catch (err) {
+      if (offlineQueue.isOfflineError(err)) {
+        await offlineQueue.enqueue({
+          type: 'shopping:deleteItem',
+          payload: { itemId },
+          storeName: 'shopping',
+        });
+        return; // Optimistic UI bleibt
+      }
+      // Anderer Fehler: Item wiederherstellen
+      if (removedItem) items.value.push(removedItem);
+      throw err;
     }
   }
 
@@ -395,7 +472,7 @@ export const useShoppingStore = defineStore('shopping', () => {
   }
 
   return {
-    currentList, items, activeList, reweMatches, loading, reweProgress, listHistory,
+    currentList, items, activeList, reweMatches, loading, reweProgress, listHistory, lastFetched,
     openItemsCount, estimatedTotal, reweLinkedItems,
     // Vorratscheck
     pantryCheck, pantryCheckLoading,
@@ -411,4 +488,8 @@ export const useShoppingStore = defineStore('shopping', () => {
     // API-Key
     getApiKey, generateApiKey, revokeApiKey,
   };
+}, {
+  persist: {
+    pick: ['currentList', 'items', 'listHistory', 'lastFetched'],
+  },
 });

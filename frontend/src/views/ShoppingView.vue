@@ -116,7 +116,8 @@
         <div class="relative flex items-stretch w-full sm:w-auto">
           <button
             @click="generateList"
-            :disabled="shoppingStore.loading || !selectedWeekStart"
+            :disabled="shoppingStore.loading || !selectedWeekStart || !isOnline"
+            :title="!isOnline ? 'Internetverbindung erforderlich' : ''"
             class="flex sm:flex-initial flex-1 justify-center items-center gap-2 bg-primary-600 hover:bg-primary-700 disabled:opacity-50 px-4 py-2 rounded-l-xl font-medium text-white text-sm transition-colors"
           >
             <ListPlus class="w-4 h-4" />
@@ -230,7 +231,8 @@
         <button
           v-if="shoppingStore.activeList && reweEnabled"
           @click="matchWithRewe"
-          :disabled="reweLoading"
+          :disabled="reweLoading || !isOnline"
+          :title="!isOnline ? 'Internetverbindung erforderlich' : ''"
           class="flex justify-center items-center gap-2 bg-rewe-500 hover:bg-rewe-600 disabled:opacity-50 px-4 py-2 rounded-xl w-full sm:w-auto font-medium text-white text-sm transition-colors"
         >
           <Loader2 v-if="reweLoading" class="w-4 h-4 animate-spin" />
@@ -514,6 +516,10 @@
                     <span v-if="item.source === 'manual'" title="Manuell hinzugefügt" class="text-stone-400 dark:text-stone-500">
                       <PenLine class="w-3 h-3" />
                     </span>
+                    <!-- Offline-Sync-Indikator -->
+                    <span v-if="item._offline || offlineQueue.hasPendingForItem('shopping', item.id)" title="Wird bei Verbindung synchronisiert" class="text-amber-500">
+                      <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
+                    </span>
                     <span v-else-if="item.source === 'bring'" title="Aus Bring! importiert" class="text-teal-400 dark:text-teal-500">
                       <Download class="w-3 h-3" />
                     </span>
@@ -687,7 +693,8 @@
           <button
             v-if="shoppingStore.bringStatus?.connected && shoppingStore.openItemsCount > 0"
             @click="sendToBring"
-            :disabled="shoppingStore.bringSending"
+            :disabled="shoppingStore.bringSending || !isOnline"
+            :title="!isOnline ? 'Internetverbindung erforderlich' : ''"
             class="flex justify-center items-center gap-2 bg-teal-600 hover:bg-teal-700 disabled:opacity-50 px-5 py-3 rounded-xl w-full sm:w-auto font-medium text-white transition-colors"
           >
             <Loader2 v-if="shoppingStore.bringSending" class="w-4 h-4 animate-spin" />
@@ -1966,6 +1973,8 @@ import { useShoppingStore } from '@/stores/shopping.js';
 import { useMealPlanStore } from '@/stores/mealplan.js';
 import { useIngredientAliasStore } from '@/stores/ingredient-aliases.js';
 import { useNotification } from '@/composables/useNotification.js';
+import { useNetworkStatus } from '@/composables/useNetworkStatus.js';
+import { offlineQueue } from '@/services/offlineQueue.js';
 import { useApi } from '@/composables/useApi.js';
 import { ListPlus, Check, ShoppingBag, Plus, Minus, Package, BookOpen, BookX, ExternalLink, ShoppingCart, X, ArrowRightLeft, Search, Tag, Trash2, Star, Heart, Archive, Send, Link2, Unlink, ClipboardCopy, LogIn, LogOut, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Loader2, Terminal, Download, Settings, RefreshCw, Merge, ArrowRight, History, RotateCcw, Ban, MapPin, PenLine, Upload, AlertTriangle, Copy, Eye, EyeOff, CheckSquare, Square, ClipboardCheck, CalendarDays, Lock } from 'lucide-vue-next';
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue';
@@ -1975,6 +1984,7 @@ const shoppingStore = useShoppingStore();
 const mealPlanStore = useMealPlanStore();
 const aliasStore = useIngredientAliasStore();
 const { showSuccess, showError } = useNotification();
+const { isOnline } = useNetworkStatus();
 const api = useApi();
 const reweLoading = ref(false);
 
@@ -2622,7 +2632,11 @@ async function doGenerateList(planId) {
 }
 
 async function toggleItem(item) {
-  await shoppingStore.toggleItem(item.id, !item.is_checked);
+  try {
+    await shoppingStore.toggleItem(item.id, !item.is_checked);
+  } catch {
+    // Fehler wird im Store behandelt (offline-queue oder rollback)
+  }
 }
 
 async function matchWithRewe() {

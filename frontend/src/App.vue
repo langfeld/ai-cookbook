@@ -19,6 +19,32 @@
       <template v-else>
         <div class="flex h-screen overflow-hidden">
 
+          <!-- Offline-Banner -->
+          <Transition name="slide-down">
+            <div
+              v-if="!isOnline"
+              class="fixed top-0 left-0 right-0 z-50 bg-amber-500 dark:bg-amber-600 text-white text-center text-sm py-1.5 px-4 flex items-center justify-center gap-2 shadow-md"
+            >
+              <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 5.636a9 9 0 010 12.728M5.636 5.636a9 9 0 000 12.728M12 12h.01" />
+              </svg>
+              <span>Offline – Änderungen werden bei Verbindung synchronisiert</span>
+              <span v-if="pendingCount > 0" class="ml-1 bg-white/20 rounded-full px-2 py-0.5 text-xs font-medium">
+                {{ pendingCount }} ausstehend
+              </span>
+            </div>
+          </Transition>
+
+          <!-- Sync-Erfolg Flash -->
+          <Transition name="slide-down">
+            <div
+              v-if="justReconnected && pendingCount === 0"
+              class="fixed top-0 left-0 right-0 z-50 bg-emerald-500 dark:bg-emerald-600 text-white text-center text-sm py-1.5 px-4 shadow-md"
+            >
+              ✓ Wieder online – alles synchronisiert
+            </div>
+          </Transition>
+
           <!-- Mobile Backdrop -->
           <Transition name="fade">
             <div
@@ -69,12 +95,16 @@ import { ref, onMounted, watch } from 'vue';
 import { RouterView, useRouter } from 'vue-router';
 import { useAuthStore } from '@/stores/auth.js';
 import { useTheme } from '@/composables/useTheme.js';
+import { useNetworkStatus } from '@/composables/useNetworkStatus.js';
+import { offlineQueue } from '@/services/offlineQueue.js';
 import AppSidebar from '@/components/layout/AppSidebar.vue';
 import AppHeader from '@/components/layout/AppHeader.vue';
 import NotificationToast from '@/components/layout/NotificationToast.vue';
 
 const authStore = useAuthStore();
 const { isDark } = useTheme();
+const { isOnline, justReconnected } = useNetworkStatus();
+const { pendingCount } = offlineQueue;
 const sidebarCollapsed = ref(false);
 const mobileMenuOpen = ref(false);
 const mainContent = ref(null);
