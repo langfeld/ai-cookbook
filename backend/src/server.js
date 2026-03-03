@@ -232,11 +232,13 @@ await app.register(collectionsRoutes, { prefix: '/api/collections' });
 // ============================================
 // Health Check Endpoint
 // ============================================
-app.get('/health', async () => ({
+const healthResponse = async () => ({
   status: 'ok',
   timestamp: new Date().toISOString(),
   uptime: process.uptime(),
-}));
+});
+app.get('/health', healthResponse);
+app.get('/api/health', healthResponse);
 
 // ============================================
 // Server starten

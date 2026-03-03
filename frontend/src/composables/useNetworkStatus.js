@@ -3,10 +3,11 @@
  * useNetworkStatus Composable
  * ============================================
  * Reaktiver Netzwerkstatus mit Online/Offline-Events.
- * Kompatibel mit Browser und Capacitor.
+ * Verifiziert echte Konnektivität über einen HEAD-Request,
+ * da navigator.onLine nur das Netzwerk-Interface prüft.
  */
 
-import { ref, onMounted, onUnmounted, readonly } from 'vue';
+import { ref, readonly } from 'vue';
 
 // Globaler Singleton-State (wird über alle Komponenten geteilt)
 const isOnline = ref(navigator.onLine);
@@ -16,8 +17,28 @@ const justReconnected = ref(false); // Gerade wieder online gekommen? (für Flas
 
 let reconnectTimer = null;
 let listenersBound = false;
+let connectivityCheckTimer = null;
 
-function handleOnline() {
+/**
+ * Echte Konnektivität prüfen (HEAD-Request an eigenen Server).
+ * navigator.onLine ist unzuverlässig — meldet true bei LAN ohne Internet.
+ * @returns {boolean}
+ */
+async function checkRealConnectivity() {
+  try {
+    const response = await fetch('/api/health', {
+      method: 'HEAD',
+      cache: 'no-store',
+      signal: AbortSignal.timeout(5000),
+    });
+    return true; // Jeder Statuscode = Server erreichbar
+  } catch {
+    return false;
+  }
+}
+
+function setOnline() {
+  if (isOnline.value) return; // Bereits online, nichts zu tun
   isOnline.value = true;
   lastOnlineAt.value = Date.now();
   justReconnected.value = true;
@@ -29,11 +50,45 @@ function handleOnline() {
   }, 3000);
 }
 
-function handleOffline() {
+function setOffline() {
+  if (!isOnline.value) return; // Bereits offline, nichts zu tun
   isOnline.value = false;
   wasOffline.value = true;
   justReconnected.value = false;
   clearTimeout(reconnectTimer);
+}
+
+async function handleOnline() {
+  // navigator.onLine sagt „online" — verifizieren mit echtem Request
+  const reallyOnline = await checkRealConnectivity();
+  if (reallyOnline) {
+    setOnline();
+  }
+  // Falls nicht wirklich online: Status bleibt offline,
+  // periodischer Check wird weiter versuchen
+}
+
+function handleOffline() {
+  setOffline();
+}
+
+/**
+ * Periodischer Connectivity-Check.
+ * Fängt Fälle ab, in denen navigator.onLine true ist,
+ * aber kein echtes Internet vorhanden ist (z.B. Captive Portal).
+ * Auch nützlich, wenn die Verbindung zurückkehrt, ohne dass
+ * das 'online'-Event korrekt feuert.
+ */
+function startPeriodicCheck() {
+  if (connectivityCheckTimer) return;
+  connectivityCheckTimer = setInterval(async () => {
+    const reallyOnline = await checkRealConnectivity();
+    if (reallyOnline && !isOnline.value) {
+      setOnline();
+    } else if (!reallyOnline && isOnline.value) {
+      setOffline();
+    }
+  }, 30000); // Alle 30 Sekunden
 }
 
 /**
@@ -45,6 +100,16 @@ function ensureListeners() {
 
   window.addEventListener('online', handleOnline);
   window.addEventListener('offline', handleOffline);
+
+  // Periodischen Check starten
+  startPeriodicCheck();
+
+  // Beim Start: Falls navigator.onLine true ist, verifizieren
+  if (navigator.onLine) {
+    checkRealConnectivity().then(ok => {
+      if (!ok) setOffline();
+    });
+  }
 }
 
 /**

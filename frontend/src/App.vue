@@ -17,13 +17,13 @@
 
       <!-- App-Layout (nach Login) -->
       <template v-else>
-        <div class="flex h-screen overflow-hidden">
+        <div class="flex flex-col h-screen overflow-hidden">
 
-          <!-- Offline-Banner -->
+          <!-- Status-Banner (im Dokument-Flow, schiebt Inhalt nach unten) -->
           <Transition name="slide-down">
             <div
               v-if="!isOnline"
-              class="top-0 right-0 left-0 z-50 fixed flex justify-center items-center gap-2 bg-amber-500 dark:bg-amber-600 shadow-md px-4 py-1.5 text-white text-sm text-center"
+              class="flex justify-center items-center gap-2 bg-amber-500 dark:bg-amber-600 px-4 py-1.5 text-white text-sm text-center shrink-0"
             >
               <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18.364 5.636a9 9 0 010 12.728M5.636 5.636a9 9 0 000 12.728M12 12h.01" />
@@ -42,7 +42,7 @@
           <Transition name="slide-down">
             <div
               v-if="justReconnected && pendingCount === 0"
-              class="top-0 right-0 left-0 z-50 fixed bg-emerald-500 dark:bg-emerald-600 shadow-md px-4 py-1.5 text-white text-sm text-center"
+              class="bg-emerald-500 dark:bg-emerald-600 px-4 py-1.5 text-white text-sm text-center shrink-0"
             >
               ✓ Wieder online – alles synchronisiert
             </div>
@@ -52,7 +52,7 @@
           <Transition name="slide-down">
             <div
               v-if="authExpired && isOnline"
-              class="top-0 right-0 left-0 z-50 fixed flex justify-center items-center gap-2 bg-red-500 dark:bg-red-600 shadow-md px-4 py-1.5 text-white text-sm text-center"
+              class="flex justify-center items-center gap-2 bg-red-500 dark:bg-red-600 px-4 py-1.5 text-white text-sm text-center shrink-0"
             >
               <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01M5.07 19h13.86c1.54 0 2.5-1.67 1.73-3L13.73 4c-.77-1.33-2.69-1.33-3.46 0L3.34 16c-.77 1.33.19 3 1.73 3z" />
@@ -65,7 +65,7 @@
           <Transition name="slide-down">
             <div
               v-if="failedCount > 0 && isOnline && !authExpired"
-              class="top-0 right-0 left-0 z-50 fixed flex justify-center items-center gap-2 bg-red-500 dark:bg-red-600 shadow-md px-4 py-1.5 text-white text-sm text-center"
+              class="flex justify-center items-center gap-2 bg-red-500 dark:bg-red-600 px-4 py-1.5 text-white text-sm text-center shrink-0"
             >
               <span>{{ failedCount }} Offline-Änderung{{ failedCount !== 1 ? 'en' : '' }} fehlgeschlagen</span>
               <button
@@ -76,6 +76,9 @@
               </button>
             </div>
           </Transition>
+
+          <!-- Hauptbereich mit Sidebar -->
+          <div class="flex flex-1 min-h-0">
 
           <!-- Mobile Backdrop -->
           <Transition name="fade">
@@ -107,6 +110,7 @@
                 </Transition>
               </RouterView>
             </main>
+          </div>
           </div>
         </div>
 
