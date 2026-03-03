@@ -36,7 +36,7 @@ export const useRecipesStore = defineStore('recipes', () => {
   // --- Actions ---
   const api = useApi();
 
-  /** Alle Rezepte laden (mit Filtern) */
+  /** Alle Rezepte laden (mit Filtern) – offline: persistierte Daten behalten */
   async function fetchRecipes() {
     loading.value = true;
     try {
@@ -52,18 +52,30 @@ export const useRecipesStore = defineStore('recipes', () => {
       const data = await api.get(`/recipes?${params}`);
       recipes.value = data.recipes;
       return data;
+    } catch {
+      // Offline: persistierte Daten behalten (kein Überschreiben mit leerem Array)
+      return { recipes: recipes.value };
     } finally {
       loading.value = false;
     }
   }
 
-  /** Einzelnes Rezept mit allen Details laden */
+  /** Einzelnes Rezept mit allen Details laden – offline: aus Cache suchen */
   async function fetchRecipe(id) {
     loading.value = true;
     try {
       const data = await api.get(`/recipes/${id}`);
       currentRecipe.value = data;
       return data;
+    } catch {
+      // Offline: Rezept aus persistierter Liste suchen
+      const cached = recipes.value.find(r => r.id === Number(id));
+      if (cached) {
+        currentRecipe.value = cached;
+        return cached;
+      }
+      // Kein Cache vorhanden → Fehler bleibt bestehen
+      return null;
     } finally {
       loading.value = false;
     }
@@ -153,11 +165,15 @@ export const useRecipesStore = defineStore('recipes', () => {
     return await api.post(`/recipes/${id}/cooked`, details);
   }
 
-  /** Kategorien laden */
+  /** Kategorien laden – offline: persistierte Daten behalten */
   async function fetchCategories() {
-    const data = await api.get('/categories');
-    categories.value = data.categories;
-    return data;
+    try {
+      const data = await api.get('/categories');
+      categories.value = data.categories;
+      return data;
+    } catch {
+      return { categories: categories.value };
+    }
   }
 
   /** Kategorie erstellen */

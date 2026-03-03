@@ -2,36 +2,49 @@
  * ============================================
  * useNetworkStatus Composable
  * ============================================
- * Reaktiver Netzwerkstatus mit Online/Offline-Events.
- * Verifiziert echte Konnektivität über einen HEAD-Request,
- * da navigator.onLine nur das Netzwerk-Interface prüft.
+ * Reaktiver Netzwerkstatus mit Online/Offline-Erkennung.
+ *
+ * Strategie (Server-schonend):
+ * 1. Primär: Browser-eigene navigator.onLine + online/offline-Events
+ * 2. Sofort-Offline: Wenn ein API-Call fehlschlägt (über networkState in useApi)
+ * 3. Recovery-Ping: Nur wenn wir offline sind, pingt /api/health alle 15s
+ *    um zu erkennen, wann die Verbindung zurückkehrt.
+ * 4. Fallback: Wenn die Browser-API nicht verfügbar ist, wird stattdessen
+ *    ein periodischer Ping als Ersatz verwendet.
+ *
+ * → Kein Ping solange wir online sind = minimale Server-Last
  */
 
 import { ref, readonly } from 'vue';
 
+// Browser-API verfügbar? (in allen modernen Browsern ja, aber sicher ist sicher)
+const hasBrowserOnlineAPI =
+  typeof navigator !== 'undefined' && 'onLine' in navigator;
+
 // Globaler Singleton-State (wird über alle Komponenten geteilt)
-const isOnline = ref(navigator.onLine);
+const isOnline = ref(hasBrowserOnlineAPI ? navigator.onLine : true);
 const wasOffline = ref(false); // War seit App-Start mindestens einmal offline?
 const lastOnlineAt = ref(Date.now());
 const justReconnected = ref(false); // Gerade wieder online gekommen? (für Flash-Nachricht)
 
 let reconnectTimer = null;
 let listenersBound = false;
-let connectivityCheckTimer = null;
+let recoveryCheckTimer = null;
 
 /**
  * Echte Konnektivität prüfen (HEAD-Request an eigenen Server).
- * navigator.onLine ist unzuverlässig — meldet true bei LAN ohne Internet.
+ * Wird NUR als Recovery-Check genutzt, wenn wir offline sind,
+ * oder als Fallback wenn die Browser-API fehlt.
  * @returns {boolean}
  */
 async function checkRealConnectivity() {
   try {
-    const response = await fetch('/api/health', {
+    await fetch('/api/health', {
       method: 'HEAD',
       cache: 'no-store',
       signal: AbortSignal.timeout(5000),
     });
-    return true; // Jeder Statuscode = Server erreichbar
+    return true;
   } catch {
     return false;
   }
@@ -42,6 +55,9 @@ function setOnline() {
   isOnline.value = true;
   lastOnlineAt.value = Date.now();
   justReconnected.value = true;
+
+  // Recovery-Ping stoppen — wir sind wieder online
+  stopRecoveryCheck();
 
   // Flash-Nachricht nach 3 Sekunden ausblenden
   clearTimeout(reconnectTimer);
@@ -56,16 +72,18 @@ function setOffline() {
   wasOffline.value = true;
   justReconnected.value = false;
   clearTimeout(reconnectTimer);
+
+  // Recovery-Ping starten, um zu erkennen wann wir wieder online sind
+  startRecoveryCheck();
 }
 
-async function handleOnline() {
-  // navigator.onLine sagt „online" — verifizieren mit echtem Request
-  const reallyOnline = await checkRealConnectivity();
-  if (reallyOnline) {
-    setOnline();
-  }
-  // Falls nicht wirklich online: Status bleibt offline,
-  // periodischer Check wird weiter versuchen
+/**
+ * Browser sagt „online" → direkt übernehmen.
+ * Falls es ein Fehlalarm war (z.B. LAN ohne Internet),
+ * wird der nächste fehlschlagende API-Call sofort offline setzen.
+ */
+function handleOnline() {
+  setOnline();
 }
 
 function handleOffline() {
@@ -73,22 +91,40 @@ function handleOffline() {
 }
 
 /**
- * Periodischer Connectivity-Check.
- * Fängt Fälle ab, in denen navigator.onLine true ist,
- * aber kein echtes Internet vorhanden ist (z.B. Captive Portal).
- * Auch nützlich, wenn die Verbindung zurückkehrt, ohne dass
- * das 'online'-Event korrekt feuert.
+ * Recovery-Check: Nur aktiv wenn wir offline sind.
+ * Pingt den Server alle 15s an, um zu erkennen wann die Verbindung
+ * zurückkehrt (z.B. wenn das Browser-online-Event nicht feuert).
  */
-function startPeriodicCheck() {
-  if (connectivityCheckTimer) return;
-  connectivityCheckTimer = setInterval(async () => {
+function startRecoveryCheck() {
+  if (recoveryCheckTimer) return;
+  recoveryCheckTimer = setInterval(async () => {
+    const reallyOnline = await checkRealConnectivity();
+    if (reallyOnline) {
+      setOnline(); // stoppt auch den Recovery-Check
+    }
+  }, 15000);
+}
+
+function stopRecoveryCheck() {
+  if (recoveryCheckTimer) {
+    clearInterval(recoveryCheckTimer);
+    recoveryCheckTimer = null;
+  }
+}
+
+/**
+ * Fallback-Modus: Periodischer Ping wenn Browser-API fehlt.
+ * Prüft in beide Richtungen (online ↔ offline).
+ */
+function startFallbackPeriodicCheck() {
+  setInterval(async () => {
     const reallyOnline = await checkRealConnectivity();
     if (reallyOnline && !isOnline.value) {
       setOnline();
     } else if (!reallyOnline && isOnline.value) {
       setOffline();
     }
-  }, 30000); // Alle 30 Sekunden
+  }, 15000);
 }
 
 /**
@@ -98,17 +134,18 @@ function ensureListeners() {
   if (listenersBound) return;
   listenersBound = true;
 
-  window.addEventListener('online', handleOnline);
-  window.addEventListener('offline', handleOffline);
+  if (hasBrowserOnlineAPI) {
+    // Primärer Modus: Browser-Events
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
 
-  // Periodischen Check starten
-  startPeriodicCheck();
-
-  // Beim Start: Falls navigator.onLine true ist, verifizieren
-  if (navigator.onLine) {
-    checkRealConnectivity().then(ok => {
-      if (!ok) setOffline();
-    });
+    // Falls beim Start bereits offline → Recovery-Ping starten
+    if (!navigator.onLine) {
+      setOffline();
+    }
+  } else {
+    // Fallback: Kein Browser-API → periodischer Ping übernimmt komplett
+    startFallbackPeriodicCheck();
   }
 }
 
@@ -131,7 +168,7 @@ export function useNetworkStatus() {
   };
 }
 
-// Auch den writable State exportieren (für den Sync-Manager)
+// Auch den writable State exportieren (für useApi + Sync-Manager)
 export const networkState = {
   isOnline,
   wasOffline,

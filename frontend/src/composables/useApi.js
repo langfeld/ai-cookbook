@@ -9,6 +9,7 @@
 import { ref } from 'vue';
 import { useAuthStore } from '@/stores/auth.js';
 import { useNotification } from '@/composables/useNotification.js';
+import { networkState } from '@/composables/useNetworkStatus.js';
 
 // Basis-URL für API-Anfragen
 const BASE_URL = '/api';
@@ -31,6 +32,21 @@ function friendlyErrorMessage(status) {
     503: 'Server vorübergehend nicht verfügbar.',
   };
   return messages[status] || `Unbekannter Fehler (${status})`;
+}
+
+/**
+ * Prüft ob ein Fehler ein Netzwerkfehler ist und der Offline-Banner bereits sichtbar ist.
+ * In diesem Fall soll keine zusätzliche Toast-Notification angezeigt werden.
+ */
+function isNetworkError(err) {
+  const msg = err?.message || '';
+  return !networkState.isOnline.value && (
+    msg.includes('nicht erreichbar')
+    || msg.includes('Failed to fetch')
+    || msg.includes('NetworkError')
+    || msg.includes('Load failed')
+    || msg.includes('Verbindung unterbrochen')
+  );
 }
 
 /**
@@ -68,6 +84,11 @@ async function apiFetch(url, options = {}) {
             : undefined,
       });
     } catch {
+      // Netzwerkfehler → sofort Offline-Status setzen (schneller als periodischer Check)
+      if (networkState.isOnline.value) {
+        networkState.isOnline.value = false;
+        networkState.wasOffline.value = true;
+      }
       // Bei Upload/POST-Requests kann der Server die Anfrage verarbeitet haben,
       // bevor die Verbindung abbrach (z.B. lange KI-Verarbeitung)
       const isWrite = options.method && options.method !== 'GET';
@@ -159,11 +180,13 @@ export function useApi() {
     error,
     execute,
 
-    // Convenience-Methoden – Fehler werden per Notification angezeigt und als catch-bar weitergereicht
-    get: (url) => apiFetch(url).catch(err => { showError(err.message); throw err; }),
-    post: (url, body) => apiFetch(url, { method: 'POST', body }).catch(err => { showError(err.message); throw err; }),
-    put: (url, body) => apiFetch(url, { method: 'PUT', body }).catch(err => { showError(err.message); throw err; }),
-    del: (url, body) => apiFetch(url, { method: 'DELETE', ...(body ? { body } : {}) }).catch(err => { showError(err.message); throw err; }),
-    upload: (url, formData) => apiFetch(url, { method: 'POST', body: formData }).catch(err => { showError(err.message); throw err; }),
+    // Convenience-Methoden – Fehler werden per Notification angezeigt und als catch-bar weitergereicht.
+    // Im Offline-Modus werden Netzwerkfehler bei GET-Requests still unterdrückt
+    // (der Offline-Banner in App.vue informiert den User bereits).
+    get: (url) => apiFetch(url).catch(err => { if (!isNetworkError(err)) showError(err.message); throw err; }),
+    post: (url, body) => apiFetch(url, { method: 'POST', body }).catch(err => { if (!isNetworkError(err)) showError(err.message); throw err; }),
+    put: (url, body) => apiFetch(url, { method: 'PUT', body }).catch(err => { if (!isNetworkError(err)) showError(err.message); throw err; }),
+    del: (url, body) => apiFetch(url, { method: 'DELETE', ...(body ? { body } : {}) }).catch(err => { if (!isNetworkError(err)) showError(err.message); throw err; }),
+    upload: (url, formData) => apiFetch(url, { method: 'POST', body: formData }).catch(err => { if (!isNetworkError(err)) showError(err.message); throw err; }),
   };
 }
