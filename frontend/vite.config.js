@@ -21,6 +21,11 @@ export default defineConfig({
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.svg'],
+      // Service Worker auch im Dev-Modus aktivieren (für Offline-Tests)
+      devOptions: {
+        enabled: true,
+        type: 'module',
+      },
       workbox: {
         // Alle Build-Assets cachen (JS, CSS, HTML, Bilder, Fonts)
         globPatterns: ['**/*.{js,css,html,svg,png,jpg,jpeg,webp,woff,woff2}'],
@@ -98,6 +103,15 @@ export default defineConfig({
   server: {
     port: 5173,
     // API-Anfragen an Backend weiterleiten (Entwicklung)
+    proxy: {
+      '/api': {
+        target: 'http://localhost:3001',
+        changeOrigin: true,
+      },
+    },
+  },
+  // Preview-Server braucht denselben Proxy für API-Calls
+  preview: {
     proxy: {
       '/api': {
         target: 'http://localhost:3001',
