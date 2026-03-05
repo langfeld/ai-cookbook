@@ -365,8 +365,10 @@ Portionen: ${servings}
 Zutaten:
 ${ingredientList}
 
+WICHTIG: Berücksichtige JEDE Zutat mit ihrer exakten Menge bei der Berechnung.
+
 Antworte ausschließlich als JSON-Objekt (Zahlen, keine Strings):
-{"calories": <kcal pro Portion>, "protein": <Gramm>, "carbs": <Gramm>, "fat": <Gramm>, "note": "Ausführlicher Hinweis (3-5 Sätze): Erkläre, welche Zutaten am meisten zu Kalorien und Fett beitragen. Nenne konkrete leichtere Ersatzvorschläge mit ungefährer Ersparnis. Gib zusätzlich einen Tipp zur Ernährungsbilanz oder Zubereitung."}
+{"calories": <kcal pro Portion>, "protein": <Gramm>, "carbs": <Gramm>, "fat": <Gramm>, "note": "Ausführlicher Hinweis (3-5 Sätze): Gehe JEDE kalorienreiche Zutat einzeln durch und nenne ihren ungefähren Kalorienanteil pro Portion. Nenne konkrete leichtere Ersatzvorschläge mit ungefährer Kalorienersparnis."}
 `;
 
   const result = await ai.chatJSON(prompt, { temperature: 0.2, maxTokens: 1024 });
