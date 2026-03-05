@@ -7,7 +7,7 @@
 <template>
   <router-link
     :to="`/recipes/${recipe.id}`"
-    class="block group bg-white dark:bg-stone-900 hover:shadow-lg border border-stone-200 hover:border-primary-300 dark:border-stone-800 dark:hover:border-primary-700 rounded-xl overflow-hidden transition-all"
+    class="group block bg-white dark:bg-stone-900 hover:shadow-lg border border-stone-200 hover:border-primary-300 dark:border-stone-800 dark:hover:border-primary-700 rounded-xl overflow-hidden transition-all"
   >
     <!-- Bild -->
     <div class="relative bg-stone-100 dark:bg-stone-800 aspect-4/3 overflow-hidden">
@@ -74,6 +74,10 @@
           <ChefHat class="w-3.5 h-3.5" />
           {{ recipe.times_cooked }}x
         </span>
+        <span class="flex items-center gap-1 text-orange-500 dark:text-orange-400" v-if="recipe.calories">
+          <Flame class="w-3.5 h-3.5" />
+          {{ Math.round(recipe.calories) }} kcal
+        </span>
       </div>
 
       <!-- Kategorien -->
@@ -91,7 +95,7 @@
 </template>
 
 <script setup>
-import { Star, Clock, Users, ChefHat } from 'lucide-vue-next';
+import { Star, Clock, Users, ChefHat, Flame } from 'lucide-vue-next';
 
 defineProps({
   recipe: { type: Object, required: true },

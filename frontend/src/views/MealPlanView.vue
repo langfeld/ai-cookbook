@@ -459,6 +459,9 @@
                   <span v-if="getMeal(dayIdx, mt.key).times_cooked" class="flex items-center gap-1">
                     <ChefHat class="w-3.5 h-3.5" /> {{ getMeal(dayIdx, mt.key).times_cooked }}x
                   </span>
+                  <span v-if="getMeal(dayIdx, mt.key).calories" class="flex items-center gap-1 text-orange-500 dark:text-orange-400">
+                    <Flame class="w-3.5 h-3.5" /> {{ Math.round(getMeal(dayIdx, mt.key).calories) }} kcal
+                  </span>
                 </div>
 
                 <!-- Kategorien -->
@@ -1287,7 +1290,7 @@ import {
   Sparkles, ChevronLeft, ChevronRight, Check, Eye, RefreshCw,
   X, Clock, ChefHat, UtensilsCrossed, Plus, Minus, Star, Trash2,
   LayoutGrid, CalendarDays, Settings, Settings2, FolderOpen, Info,
-  Ban, ShieldOff, Lock, Unlock, Users, ChevronDown, FolderSearch, EllipsisVertical, Search,
+  Ban, ShieldOff, Lock, Unlock, Users, ChevronDown, FolderSearch, EllipsisVertical, Search, Flame,
 } from 'lucide-vue-next';
 
 const router = useRouter();
