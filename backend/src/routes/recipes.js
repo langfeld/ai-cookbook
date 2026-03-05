@@ -174,7 +174,7 @@ export default async function recipesRoutes(fastify) {
 
     const result = await estimateNutrition(ingredients, servings || 4);
     const nutrition = sanitizeNutrition(result);
-    nutrition.note = sanitize(result?.note, 500) || null;
+    nutrition.note = sanitize(result?.note, 1000) || null;
     return reply.send(nutrition);
   });
 

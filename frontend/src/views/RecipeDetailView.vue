@@ -62,11 +62,13 @@
             <span v-if="recipe.fat" class="inline-flex items-center gap-1 bg-yellow-50 dark:bg-yellow-900/20 px-2 py-0.5 border border-yellow-200/60 dark:border-yellow-800/40 rounded-full text-yellow-700 dark:text-yellow-300 text-xs">
               🧈 {{ scaledNutrition.fat }}g Fett
             </span>
+            <button v-if="recipe.nutrition_note"
+              @click="showNutritionPopup = true"
+              class="inline-flex justify-center items-center hover:bg-stone-100 dark:hover:bg-stone-800 rounded-full w-5 h-5 text-stone-400 hover:text-stone-600 dark:hover:text-stone-300 dark:text-stone-500 transition-colors cursor-pointer"
+              title="Nährwert-Details">
+              <HelpCircle class="w-3.5 h-3.5" />
+            </button>
           </div>
-          <!-- Nährwert-Hinweis -->
-          <p v-if="recipe.nutrition_note" class="mt-2 text-stone-500 dark:text-stone-400 text-xs italic leading-relaxed">
-            💡 {{ recipe.nutrition_note }}
-          </p>
 
           <!-- Aktionen -->
           <div class="flex flex-wrap items-center gap-2.5 mt-5">
@@ -421,6 +423,54 @@
       </Transition>
     </Teleport>
 
+    <!-- ═══════ NÄHRWERT-DETAIL-POPUP ═══════ -->
+    <Teleport to="body">
+      <Transition name="fade">
+        <div v-if="showNutritionPopup" class="z-50 fixed inset-0 flex justify-center items-center bg-black/30 p-4" @click.self="showNutritionPopup = false">
+          <div class="flex flex-col bg-white dark:bg-stone-900 shadow-xl border border-stone-200 dark:border-stone-700 rounded-2xl w-full max-w-md max-h-[80vh] overflow-hidden">
+            <!-- Header -->
+            <div class="flex justify-between items-center px-5 pt-5 pb-3">
+              <h3 class="font-semibold text-stone-800 dark:text-stone-100 text-lg">Nährwerte pro Portion</h3>
+              <button @click="showNutritionPopup = false"
+                class="hover:bg-stone-100 dark:hover:bg-stone-800 p-1 rounded-lg text-stone-400 transition-colors">
+                <X class="w-5 h-5" />
+              </button>
+            </div>
+
+            <div class="flex-1 space-y-4 px-5 pb-5 overflow-y-auto">
+              <!-- Gesamtwerte -->
+              <div class="gap-2 grid grid-cols-2">
+                <div class="bg-orange-50 dark:bg-orange-900/20 p-3 border border-orange-200/60 dark:border-orange-800/40 rounded-xl text-center">
+                  <div class="font-bold text-orange-700 dark:text-orange-300 text-lg">{{ scaledNutrition.calories }}</div>
+                  <div class="text-orange-600/70 dark:text-orange-400/70 text-xs">kcal</div>
+                </div>
+                <div class="bg-blue-50 dark:bg-blue-900/20 p-3 border border-blue-200/60 dark:border-blue-800/40 rounded-xl text-center">
+                  <div class="font-bold text-blue-700 dark:text-blue-300 text-lg">{{ scaledNutrition.protein }}g</div>
+                  <div class="text-blue-600/70 dark:text-blue-400/70 text-xs">Eiweiß</div>
+                </div>
+                <div class="bg-amber-50 dark:bg-amber-900/20 p-3 border border-amber-200/60 dark:border-amber-800/40 rounded-xl text-center">
+                  <div class="font-bold text-amber-700 dark:text-amber-300 text-lg">{{ scaledNutrition.carbs }}g</div>
+                  <div class="text-amber-600/70 dark:text-amber-400/70 text-xs">Kohlenhydrate</div>
+                </div>
+                <div class="bg-yellow-50 dark:bg-yellow-900/20 p-3 border border-yellow-200/60 dark:border-yellow-800/40 rounded-xl text-center">
+                  <div class="font-bold text-yellow-700 dark:text-yellow-300 text-lg">{{ scaledNutrition.fat }}g</div>
+                  <div class="text-yellow-600/70 dark:text-yellow-400/70 text-xs">Fett</div>
+                </div>
+              </div>
+
+              <!-- KI-Hinweis -->
+              <div v-if="recipe.nutrition_note" class="bg-stone-50 dark:bg-stone-800/50 p-3 rounded-xl">
+                <p class="text-stone-600 dark:text-stone-300 text-sm leading-relaxed whitespace-pre-line">💡 {{ recipe.nutrition_note }}</p>
+              </div>
+
+              <!-- Disclaimer -->
+              <p class="text-[10px] text-stone-400 dark:text-stone-500 text-center">Alle Angaben sind KI-geschätzt und können von den tatsächlichen Werten abweichen.</p>
+            </div>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
+
     <!-- Kochmodus (Vollbild) -->
     <CookingMode
       v-if="recipe"
@@ -463,7 +513,7 @@ import { useRecipesStore } from '@/stores/recipes.js';
 import { useMealPlanStore } from '@/stores/mealplan.js';
 import { usePantryStore } from '@/stores/pantry.js';
 import { useNotification } from '@/composables/useNotification.js';
-import { Star, Clock, Users, ChefHat, Pencil, Plus, Minus, Trash2, CalendarPlus, X, ChevronLeft, ChevronRight, Maximize, Warehouse, RotateCcw, Smartphone, EllipsisVertical, Sparkles } from 'lucide-vue-next';
+import { Star, Clock, Users, ChefHat, Pencil, Plus, Minus, Trash2, CalendarPlus, X, ChevronLeft, ChevronRight, Maximize, Warehouse, RotateCcw, Smartphone, EllipsisVertical, Sparkles, HelpCircle } from 'lucide-vue-next';
 import { useWakeLock } from '@/composables/useWakeLock.js';
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue';
 import AddToCollection from '@/components/collections/AddToCollection.vue';
@@ -498,6 +548,7 @@ const isTouchDevice = ref(
 const pendingSwapData = ref(null);
 const showCookingMode = ref(false);
 const showRevisionModal = ref(false);
+const showNutritionPopup = ref(false);
 
 // ─── Zutaten-Anpassungsmodus ───
 const adjustmentMode = ref(false);

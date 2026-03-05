@@ -366,10 +366,10 @@ Zutaten:
 ${ingredientList}
 
 Antworte ausschließlich als JSON-Objekt (Zahlen, keine Strings):
-{"calories": <kcal pro Portion>, "protein": <Gramm>, "carbs": <Gramm>, "fat": <Gramm>, "note": "Kurzer Hinweis (1-2 Sätze): Welche Zutat besonders ins Gewicht fällt und ein konkreter leichterer Ersatzvorschlag."}
+{"calories": <kcal pro Portion>, "protein": <Gramm>, "carbs": <Gramm>, "fat": <Gramm>, "note": "Ausführlicher Hinweis (3-5 Sätze): Erkläre, welche Zutaten am meisten zu Kalorien und Fett beitragen. Nenne konkrete leichtere Ersatzvorschläge mit ungefährer Ersparnis. Gib zusätzlich einen Tipp zur Ernährungsbilanz oder Zubereitung."}
 `;
 
-  const result = await ai.chatJSON(prompt, { temperature: 0.2, maxTokens: 512 });
+  const result = await ai.chatJSON(prompt, { temperature: 0.2, maxTokens: 1024 });
   return result;
 }
 
