@@ -24,6 +24,10 @@ description: Rezepte, Vorräte, Einstellungen und Komplett-Backups exportieren u
       "difficulty": "mittel",
       "is_favorite": 1,
       "notes": "Persönliche Notizen...",
+      "calories": 550,
+      "protein": 22,
+      "carbs": 65,
+      "fat": 18,
       "categories": [
         { "name": "Abendessen", "icon": "🌙", "color": "#6366f1" }
       ],

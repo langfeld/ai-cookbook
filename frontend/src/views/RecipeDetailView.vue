@@ -48,6 +48,26 @@
             </span>
           </div>
 
+          <!-- Nährwerte -->
+          <div v-if="recipe.calories" class="flex flex-wrap items-center gap-2 mt-4">
+            <span class="inline-flex items-center gap-1 bg-orange-50 dark:bg-orange-900/20 px-2 py-0.5 border border-orange-200/60 dark:border-orange-800/40 rounded-full text-orange-700 dark:text-orange-300 text-xs">
+              🔥 {{ scaledNutrition.calories }} kcal
+            </span>
+            <span v-if="recipe.protein" class="inline-flex items-center gap-1 bg-blue-50 dark:bg-blue-900/20 px-2 py-0.5 border border-blue-200/60 dark:border-blue-800/40 rounded-full text-blue-700 dark:text-blue-300 text-xs">
+              💪 {{ scaledNutrition.protein }}g Eiweiß
+            </span>
+            <span v-if="recipe.carbs" class="inline-flex items-center gap-1 bg-amber-50 dark:bg-amber-900/20 px-2 py-0.5 border border-amber-200/60 dark:border-amber-800/40 rounded-full text-amber-700 dark:text-amber-300 text-xs">
+              🍞 {{ scaledNutrition.carbs }}g Kohlenhydrate
+            </span>
+            <span v-if="recipe.fat" class="inline-flex items-center gap-1 bg-yellow-50 dark:bg-yellow-900/20 px-2 py-0.5 border border-yellow-200/60 dark:border-yellow-800/40 rounded-full text-yellow-700 dark:text-yellow-300 text-xs">
+              🧈 {{ scaledNutrition.fat }}g Fett
+            </span>
+          </div>
+          <!-- Nährwert-Hinweis -->
+          <p v-if="recipe.nutrition_note" class="mt-2 text-stone-500 dark:text-stone-400 text-xs italic leading-relaxed">
+            💡 {{ recipe.nutrition_note }}
+          </p>
+
           <!-- Aktionen -->
           <div class="flex flex-wrap items-center gap-2.5 mt-5">
             <button v-if="recipe.steps?.length" @click="showCookingMode = true"
@@ -718,6 +738,19 @@ function scaleAmountRaw(amount) {
   if (!amount || !recipe.value?.servings) return 0;
   return (amount / recipe.value.servings) * adjustedServings.value;
 }
+
+// Nährwerte skaliert nach Portionsrechner
+const scaledNutrition = computed(() => {
+  const r = recipe.value;
+  if (!r?.calories || !r.servings) return { calories: 0, protein: 0, carbs: 0, fat: 0 };
+  const factor = adjustedServings.value / r.servings;
+  return {
+    calories: Math.round(r.calories * factor),
+    protein: Math.round((r.protein || 0) * factor * 10) / 10,
+    carbs: Math.round((r.carbs || 0) * factor * 10) / 10,
+    fat: Math.round((r.fat || 0) * factor * 10) / 10,
+  };
+});
 
 // Formatierte Anzeige mit Unicode-Brüchen (½, ¼, ¾ …)
 function scaleAmount(amount) {

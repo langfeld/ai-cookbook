@@ -342,7 +342,7 @@ export default async function mealplanRoutes(fastify) {
     const entry = db.prepare(`
       SELECT mpe.*, r.title as recipe_title, r.image_url, r.total_time, r.difficulty,
         r.description as recipe_description, r.is_favorite, r.ai_generated, r.times_cooked,
-        r.servings as original_servings,
+        r.servings as original_servings, r.calories, r.protein, r.carbs, r.fat,
         GROUP_CONCAT(DISTINCT c.name) as category_names
       FROM meal_plan_entries mpe
       JOIN recipes r ON mpe.recipe_id = r.id
@@ -434,7 +434,7 @@ export default async function mealplanRoutes(fastify) {
     const entry = db.prepare(`
       SELECT mpe.*, r.title as recipe_title, r.image_url, r.total_time, r.difficulty,
         r.description as recipe_description, r.is_favorite, r.ai_generated, r.times_cooked,
-        r.servings as original_servings,
+        r.servings as original_servings, r.calories, r.protein, r.carbs, r.fat,
         GROUP_CONCAT(DISTINCT c.name) as category_names
       FROM meal_plan_entries mpe
       JOIN recipes r ON mpe.recipe_id = r.id
@@ -489,7 +489,7 @@ export default async function mealplanRoutes(fastify) {
     const entry = db.prepare(`
       SELECT mpe.*, r.title as recipe_title, r.image_url, r.total_time, r.difficulty,
         r.description as recipe_description, r.is_favorite, r.ai_generated, r.times_cooked,
-        r.servings as original_servings,
+        r.servings as original_servings, r.calories, r.protein, r.carbs, r.fat,
         GROUP_CONCAT(DISTINCT c.name) as category_names
       FROM meal_plan_entries mpe
       JOIN recipes r ON mpe.recipe_id = r.id

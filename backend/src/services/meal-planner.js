@@ -685,6 +685,10 @@ export function getMealPlan(userId, weekStart) {
       r.ai_generated,
       r.times_cooked,
       r.servings as original_servings,
+      r.calories,
+      r.protein,
+      r.carbs,
+      r.fat,
       GROUP_CONCAT(DISTINCT c.name) as category_names
     FROM meal_plan_entries mpe
     JOIN recipes r ON mpe.recipe_id = r.id

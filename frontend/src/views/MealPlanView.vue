@@ -332,6 +332,19 @@
             </button>
           </div>
         </template>
+
+        <!-- ── Zeile: Tages-Nährwerte ── -->
+        <template v-for="(day, dayIdx) in weekDays" :key="'nut-'+dayIdx">
+          <div v-if="getDayNutrition(dayIdx)" class="py-1 text-center">
+            <span class="text-[0.6rem] text-stone-400 dark:text-stone-500">
+              🔥 {{ getDayNutrition(dayIdx).calories }} kcal
+              · {{ getDayNutrition(dayIdx).protein }}g E
+              · {{ getDayNutrition(dayIdx).carbs }}g K
+              · {{ getDayNutrition(dayIdx).fat }}g F
+            </span>
+          </div>
+          <div v-else class="py-1"></div>
+        </template>
       </div>
     </div>
 
@@ -474,6 +487,22 @@
           </div>
         </div>
       </template>
+
+      <!-- Tages-Nährwerte Zusammenfassung -->
+      <div class="gap-x-4 grid grid-cols-2 xl:grid-cols-4 mt-4"
+        :class="mealTypes.length === 1 ? 'lg:grid-cols-4' : 'lg:grid-cols-3'">
+        <template v-for="(day, dayIdx) in weekDays" :key="'lgn-'+dayIdx">
+          <div v-if="getDayNutrition(dayIdx)" class="py-1 text-center">
+            <span class="text-[0.65rem] text-stone-400 dark:text-stone-500">
+              🔥 {{ getDayNutrition(dayIdx).calories }} kcal
+              · {{ getDayNutrition(dayIdx).protein }}g E
+              · {{ getDayNutrition(dayIdx).carbs }}g K
+              · {{ getDayNutrition(dayIdx).fat }}g F
+            </span>
+          </div>
+          <div v-else class="py-1"></div>
+        </template>
+      </div>
     </div>
 
     <!-- ═══════════════════ MOBILE WOCHEN-ANSICHT ═══════════════════ -->
@@ -569,6 +598,13 @@
               <Plus class="w-4 h-4" /> {{ mt.icon }} {{ mt.label }}
             </button>
           </template>
+
+          <!-- Tages-Nährwerte (mobile) -->
+          <div v-if="getDayNutrition(dayIdx)" class="px-2 py-1 text-center">
+            <span class="text-stone-400 dark:text-stone-500 text-xs">
+              🔥 {{ getDayNutrition(dayIdx).calories }} kcal · {{ getDayNutrition(dayIdx).protein }}g E · {{ getDayNutrition(dayIdx).carbs }}g K · {{ getDayNutrition(dayIdx).fat }}g F
+            </span>
+          </div>
         </div>
       </template>
 
@@ -734,6 +770,13 @@
             </div>
           </template>
         </div>
+      </div>
+
+      <!-- Tages-Nährwerte (Tagesansicht) -->
+      <div v-if="getDayNutrition(selectedDayIdx)" class="px-2 py-2 text-center">
+        <span class="text-stone-400 dark:text-stone-500 text-xs">
+          🔥 {{ getDayNutrition(selectedDayIdx).calories }} kcal · {{ getDayNutrition(selectedDayIdx).protein }}g Eiweiß · {{ getDayNutrition(selectedDayIdx).carbs }}g Kohlenhydrate · {{ getDayNutrition(selectedDayIdx).fat }}g Fett
+        </span>
       </div>
 
     </div>
@@ -1447,6 +1490,31 @@ function getMeal(dayIdx, mealType) {
 function dayHasMeals(dayIdx) {
   if (!currentPlan.value?.entries) return false;
   return currentPlan.value.entries.some(e => e.day_of_week === dayIdx);
+}
+
+/** Nährwerte pro Tag aggregiert (portionsskaliert) */
+function getDayNutrition(dayIdx) {
+  if (!currentPlan.value?.entries) return null;
+  const dayEntries = currentPlan.value.entries.filter(e => e.day_of_week === dayIdx);
+  if (!dayEntries.length) return null;
+  let hasAny = false;
+  let totals = { calories: 0, protein: 0, carbs: 0, fat: 0 };
+  for (const entry of dayEntries) {
+    if (!entry.calories) continue;
+    hasAny = true;
+    const factor = (entry.servings || entry.original_servings || 1) / (entry.original_servings || 1);
+    totals.calories += Math.round((entry.calories || 0) * factor);
+    totals.protein += Math.round((entry.protein || 0) * factor * 10) / 10;
+    totals.carbs += Math.round((entry.carbs || 0) * factor * 10) / 10;
+    totals.fat += Math.round((entry.fat || 0) * factor * 10) / 10;
+  }
+  if (!hasAny) return null;
+  return {
+    calories: Math.round(totals.calories),
+    protein: Math.round(totals.protein),
+    carbs: Math.round(totals.carbs),
+    fat: Math.round(totals.fat),
+  };
 }
 
 /** Ist der aktuelle Plan fixiert? */

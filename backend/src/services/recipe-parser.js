@@ -55,7 +55,14 @@ const JSON_FORMAT = `{
       "instruction": "Detaillierte Anleitung...",
       "duration_minutes": 10
     }
-  ]
+  ],
+  "nutrition": {
+    "calories": 385,
+    "protein": 24,
+    "carbs": 42,
+    "fat": 12
+  },
+  "nutrition_note": "Kurzer Hinweis zu den Nährwerten (1-2 Sätze, z.B. welche Zutat besonders kalorienreich ist oder ein leichterer Ersatz)"
 }`;
 
 /**
@@ -86,6 +93,7 @@ ${INGREDIENT_RULES}
 - In den Kochschritten die Zutaten im Text erwähnen
 - Schwierigkeitsgrad realistisch einschätzen
 - Kategorien aus den vorhandenen Kategorien wählen (mehrere möglich)
+- Schätze die Nährwerte PRO PORTION basierend auf den Zutaten: Kalorien (kcal), Eiweiß (g), Kohlenhydrate (g), Fett (g)
 `;
 
   const result = images.length > 1
@@ -118,6 +126,7 @@ ${INGREDIENT_RULES}
 - Fehlende Informationen sinnvoll ergänzen
 - Realistische Mengenangaben und Zeiten
 - Kochschritte klar und nachvollziehbar
+- Schätze die Nährwerte PRO PORTION basierend auf den Zutaten: Kalorien (kcal), Eiweiß (g), Kohlenhydrate (g), Fett (g)
 `;
 
   const result = await ai.chatJSON(prompt, { maxTokens: 16384 });
@@ -263,6 +272,7 @@ ${INGREDIENT_RULES}
 - Kochschritte klar unterteilt mit sinnvollen Titeln
 - In den Kochschritten die Zutaten im Text erwähnen
 - Falls die Seite kein erkennbares Rezept enthält, erstelle ein Rezept basierend auf dem Titel oder Thema der Seite
+- Schätze die Nährwerte PRO PORTION basierend auf den Zutaten: Kalorien (kcal), Eiweiß (g), Kohlenhydrate (g), Fett (g)
 `;
 
   const recipe = await ai.chatJSON(prompt, { maxTokens: 16384 });
@@ -287,6 +297,12 @@ export async function reviseRecipe(recipeData, userInstructions) {
     cook_time: recipeData.cook_time,
     total_time: recipeData.total_time,
     difficulty: recipeData.difficulty,
+    nutrition: {
+      calories: recipeData.calories ?? null,
+      protein: recipeData.protein ?? null,
+      carbs: recipeData.carbs ?? null,
+      fat: recipeData.fat ?? null,
+    },
     ingredients: (recipeData.ingredients || []).map(i => ({
       name: i.name, amount: i.amount, unit: i.unit,
       group_name: i.group_name, is_optional: !!i.is_optional, notes: i.notes || '',
@@ -320,9 +336,40 @@ ${INGREDIENT_RULES}
 - Kochschritte klar unterteilt mit sinnvollen Titeln
 - In den Kochschritten die Zutaten im Text erwähnen
 - Schwierigkeitsgrad realistisch einschätzen
+- Aktualisiere die Nährwerte (nutrition) passend zu den geänderten Zutaten/Portionen. Schätze Kalorien (kcal), Eiweiß (g), Kohlenhydrate (g), Fett (g) pro Portion.
 `;
 
   const result = await ai.chatJSON(prompt, { maxTokens: 16384 });
+  return result;
+}
+
+/**
+ * Schätzt Nährwerte (pro Portion) anhand von Zutaten und Portionen.
+ * @param {Array} ingredients - Zutatenliste [{name, amount, unit}, ...]
+ * @param {number} servings - Anzahl Portionen
+ * @returns {Promise<{calories: number, protein: number, carbs: number, fat: number}>}
+ */
+export async function estimateNutrition(ingredients, servings = 4) {
+  const ai = getAIProvider({ simple: true });
+
+  const ingredientList = ingredients
+    .filter(i => i.name)
+    .map(i => `${i.amount || ''} ${i.unit || ''} ${i.name}`.trim())
+    .join('\n');
+
+  const prompt = `
+Schätze die Nährwerte PRO PORTION für folgendes Rezept.
+
+Portionen: ${servings}
+
+Zutaten:
+${ingredientList}
+
+Antworte ausschließlich als JSON-Objekt (Zahlen, keine Strings):
+{"calories": <kcal pro Portion>, "protein": <Gramm>, "carbs": <Gramm>, "fat": <Gramm>, "note": "Kurzer Hinweis (1-2 Sätze): Welche Zutat besonders ins Gewicht fällt und ein konkreter leichterer Ersatzvorschlag."}
+`;
+
+  const result = await ai.chatJSON(prompt, { temperature: 0.2, maxTokens: 512 });
   return result;
 }
 

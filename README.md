@@ -14,7 +14,7 @@ Eine KI-gestützte Rezeptverwaltung mit intelligentem Wochenplaner, Kochmodus, E
 ---
 
 <p align="center">
-  <strong>KI-Rezeptimport</strong> · <strong>Wochenplaner</strong> · <strong>Einkaufsliste</strong> · <strong>REWE & Bring!</strong> · <strong>Vorratsschrank</strong> · <strong>Kochmodus</strong> · <strong>Offline-Modus</strong> · <strong>Backup & Export</strong>
+  <strong>KI-Rezeptimport</strong> · <strong>Nährwertschätzung</strong> · <strong>Wochenplaner</strong> · <strong>Einkaufsliste</strong> · <strong>REWE & Bring!</strong> · <strong>Vorratsschrank</strong> · <strong>Kochmodus</strong> · <strong>Offline-Modus</strong> · <strong>Backup & Export</strong>
 </p>
 
 <p align="center">

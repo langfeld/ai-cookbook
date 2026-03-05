@@ -16,7 +16,7 @@
  */
 
 import db from '../config/database.js';
-import { parseRecipeFromImage, parseRecipeFromText, parseRecipeFromUrl, suggestCategories, reviseRecipe } from '../services/recipe-parser.js';
+import { parseRecipeFromImage, parseRecipeFromText, parseRecipeFromUrl, suggestCategories, reviseRecipe, estimateNutrition } from '../services/recipe-parser.js';
 // autoGenerateConversions entfernt – natürliche Einheiten + KI-Aggregation statt manueller Umrechnungstabelle
 import { config } from '../config/env.js';
 import { writeFileSync, readFileSync, existsSync } from 'fs';
@@ -62,6 +62,29 @@ function sanitizeAiRecipe(parsed) {
         duration_minutes: Math.min(Math.max(parseInt(step.duration_minutes) || 0, 0), 1440),
       })).filter(s => s.instruction)
       : [],
+    nutrition: sanitizeNutrition(parsed.nutrition),
+    nutrition_note: sanitize(parsed.nutrition_note, 500) || null,
+  };
+}
+
+/**
+ * Sanitiert Nährwert-Daten aus KI-Output oder Nutzereingabe.
+ * Gibt ein Objekt { calories, protein, carbs, fat } zurück (jeweils Zahl oder null).
+ */
+function sanitizeNutrition(nutrition) {
+  if (!nutrition || typeof nutrition !== 'object') {
+    return { calories: null, protein: null, carbs: null, fat: null };
+  }
+  const sanitizeVal = (v) => {
+    const n = parseFloat(v);
+    if (isNaN(n) || n < 0) return null;
+    return Math.min(Math.round(n * 10) / 10, 99999);
+  };
+  return {
+    calories: sanitizeVal(nutrition.calories),
+    protein: sanitizeVal(nutrition.protein),
+    carbs: sanitizeVal(nutrition.carbs),
+    fat: sanitizeVal(nutrition.fat),
   };
 }
 
@@ -124,6 +147,36 @@ function deductPantryForRecipe(userId, recipeId, originalServings, targetServing
 export default async function recipesRoutes(fastify) {
   // Alle Rezept-Routen erfordern Authentifizierung
   fastify.addHook('onRequest', fastify.authenticate);
+
+  /**
+   * POST /api/recipes/estimate-nutrition
+   * Nährwerte per KI schätzen lassen
+   */
+  fastify.post('/estimate-nutrition', {
+    schema: {
+      description: 'Nährwerte per KI schätzen',
+      tags: ['Rezepte'],
+      security: [{ bearerAuth: [] }],
+    },
+    config: {
+      rateLimit: { max: 10, timeWindow: '15 minutes' },
+    },
+  }, async (request, reply) => {
+    const { ingredients, servings } = request.body;
+
+    if (!Array.isArray(ingredients) || ingredients.length === 0) {
+      return reply.status(400).send({ error: 'Mindestens eine Zutat erforderlich' });
+    }
+
+    if (!config.ai.provider) {
+      return reply.status(400).send({ error: 'Kein KI-Provider konfiguriert' });
+    }
+
+    const result = await estimateNutrition(ingredients, servings || 4);
+    const nutrition = sanitizeNutrition(result);
+    nutrition.note = sanitize(result?.note, 500) || null;
+    return reply.send(nutrition);
+  });
 
   /**
    * GET /api/recipes
@@ -283,16 +336,17 @@ export default async function recipesRoutes(fastify) {
     },
   }, async (request, reply) => {
     const userId = request.user.id;
-    const { title, description, servings, prep_time, cook_time, difficulty, ingredients, steps, category_ids, notes } = request.body;
+    const { title, description, servings, prep_time, cook_time, difficulty, ingredients, steps, category_ids, notes, calories, protein, carbs, fat, nutrition_note } = request.body;
 
     const totalTime = (prep_time || 0) + (cook_time || 0);
 
     const transaction = db.transaction(() => {
       // Rezept einfügen
       const recipeResult = db.prepare(`
-        INSERT INTO recipes (user_id, title, description, servings, prep_time, cook_time, total_time, difficulty, notes)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(userId, title, description, servings || 4, prep_time || 0, cook_time || 0, totalTime, difficulty || 'mittel', notes);
+        INSERT INTO recipes (user_id, title, description, servings, prep_time, cook_time, total_time, difficulty, notes, calories, protein, carbs, fat, nutrition_note)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(userId, title, description, servings || 4, prep_time || 0, cook_time || 0, totalTime, difficulty || 'mittel', notes,
+        parseFloat(calories) || null, parseFloat(protein) || null, parseFloat(carbs) || null, parseFloat(fat) || null, nutrition_note || null);
 
       const recipeId = recipeResult.lastInsertRowid;
 
@@ -394,8 +448,8 @@ export default async function recipesRoutes(fastify) {
     // Rezept in Datenbank speichern
     const transaction = db.transaction(() => {
       const recipeResult = db.prepare(`
-        INSERT INTO recipes (user_id, title, description, servings, prep_time, cook_time, total_time, difficulty, image_url, ai_generated)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+        INSERT INTO recipes (user_id, title, description, servings, prep_time, cook_time, total_time, difficulty, image_url, ai_generated, calories, protein, carbs, fat, nutrition_note)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?)
       `).run(
         userId,
         parsedRecipe.title,
@@ -405,7 +459,12 @@ export default async function recipesRoutes(fastify) {
         parsedRecipe.cook_time,
         parsedRecipe.total_time,
         parsedRecipe.difficulty,
-        `/api/uploads/${firstImagePath}`
+        `/api/uploads/${firstImagePath}`,
+        parsedRecipe.nutrition.calories,
+        parsedRecipe.nutrition.protein,
+        parsedRecipe.nutrition.carbs,
+        parsedRecipe.nutrition.fat,
+        parsedRecipe.nutrition_note
       );
 
       const recipeId = recipeResult.lastInsertRowid;
@@ -482,8 +541,8 @@ export default async function recipesRoutes(fastify) {
     // Gleiche Speicher-Logik wie bei Foto-Import (ohne Bild)
     const transaction = db.transaction(() => {
       const recipeResult = db.prepare(`
-        INSERT INTO recipes (user_id, title, description, servings, prep_time, cook_time, total_time, difficulty, ai_generated)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)
+        INSERT INTO recipes (user_id, title, description, servings, prep_time, cook_time, total_time, difficulty, ai_generated, calories, protein, carbs, fat, nutrition_note)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?)
       `).run(
         userId,
         parsedRecipe.title,
@@ -492,7 +551,12 @@ export default async function recipesRoutes(fastify) {
         parsedRecipe.prep_time,
         parsedRecipe.cook_time,
         parsedRecipe.total_time,
-        parsedRecipe.difficulty
+        parsedRecipe.difficulty,
+        parsedRecipe.nutrition.calories,
+        parsedRecipe.nutrition.protein,
+        parsedRecipe.nutrition.carbs,
+        parsedRecipe.nutrition.fat,
+        parsedRecipe.nutrition_note
       );
 
       const recipeId = recipeResult.lastInsertRowid;
@@ -598,8 +662,8 @@ export default async function recipesRoutes(fastify) {
     // Gleiche Speicher-Logik wie bei Text-Import
     const transaction = db.transaction(() => {
       const recipeResult = db.prepare(`
-        INSERT INTO recipes (user_id, title, description, servings, prep_time, cook_time, total_time, difficulty, image_url, source_url, ai_generated, notes)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
+        INSERT INTO recipes (user_id, title, description, servings, prep_time, cook_time, total_time, difficulty, image_url, source_url, ai_generated, notes, calories, protein, carbs, fat, nutrition_note)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?)
       `).run(
         userId,
         parsedRecipe.title,
@@ -611,7 +675,12 @@ export default async function recipesRoutes(fastify) {
         parsedRecipe.difficulty,
         localImagePath ? `/api/uploads/${localImagePath}` : null,
         sanitize(url, 2000),
-        `Importiert von: ${sanitize(url, 2000)}`
+        `Importiert von: ${sanitize(url, 2000)}`,
+        parsedRecipe.nutrition.calories,
+        parsedRecipe.nutrition.protein,
+        parsedRecipe.nutrition.carbs,
+        parsedRecipe.nutrition.fat,
+        parsedRecipe.nutrition_note
       );
 
       const recipeId = recipeResult.lastInsertRowid;
@@ -758,9 +827,10 @@ export default async function recipesRoutes(fastify) {
 
       const transaction = db.transaction(() => {
         db.prepare(`
-          UPDATE recipes SET title=?, description=?, servings=?, prep_time=?, cook_time=?, total_time=?, difficulty=?, updated_at=CURRENT_TIMESTAMP
+          UPDATE recipes SET title=?, description=?, servings=?, prep_time=?, cook_time=?, total_time=?, difficulty=?, calories=?, protein=?, carbs=?, fat=?, nutrition_note=?, updated_at=CURRENT_TIMESTAMP
           WHERE id = ?
-        `).run(revised.title, revised.description, revised.servings, revised.prep_time, revised.cook_time, totalTime, revised.difficulty, recipeId);
+        `).run(revised.title, revised.description, revised.servings, revised.prep_time, revised.cook_time, totalTime, revised.difficulty,
+          revised.nutrition.calories, revised.nutrition.protein, revised.nutrition.carbs, revised.nutrition.fat, revised.nutrition_note, recipeId);
 
         // Zutaten ersetzen
         db.prepare('DELETE FROM ingredients WHERE recipe_id = ?').run(recipeId);
@@ -797,15 +867,16 @@ export default async function recipesRoutes(fastify) {
       // Kopie erstellen
       const transaction = db.transaction(() => {
         const result = db.prepare(`
-          INSERT INTO recipes (user_id, title, description, servings, prep_time, cook_time, total_time, difficulty, image_url, source_url, ai_generated, notes)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?)
+          INSERT INTO recipes (user_id, title, description, servings, prep_time, cook_time, total_time, difficulty, image_url, source_url, ai_generated, notes, calories, protein, carbs, fat, nutrition_note)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?)
         `).run(
           userId, revised.title, revised.description, revised.servings,
           revised.prep_time, revised.cook_time,
           (revised.prep_time || 0) + (revised.cook_time || 0),
           revised.difficulty,
           recipe.image_url, recipe.source_url,
-          recipe.notes ? `Überarbeitet aus: ${sanitize(recipe.title, 200)}\n${recipe.notes}` : `Überarbeitet aus: ${sanitize(recipe.title, 200)}`
+          recipe.notes ? `Überarbeitet aus: ${sanitize(recipe.title, 200)}\n${recipe.notes}` : `Überarbeitet aus: ${sanitize(recipe.title, 200)}`,
+          revised.nutrition.calories, revised.nutrition.protein, revised.nutrition.carbs, revised.nutrition.fat, revised.nutrition_note
         );
 
         const newRecipeId = result.lastInsertRowid;
@@ -858,7 +929,7 @@ export default async function recipesRoutes(fastify) {
   }, async (request, reply) => {
     const userId = request.user.id;
     const recipeId = request.params.id;
-    const { title, description, servings, prep_time, cook_time, difficulty, ingredients, steps, category_ids, notes } = request.body;
+    const { title, description, servings, prep_time, cook_time, difficulty, ingredients, steps, category_ids, notes, calories, protein, carbs, fat, nutrition_note } = request.body;
 
     // Prüfen ob Rezept dem User gehört
     const existing = db.prepare('SELECT id FROM recipes WHERE id = ? AND user_id = ?').get(recipeId, userId);
@@ -871,9 +942,10 @@ export default async function recipesRoutes(fastify) {
     const transaction = db.transaction(() => {
       // Rezept updaten
       db.prepare(`
-        UPDATE recipes SET title=?, description=?, servings=?, prep_time=?, cook_time=?, total_time=?, difficulty=?, notes=?, updated_at=CURRENT_TIMESTAMP
+        UPDATE recipes SET title=?, description=?, servings=?, prep_time=?, cook_time=?, total_time=?, difficulty=?, notes=?, calories=?, protein=?, carbs=?, fat=?, nutrition_note=?, updated_at=CURRENT_TIMESTAMP
         WHERE id = ?
-      `).run(title, description, servings, prep_time, cook_time, totalTime, difficulty, notes, recipeId);
+      `).run(title, description, servings, prep_time, cook_time, totalTime, difficulty, notes,
+        parseFloat(calories) || null, parseFloat(protein) || null, parseFloat(carbs) || null, parseFloat(fat) || null, nutrition_note || null, recipeId);
 
       // Kategorien aktualisieren
       if (category_ids) {

@@ -50,6 +50,16 @@ Emoji-Zuordnungen für Zutaten (z. B. 🍅 Tomate, 🧄 Knoblauch):
 
 Zutaten werden in den Kochschritten **farblich hervorgehoben** — so erkennst du auf einen Blick, welche Zutaten im aktuellen Schritt verwendet werden.
 
+## Nährwerte
+
+Jedes Rezept kann **Nährwerte pro Portion** enthalten:
+
+- **Kalorien** (kcal), **Eiweiß** (g), **Kohlenhydrate** (g), **Fett** (g)
+- Werden beim **KI-Import** (Foto, Text, URL) und bei der **KI-Überarbeitung** automatisch geschätzt
+- Im Rezeptformular **manuell editierbar** (alle Felder optional)
+- In der Rezeptansicht als dezente **farbige Badges** dargestellt
+- Skalieren automatisch mit dem **Portionsrechner** — bei 2 statt 4 Portionen halbieren sich die Werte
+
 ## Portionsrechner
 
 Zutatenmengen dynamisch umrechnen: Portionszahl ändern → alle Mengen werden proportional angepasst.

@@ -102,7 +102,53 @@
         </div>
       </section>
 
-      <!-- Zutaten -->
+      <!-- Nährwerte pro Portion -->
+      <section class="space-y-4 card">
+        <div class="flex justify-between items-center">
+          <h2 class="font-semibold text-stone-800 dark:text-stone-100 text-lg">📊 Nährwerte <span class="font-normal text-stone-400 text-sm">(pro Portion, optional)</span></h2>
+          <button type="button" @click="estimateNutritionViaAI" :disabled="estimatingNutrition || flatIngredients.length === 0"
+            class="inline-flex items-center gap-1.5 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-900/30 dark:hover:bg-indigo-900/50 disabled:opacity-40 px-3 py-1.5 border border-indigo-200/60 dark:border-indigo-700/40 rounded-lg font-medium text-indigo-600 dark:text-indigo-400 text-xs transition-colors disabled:cursor-not-allowed">
+            <span v-if="estimatingNutrition" class="inline-block border-2 border-indigo-400 border-t-transparent rounded-full w-3.5 h-3.5 animate-spin"></span>
+            <span v-else>🤖</span>
+            {{ estimatingNutrition ? 'Schätze…' : 'KI-Schätzung' }}
+          </button>
+        </div>
+        <div class="gap-4 grid grid-cols-2 sm:grid-cols-4">
+          <div>
+            <label class="form-label">Kalorien</label>
+            <div class="relative">
+              <input v-model.number="form.calories" type="number" step="0.1" min="0" class="pr-14 form-input" placeholder="—" />
+              <span class="right-3 absolute inset-y-0 flex items-center text-stone-400 text-sm pointer-events-none">kcal</span>
+            </div>
+          </div>
+          <div>
+            <label class="form-label">Eiweiß</label>
+            <div class="relative">
+              <input v-model.number="form.protein" type="number" step="0.1" min="0" class="pr-8 form-input" placeholder="—" />
+              <span class="right-3 absolute inset-y-0 flex items-center text-stone-400 text-sm pointer-events-none">g</span>
+            </div>
+          </div>
+          <div>
+            <label class="form-label">Kohlenhydrate</label>
+            <div class="relative">
+              <input v-model.number="form.carbs" type="number" step="0.1" min="0" class="pr-8 form-input" placeholder="—" />
+              <span class="right-3 absolute inset-y-0 flex items-center text-stone-400 text-sm pointer-events-none">g</span>
+            </div>
+          </div>
+          <div>
+            <label class="form-label">Fett</label>
+            <div class="relative">
+              <input v-model.number="form.fat" type="number" step="0.1" min="0" class="pr-8 form-input" placeholder="—" />
+              <span class="right-3 absolute inset-y-0 flex items-center text-stone-400 text-sm pointer-events-none">g</span>
+            </div>
+          </div>
+        </div>
+        <!-- Nährwert-Hinweis -->
+        <div v-if="form.nutrition_note" class="mt-2">
+          <label class="form-label">KI-Hinweis</label>
+          <textarea v-model="form.nutrition_note" rows="2" class="text-sm form-input" placeholder="Hinweis zu den Nährwerten…"></textarea>
+        </div>
+      </section>
       <section class="space-y-4 card">
         <div class="flex justify-between items-center">
           <h2 class="font-semibold text-stone-800 dark:text-stone-100 text-lg">🥕 Zutaten</h2>
@@ -224,7 +270,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { useRecipesStore } from '@/stores/recipes.js';
 import { useNotification } from '@/composables/useNotification.js';
 import { useApi } from '@/composables/useApi.js';
-import { Plus, Trash2, Save, Image as ImageIcon, Crop as CropIcon } from 'lucide-vue-next';
+import { Plus, Trash2, Save, Image as ImageIcon, Crop as CropIcon, Sparkles } from 'lucide-vue-next';
 import ImageCropModal from '@/components/ui/ImageCropModal.vue';
 import UnitInput from '@/components/ui/UnitInput.vue';
 
@@ -235,6 +281,7 @@ const { showSuccess } = useNotification();
 const api = useApi();
 
 const saving = ref(false);
+const estimatingNutrition = ref(false);
 const imageFile = ref(null);
 const imagePreview = ref(null);
 
@@ -255,6 +302,11 @@ const form = reactive({
   cook_time: 30,
   servings: 4,
   difficulty: 'mittel',
+  calories: null,
+  protein: null,
+  carbs: null,
+  fat: null,
+  nutrition_note: null,
   category_ids: [],
   ingredient_groups: [
     { name: '', items: [{ amount: null, unit: '', name: '', notes: '', is_optional: false }] }
@@ -275,6 +327,37 @@ function addIngredientGroup() {
     name: '',
     items: [{ amount: null, unit: '', name: '', is_optional: false }],
   });
+}
+
+// Alle Zutaten flach aus allen Gruppen
+const flatIngredients = computed(() => {
+  const items = [];
+  for (const group of form.ingredient_groups) {
+    for (const ing of group.items) {
+      if (ing.name) items.push({ name: ing.name, amount: ing.amount, unit: ing.unit });
+    }
+  }
+  return items;
+});
+
+async function estimateNutritionViaAI() {
+  if (flatIngredients.value.length === 0) return;
+  estimatingNutrition.value = true;
+  try {
+    const result = await api.post('/recipes/estimate-nutrition', {
+      ingredients: flatIngredients.value,
+      servings: form.servings || 4,
+    });
+    if (result.calories != null) form.calories = result.calories;
+    if (result.protein != null) form.protein = result.protein;
+    if (result.carbs != null) form.carbs = result.carbs;
+    if (result.fat != null) form.fat = result.fat;
+    if (result.note) form.nutrition_note = result.note;
+  } catch {
+    // Fehler wird von useApi angezeigt
+  } finally {
+    estimatingNutrition.value = false;
+  }
 }
 
 function onImageChange(e) {
@@ -330,6 +413,11 @@ async function saveRecipe() {
       servings: form.servings,
       difficulty: form.difficulty,
       category_ids: form.category_ids,
+      calories: form.calories || null,
+      protein: form.protein || null,
+      carbs: form.carbs || null,
+      fat: form.fat || null,
+      nutrition_note: form.nutrition_note || null,
       ingredients,
       steps: form.steps.filter(s => s.instruction).map((s, i) => ({ ...s, step_number: i + 1 })),
     };
@@ -375,6 +463,11 @@ onMounted(async () => {
         cook_time: r.cook_time,
         servings: r.servings,
         difficulty: r.difficulty,
+        calories: r.calories || null,
+        protein: r.protein || null,
+        carbs: r.carbs || null,
+        fat: r.fat || null,
+        nutrition_note: r.nutrition_note || null,
         category_ids: r.categories?.map(c => c.id) || [],
       });
 

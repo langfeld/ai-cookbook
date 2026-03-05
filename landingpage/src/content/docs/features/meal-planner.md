@@ -66,6 +66,15 @@ Einzelne Wochenpläne können gelöscht werden:
 - Gesperrte Pläne müssen erst entsperrt werden
 - Bestätigungsdialog vor dem Löschen
 
+## Tages-Nährwerte
+
+Für jeden Tag im Wochenplan wird eine **Nährwert-Zusammenfassung** angezeigt:
+
+- Summe aus allen Mahlzeiten des Tages (Kalorien, Eiweiß, Kohlenhydrate, Fett)
+- Portionsbezogen berechnet — angepasste Portionen werden berücksichtigt
+- Sichtbar in allen Ansichten: Kompakt-Grid, Karten-Ansicht, Tagesansicht und Mobile
+- Erscheint nur, wenn mindestens eine Mahlzeit Nährwertdaten hat
+
 ## Offline-Modus
 
 Der aktuelle Wochenplan ist auch **ohne Netzwerkverbindung** verfügbar:

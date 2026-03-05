@@ -21,8 +21,8 @@ description: Vollständige API-Referenz aller Endpunkte.
 |---------|------|-------------|
 | `GET` | `/` | Alle Rezepte (Filter, Suche, Pagination) |
 | `GET` | `/:id` | Rezeptdetails mit Zutaten, Schritten, Historie |
-| `POST` | `/` | Neues Rezept erstellen |
-| `PUT` | `/:id` | Rezept bearbeiten |
+| `POST` | `/` | Neues Rezept erstellen (inkl. optionaler Nährwerte) |
+| `PUT` | `/:id` | Rezept bearbeiten (inkl. optionaler Nährwerte) |
 | `DELETE` | `/:id` | Rezept löschen (inkl. Bild-Cleanup) |
 | `POST` | `/import-photo` | KI-Foto-Import (Multi-Bild) |
 | `POST` | `/import-text` | KI-Text-Import |

@@ -8,6 +8,7 @@ description: Zauberjournal — KI-gestützte Rezeptverwaltung mit Wochenplaner, 
 ## Highlights
 
 - **KI-Rezeptimport** — Foto oder Text → strukturiertes Rezept mit Zutaten, Schritten und Kategorien
+- **Nährwertschätzung** — Kalorien, Eiweiß, Kohlenhydrate und Fett pro Portion — automatisch von der KI geschätzt, manuell editierbar
 - **Wochenplaner** — Score-basierter Algorithmus mit Rotation, Synergien, Rezept-Sperren und optionalem KI-Reasoning
 - **Einkaufsliste** — Automatisch generiert, mit Zutaten-Zusammenführung, Alias-System und Vorratsabgleich
 - **REWE-Integration** — Automatisches AI-Produktmatching, Preisoptimierung, Tampermonkey-Userscript

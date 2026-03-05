@@ -609,6 +609,29 @@ function migrateDatabase() {
     db.exec("DROP TABLE IF EXISTS ingredient_conversions");
     console.log('  ↳ Migration: ingredient_conversions Tabelle entfernt');
   } catch { /* Tabelle existiert möglicherweise nicht */ }
+
+  // Nährwert-Spalten in recipes hinzufügen (KI-geschätzt, pro Portion)
+  const recipeCols = db.prepare("PRAGMA table_info(recipes)").all().map(c => c.name);
+  if (!recipeCols.includes('calories')) {
+    db.exec("ALTER TABLE recipes ADD COLUMN calories REAL DEFAULT NULL");
+    console.log('  ↳ Migration: recipes.calories hinzugefügt');
+  }
+  if (!recipeCols.includes('protein')) {
+    db.exec("ALTER TABLE recipes ADD COLUMN protein REAL DEFAULT NULL");
+    console.log('  ↳ Migration: recipes.protein hinzugefügt');
+  }
+  if (!recipeCols.includes('carbs')) {
+    db.exec("ALTER TABLE recipes ADD COLUMN carbs REAL DEFAULT NULL");
+    console.log('  ↳ Migration: recipes.carbs hinzugefügt');
+  }
+  if (!recipeCols.includes('fat')) {
+    db.exec("ALTER TABLE recipes ADD COLUMN fat REAL DEFAULT NULL");
+    console.log('  ↳ Migration: recipes.fat hinzugefügt');
+  }
+  if (!recipeCols.includes('nutrition_note')) {
+    db.exec("ALTER TABLE recipes ADD COLUMN nutrition_note TEXT DEFAULT NULL");
+    console.log('  ↳ Migration: recipes.nutrition_note hinzugefügt');
+  }
 }
 
 /**
