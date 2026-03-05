@@ -233,25 +233,25 @@
     </form>
 
     <!-- Floating Speichern/Abbrechen -->
-    <div class="right-0 bottom-0 left-0 z-40 fixed bg-white/90 dark:bg-stone-950/90 shadow-[0_-2px_10px_rgba(0,0,0,0.08)] backdrop-blur-sm px-4 sm:px-6 py-3 border-stone-200 dark:border-stone-800 border-t">
-      <div class="flex justify-center gap-3 mx-auto max-w-3xl">
+    <Teleport to="body">
+      <div class="right-0 bottom-0 left-0 z-40 fixed flex justify-center items-center gap-2 sm:gap-3 bg-white/95 dark:bg-stone-950/95 shadow-[0_-4px_24px_rgba(0,0,0,0.12)] backdrop-blur-sm px-3 sm:px-6 py-3 sm:py-4 border-stone-200 dark:border-stone-800 border-t">
         <button
           type="submit"
           form="recipe-form"
           :disabled="saving"
-          class="flex items-center gap-2 bg-primary-600 hover:bg-primary-700 disabled:opacity-50 px-6 py-3 rounded-xl font-medium text-white transition-colors"
+          class="flex items-center gap-1.5 bg-primary-600 hover:bg-primary-700 disabled:opacity-50 px-3 sm:px-4 py-1.5 rounded-lg font-medium text-white text-sm transition-colors"
         >
           <Save class="w-4 h-4" />
-          {{ saving ? 'Wird gespeichert...' : 'Rezept speichern' }}
+          {{ saving ? 'Wird gespeichert…' : 'Rezept speichern' }}
         </button>
         <router-link
           to="/recipes"
-          class="flex items-center gap-2 hover:bg-stone-50 dark:hover:bg-stone-800 px-6 py-3 border border-stone-300 dark:border-stone-600 rounded-xl text-stone-700 dark:text-stone-300 transition-colors"
+          class="flex items-center gap-1.5 hover:bg-stone-50 dark:hover:bg-stone-800 px-3 sm:px-4 py-1.5 border border-stone-300 dark:border-stone-600 rounded-lg text-stone-600 dark:text-stone-300 text-sm transition-colors"
         >
           Abbrechen
         </router-link>
       </div>
-    </div>
+    </Teleport>
 
     <!-- Bild-Zuschnitt Modal -->
     <ImageCropModal
