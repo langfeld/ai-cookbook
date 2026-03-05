@@ -8,6 +8,7 @@
  */
 
 import { getAIProvider } from './ai/provider.js';
+import sharp from 'sharp';
 
 // ── Gemeinsamer Prompt-Block für Zutaten-Format ──
 const INGREDIENT_RULES = `
@@ -73,8 +74,19 @@ const JSON_FORMAT = `{
  */
 export async function parseRecipeFromImage(imageBuffers, existingCategories = []) {
   const ai = getAIProvider();
-  const images = Array.isArray(imageBuffers) ? imageBuffers : [imageBuffers];
-  const isMultiPage = images.length > 1;
+  const rawImages = Array.isArray(imageBuffers) ? imageBuffers : [imageBuffers];
+  const isMultiPage = rawImages.length > 1;
+
+  // Bilder für KI-Analyse komprimieren (max 1500px, JPEG 80%)
+  // Spart Token und beschleunigt die Analyse erheblich
+  const images = await Promise.all(
+    rawImages.map((buf) =>
+      sharp(buf)
+        .resize(1500, 1500, { fit: 'inside', withoutEnlargement: true })
+        .jpeg({ quality: 80 })
+        .toBuffer()
+    )
+  );
 
   const prompt = `
 Analysiere ${isMultiPage ? 'diese Bilder eines mehrseitigen Rezepts' : 'dieses Bild eines Rezepts'} und extrahiere alle Informationen.

@@ -89,6 +89,14 @@ export class KimiProvider extends BaseAIProvider {
   }
 
   /**
+   * Sendet eine Chat-Anfrage mit einem einzelnen Bild (Vision)
+   * Delegiert an chatWithImages für einheitliche Verarbeitung
+   */
+  async chatWithImage(prompt, imageBuffer, options = {}) {
+    return this.chatWithImages(prompt, [imageBuffer], options);
+  }
+
+  /**
    * Sendet eine Chat-Anfrage mit mehreren Bildern (Vision)
    * Kimi K2.5 unterstützt mehrere Bilder in einer Nachricht
    */
