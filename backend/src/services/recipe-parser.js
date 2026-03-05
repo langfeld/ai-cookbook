@@ -368,7 +368,7 @@ ${ingredientList}
 WICHTIG: Berücksichtige JEDE Zutat mit ihrer exakten Menge bei der Berechnung.
 
 Antworte ausschließlich als JSON-Objekt (Zahlen, keine Strings):
-{"calories": <kcal pro Portion>, "protein": <Gramm>, "carbs": <Gramm>, "fat": <Gramm>, "note": "Ausführlicher Hinweis (3-5 Sätze): Gehe JEDE kalorienreiche Zutat einzeln durch und nenne ihren ungefähren Kalorienanteil pro Portion. Nenne konkrete leichtere Ersatzvorschläge mit ungefährer Kalorienersparnis."}
+{"calories": <kcal pro Portion>, "protein": <Gramm pro Portion>, "carbs": <Gramm pro Portion>, "fat": <Gramm pro Portion>, "note": "Ausführlicher Hinweis (3-5 Sätze): Gehe JEDE kalorienreiche Zutat einzeln durch und nenne ihren ungefähren Kalorienanteil pro Portion. Nenne konkrete leichtere Ersatzvorschläge mit ungefährer Kalorienersparnis."}
 `;
 
   const result = await ai.chatJSON(prompt, { temperature: 0.2, maxTokens: 1024 });
