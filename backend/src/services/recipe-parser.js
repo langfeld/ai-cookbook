@@ -77,7 +77,7 @@ const JSON_FORMAT = `{
     "fat": 12
   },
   "nutrition_details": [
-    { "name": "Zutatename", "amount": "200g", "calories": 150, "protein": 8, "carbs": 20, "fat": 5 }
+    { "name": "Zutatename", "amount": "50g", "calories": 150, "protein": 8, "carbs": 20, "fat": 5 }
   ],
   "nutrition_note": "Optionale Tipps: z.B. leichtere Alternativen mit Kalorienersparnis"
 }`;
@@ -123,7 +123,7 @@ ${INGREDIENT_RULES}
 - Kategorien aus den vorhandenen Kategorien wählen (mehrere möglich)
 - Schätze die Nährwerte PRO PORTION basierend auf den Zutaten: Kalorien (kcal), Eiweiß (g), Kohlenhydrate (g), Fett (g)
 - WICHTIG: Mengenangaben beziehen sich auf den ROHEN/UNGEKOCHTEN Zustand (z.B. 125g Nudeln = 125g trockene Nudeln, nicht gekochte). Verwende die Nährwertangaben für das ROHE Lebensmittel.
-- WICHTIG für nutrition_details: Fülle das Array mit EINEM Eintrag pro Zutat. Jeder Eintrag enthält name, amount (z.B. "200g"), calories, protein, carbs, fat — jeweils PRO PORTION (Gesamtmenge geteilt durch Portionen). Die Summe aller Einzelwerte MUSS exakt den Werten in nutrition entsprechen.
+- WICHTIG für nutrition_details: Fülle das Array mit EINEM Eintrag pro Zutat. Jeder Eintrag enthält name, amount, calories, protein, carbs, fat — ALLES PRO PORTION (Gesamtmenge UND Nährwerte jeweils geteilt durch Portionen). Beispiel: 500g Kartoffeln bei 4 Portionen → amount: "125g". Die Summe aller Einzelwerte MUSS exakt den Werten in nutrition entsprechen.
 - nutrition_note: NUR optionale Tipps (z.B. leichtere Alternativen). KEINE Nährwert-Aufschlüsselung hier — die steht in nutrition_details.
 `;
 
@@ -159,7 +159,7 @@ ${INGREDIENT_RULES}
 - Kochschritte klar und nachvollziehbar
 - Schätze die Nährwerte PRO PORTION basierend auf den Zutaten: Kalorien (kcal), Eiweiß (g), Kohlenhydrate (g), Fett (g)
 - WICHTIG: Mengenangaben beziehen sich auf den ROHEN/UNGEKOCHTEN Zustand (z.B. 125g Nudeln = 125g trockene Nudeln, nicht gekochte). Verwende die Nährwertangaben für das ROHE Lebensmittel.
-- WICHTIG für nutrition_details: Fülle das Array mit EINEM Eintrag pro Zutat. Jeder Eintrag enthält name, amount (z.B. "200g"), calories, protein, carbs, fat — jeweils PRO PORTION (Gesamtmenge geteilt durch Portionen). Die Summe aller Einzelwerte MUSS exakt den Werten in nutrition entsprechen.
+- WICHTIG für nutrition_details: Fülle das Array mit EINEM Eintrag pro Zutat. Jeder Eintrag enthält name, amount, calories, protein, carbs, fat — ALLES PRO PORTION (Gesamtmenge UND Nährwerte jeweils geteilt durch Portionen). Beispiel: 500g Kartoffeln bei 4 Portionen → amount: "125g". Die Summe aller Einzelwerte MUSS exakt den Werten in nutrition entsprechen.
 - nutrition_note: NUR optionale Tipps (z.B. leichtere Alternativen). KEINE Nährwert-Aufschlüsselung hier — die steht in nutrition_details.
 `;
 
@@ -308,7 +308,7 @@ ${INGREDIENT_RULES}
 - Falls die Seite kein erkennbares Rezept enthält, erstelle ein Rezept basierend auf dem Titel oder Thema der Seite
 - Schätze die Nährwerte PRO PORTION basierend auf den Zutaten: Kalorien (kcal), Eiweiß (g), Kohlenhydrate (g), Fett (g)
 - WICHTIG: Mengenangaben beziehen sich auf den ROHEN/UNGEKOCHTEN Zustand (z.B. 125g Nudeln = 125g trockene Nudeln, nicht gekochte). Verwende die Nährwertangaben für das ROHE Lebensmittel.
-- WICHTIG für nutrition_details: Fülle das Array mit EINEM Eintrag pro Zutat. Jeder Eintrag enthält name, amount (z.B. "200g"), calories, protein, carbs, fat — jeweils PRO PORTION (Gesamtmenge geteilt durch Portionen). Die Summe aller Einzelwerte MUSS exakt den Werten in nutrition entsprechen.
+- WICHTIG für nutrition_details: Fülle das Array mit EINEM Eintrag pro Zutat. Jeder Eintrag enthält name, amount, calories, protein, carbs, fat — ALLES PRO PORTION (Gesamtmenge UND Nährwerte jeweils geteilt durch Portionen). Beispiel: 500g Kartoffeln bei 4 Portionen → amount: "125g". Die Summe aller Einzelwerte MUSS exakt den Werten in nutrition entsprechen.
 - nutrition_note: NUR optionale Tipps (z.B. leichtere Alternativen). KEINE Nährwert-Aufschlüsselung hier — die steht in nutrition_details.
 `;
 
@@ -375,7 +375,7 @@ ${INGREDIENT_RULES}
 - Schwierigkeitsgrad realistisch einschätzen
 - Aktualisiere die Nährwerte (nutrition) passend zu den geänderten Zutaten/Portionen. Schätze Kalorien (kcal), Eiweiß (g), Kohlenhydrate (g), Fett (g) pro Portion.
 - WICHTIG: Mengenangaben beziehen sich auf den ROHEN/UNGEKOCHTEN Zustand (z.B. 125g Nudeln = 125g trockene Nudeln, nicht gekochte). Verwende die Nährwertangaben für das ROHE Lebensmittel.
-- WICHTIG für nutrition_details: Fülle das Array mit EINEM Eintrag pro Zutat. Jeder Eintrag enthält name, amount (z.B. "200g"), calories, protein, carbs, fat — jeweils PRO PORTION (Gesamtmenge geteilt durch Portionen). Die Summe aller Einzelwerte MUSS exakt den Werten in nutrition entsprechen.
+- WICHTIG für nutrition_details: Fülle das Array mit EINEM Eintrag pro Zutat. Jeder Eintrag enthält name, amount, calories, protein, carbs, fat — ALLES PRO PORTION (Gesamtmenge UND Nährwerte jeweils geteilt durch Portionen). Beispiel: 500g Kartoffeln bei 4 Portionen → amount: "125g". Die Summe aller Einzelwerte MUSS exakt den Werten in nutrition entsprechen.
 - nutrition_note: NUR optionale Tipps (z.B. leichtere Alternativen). KEINE Nährwert-Aufschlüsselung hier — die steht in nutrition_details.
 `;
 
@@ -414,7 +414,7 @@ Gehe wie folgt vor:
 5. Optional: Schreibe in "note" NUR leichtere Alternativen/Tipps. KEINE Aufschlüsselung — die steht im details-Array.
 
 Antworte ausschließlich als JSON-Objekt (Zahlen, keine Strings):
-{"calories": <kcal pro Portion>, "protein": <g Eiweiß pro Portion>, "carbs": <g KH pro Portion>, "fat": <g Fett pro Portion>, "details": [{"name": "Zutatename", "amount": "Xg", "calories": <kcal/Portion>, "protein": <g/Portion>, "carbs": <g/Portion>, "fat": <g/Portion>}], "note": "Optionale Tipps: leichtere Alternativen mit Kalorienersparnis"}
+{"calories": <kcal pro Portion>, "protein": <g Eiweiß pro Portion>, "carbs": <g KH pro Portion>, "fat": <g Fett pro Portion>, "details": [{"name": "Zutatename", "amount": "Xg (PRO PORTION, nicht Gesamtmenge!)", "calories": <kcal/Portion>, "protein": <g/Portion>, "carbs": <g/Portion>, "fat": <g/Portion>}], "note": "Optionale Tipps: leichtere Alternativen mit Kalorienersparnis"}
 `;
 
   const result = await ai.chatJSON(prompt, { temperature: 0.2, maxTokens: 4096 });
