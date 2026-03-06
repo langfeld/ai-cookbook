@@ -122,6 +122,7 @@ ${INGREDIENT_RULES}
 - Schwierigkeitsgrad realistisch einschätzen
 - Kategorien aus den vorhandenen Kategorien wählen (mehrere möglich)
 - Schätze die Nährwerte PRO PORTION basierend auf den Zutaten: Kalorien (kcal), Eiweiß (g), Kohlenhydrate (g), Fett (g)
+- WICHTIG: Mengenangaben beziehen sich auf den ROHEN/UNGEKOCHTEN Zustand (z.B. 125g Nudeln = 125g trockene Nudeln, nicht gekochte). Verwende die Nährwertangaben für das ROHE Lebensmittel.
 - WICHTIG für nutrition_details: Fülle das Array mit EINEM Eintrag pro Zutat. Jeder Eintrag enthält name, amount (z.B. "200g"), calories, protein, carbs, fat — jeweils PRO PORTION (Gesamtmenge geteilt durch Portionen). Die Summe aller Einzelwerte MUSS exakt den Werten in nutrition entsprechen.
 - nutrition_note: NUR optionale Tipps (z.B. leichtere Alternativen). KEINE Nährwert-Aufschlüsselung hier — die steht in nutrition_details.
 `;
@@ -157,6 +158,7 @@ ${INGREDIENT_RULES}
 - Realistische Mengenangaben und Zeiten
 - Kochschritte klar und nachvollziehbar
 - Schätze die Nährwerte PRO PORTION basierend auf den Zutaten: Kalorien (kcal), Eiweiß (g), Kohlenhydrate (g), Fett (g)
+- WICHTIG: Mengenangaben beziehen sich auf den ROHEN/UNGEKOCHTEN Zustand (z.B. 125g Nudeln = 125g trockene Nudeln, nicht gekochte). Verwende die Nährwertangaben für das ROHE Lebensmittel.
 - WICHTIG für nutrition_details: Fülle das Array mit EINEM Eintrag pro Zutat. Jeder Eintrag enthält name, amount (z.B. "200g"), calories, protein, carbs, fat — jeweils PRO PORTION (Gesamtmenge geteilt durch Portionen). Die Summe aller Einzelwerte MUSS exakt den Werten in nutrition entsprechen.
 - nutrition_note: NUR optionale Tipps (z.B. leichtere Alternativen). KEINE Nährwert-Aufschlüsselung hier — die steht in nutrition_details.
 `;
@@ -305,6 +307,7 @@ ${INGREDIENT_RULES}
 - In den Kochschritten die Zutaten im Text erwähnen
 - Falls die Seite kein erkennbares Rezept enthält, erstelle ein Rezept basierend auf dem Titel oder Thema der Seite
 - Schätze die Nährwerte PRO PORTION basierend auf den Zutaten: Kalorien (kcal), Eiweiß (g), Kohlenhydrate (g), Fett (g)
+- WICHTIG: Mengenangaben beziehen sich auf den ROHEN/UNGEKOCHTEN Zustand (z.B. 125g Nudeln = 125g trockene Nudeln, nicht gekochte). Verwende die Nährwertangaben für das ROHE Lebensmittel.
 - WICHTIG für nutrition_details: Fülle das Array mit EINEM Eintrag pro Zutat. Jeder Eintrag enthält name, amount (z.B. "200g"), calories, protein, carbs, fat — jeweils PRO PORTION (Gesamtmenge geteilt durch Portionen). Die Summe aller Einzelwerte MUSS exakt den Werten in nutrition entsprechen.
 - nutrition_note: NUR optionale Tipps (z.B. leichtere Alternativen). KEINE Nährwert-Aufschlüsselung hier — die steht in nutrition_details.
 `;
@@ -371,6 +374,7 @@ ${INGREDIENT_RULES}
 - In den Kochschritten die Zutaten im Text erwähnen
 - Schwierigkeitsgrad realistisch einschätzen
 - Aktualisiere die Nährwerte (nutrition) passend zu den geänderten Zutaten/Portionen. Schätze Kalorien (kcal), Eiweiß (g), Kohlenhydrate (g), Fett (g) pro Portion.
+- WICHTIG: Mengenangaben beziehen sich auf den ROHEN/UNGEKOCHTEN Zustand (z.B. 125g Nudeln = 125g trockene Nudeln, nicht gekochte). Verwende die Nährwertangaben für das ROHE Lebensmittel.
 - WICHTIG für nutrition_details: Fülle das Array mit EINEM Eintrag pro Zutat. Jeder Eintrag enthält name, amount (z.B. "200g"), calories, protein, carbs, fat — jeweils PRO PORTION (Gesamtmenge geteilt durch Portionen). Die Summe aller Einzelwerte MUSS exakt den Werten in nutrition entsprechen.
 - nutrition_note: NUR optionale Tipps (z.B. leichtere Alternativen). KEINE Nährwert-Aufschlüsselung hier — die steht in nutrition_details.
 `;
@@ -402,7 +406,8 @@ Zutaten:
 ${ingredientList}
 
 Gehe wie folgt vor:
-1. Berechne für JEDE Zutat ALLE vier Nährwerte: Kalorien (kcal), Eiweiß (g), Kohlenhydrate (g), Fett (g) — jeweils Gesamtmenge geteilt durch ${servings} Portionen = Wert pro Portion.
+1. WICHTIG: Alle Mengenangaben beziehen sich auf den ROHEN/UNGEKOCHTEN Zustand (z.B. 125g Nudeln = trockene Nudeln, 200g Reis = ungekochter Reis). Verwende die Nährwertangaben für das ROHE Lebensmittel.
+2. Berechne für JEDE Zutat ALLE vier Nährwerte: Kalorien (kcal), Eiweiß (g), Kohlenhydrate (g), Fett (g) — jeweils Gesamtmenge geteilt durch ${servings} Portionen = Wert pro Portion.
 2. Trage jeden Einzelwert in das "details"-Array ein (ein Objekt pro Zutat).
 3. Addiere alle Einzelwerte jeder Kategorie zu den Gesamtwerten pro Portion.
 4. Die Werte "calories", "protein", "carbs", "fat" MÜSSEN exakt diesen Summen entsprechen (gerundet auf ganze Zahlen).
