@@ -63,7 +63,9 @@ export const config = {
 
   // --- Upload ---
   upload: {
-    maxSize: parseInt(getEnv('MAX_UPLOAD_SIZE', '10'), 10) * 1024 * 1024, // in Bytes
+    // Hard-Limit (absolute Obergrenze, Sicherheit). Das tatsächliche Limit
+    // wird dynamisch aus der DB-Einstellung 'max_upload_size' gelesen.
+    maxSize: 50 * 1024 * 1024, // 50 MB Hard-Limit
     path: resolve(BACKEND_DIR, getEnv('UPLOAD_PATH', './data/uploads')),
   },
 };

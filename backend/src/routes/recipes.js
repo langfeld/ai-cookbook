@@ -19,6 +19,7 @@ import db from '../config/database.js';
 import { parseRecipeFromImage, parseRecipeFromText, parseRecipeFromUrl, suggestCategories, reviseRecipe, estimateNutrition } from '../services/recipe-parser.js';
 // autoGenerateConversions entfernt – natürliche Einheiten + KI-Aggregation statt manueller Umrechnungstabelle
 import { config } from '../config/env.js';
+import { getSetting } from '../config/settings.js';
 import { writeFileSync, readFileSync, existsSync } from 'fs';
 import { resolve, join } from 'path';
 import sharp from 'sharp';
@@ -402,6 +403,10 @@ export default async function recipesRoutes(fastify) {
   }, async (request, reply) => {
     const userId = request.user.id;
 
+    // Dynamisches Upload-Limit aus DB-Einstellung lesen
+    const maxUploadMB = parseInt(getSetting('max_upload_size', '10'), 10);
+    const maxUploadBytes = maxUploadMB * 1024 * 1024;
+
     // Alle Dateien aus Multipart-Upload lesen
     const parts = request.parts();
     const imageBuffers = [];
@@ -417,6 +422,14 @@ export default async function recipesRoutes(fastify) {
       }
 
       const buffer = await part.toBuffer();
+
+      // Dateigröße gegen Admin-Einstellung prüfen
+      if (buffer.length > maxUploadBytes) {
+        return reply.status(413).send({
+          error: `Die Datei „${part.filename}" ist zu groß (${(buffer.length / 1024 / 1024).toFixed(1)} MB). Maximal ${maxUploadMB} MB erlaubt.`,
+        });
+      }
+
       imageBuffers.push(buffer);
 
       // Erstes Bild als Vorschaubild speichern
@@ -1015,6 +1028,14 @@ export default async function recipesRoutes(fastify) {
     }
 
     const buffer = await data.toBuffer();
+
+    // Dateigröße gegen Admin-Einstellung prüfen
+    const maxUploadMB = parseInt(getSetting('max_upload_size', '10'), 10);
+    if (buffer.length > maxUploadMB * 1024 * 1024) {
+      return reply.status(413).send({
+        error: `Die Datei ist zu groß (${(buffer.length / 1024 / 1024).toFixed(1)} MB). Maximal ${maxUploadMB} MB erlaubt.`,
+      });
+    }
 
     // Mit sharp verarbeiten und als WebP speichern
     const imageId = generateId();

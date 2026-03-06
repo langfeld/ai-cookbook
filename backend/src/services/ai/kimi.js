@@ -80,6 +80,8 @@ export class KimiProvider extends BaseAIProvider {
     }
     if (options.json) body.response_format = { type: 'json_object' };
 
+    console.log(`🌐 Kimi API chat → Modell: ${this.model}, Thinking: ${body.thinking?.type || 'n/a'}, JSON: ${!!options.json}, max_tokens: ${body.max_tokens}`);
+
     const response = await fetch(`${this.baseUrl}/chat/completions`, {
       method: 'POST',
       headers: {
@@ -87,6 +89,7 @@ export class KimiProvider extends BaseAIProvider {
         Authorization: `Bearer ${this.apiKey}`,
       },
       body: JSON.stringify(body),
+      signal: AbortSignal.timeout(120_000), // 2 Minuten Timeout
     });
 
     if (!response.ok) {
@@ -95,6 +98,7 @@ export class KimiProvider extends BaseAIProvider {
     }
 
     const data = await response.json();
+    console.log(`✅ Kimi API chat ← Tokens: prompt=${data.usage?.prompt_tokens}, completion=${data.usage?.completion_tokens}`);
     const message = data.choices[0].message;
     // K2.5 und Standard-Modelle liefern `content`.
     // Ältere Reasoning-Modelle liefern ggf. `reasoning_content` statt `content`.
@@ -152,6 +156,8 @@ export class KimiProvider extends BaseAIProvider {
     }
     if (options.json) body.response_format = { type: 'json_object' };
 
+    console.log(`🌐 Kimi Vision API → Modell: ${this.model}, Thinking: ${body.thinking?.type || 'n/a'}, JSON: ${!!options.json}, Bilder: ${imageBuffers.length}, max_tokens: ${body.max_tokens}`);
+
     const response = await fetch(`${this.baseUrl}/chat/completions`, {
       method: 'POST',
       headers: {
@@ -159,6 +165,7 @@ export class KimiProvider extends BaseAIProvider {
         Authorization: `Bearer ${this.apiKey}`,
       },
       body: JSON.stringify(body),
+      signal: AbortSignal.timeout(180_000), // 3 Minuten Timeout für Vision
     });
 
     if (!response.ok) {
@@ -167,6 +174,7 @@ export class KimiProvider extends BaseAIProvider {
     }
 
     const data = await response.json();
+    console.log(`✅ Kimi Vision API ← Tokens: prompt=${data.usage?.prompt_tokens}, completion=${data.usage?.completion_tokens}`);
     const message = data.choices[0].message;
     if (message.content) return message.content;
     if (this.isReasoningModel) {

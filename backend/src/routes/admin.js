@@ -433,7 +433,7 @@ export default async function adminRoutes(fastify) {
     transaction();
 
     // KI-Provider zurücksetzen, wenn sich KI-Einstellungen geändert haben
-    const aiKeys = Object.keys(filteredSettings).filter(k => k.startsWith('ai_') || k.endsWith('_api_key') || k.endsWith('_model') || k.endsWith('_base_url'));
+    const aiKeys = Object.keys(filteredSettings).filter(k => k.startsWith('ai_') || k.startsWith('kimi_') || k.startsWith('openai_') || k.startsWith('anthropic_') || k.startsWith('ollama_'));
     if (aiKeys.length > 0) {
       resetProvider();
     }

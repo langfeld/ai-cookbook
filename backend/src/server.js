@@ -107,6 +107,7 @@ await app.register(jwt, {
 });
 
 // Multipart für Datei-Uploads (Fotos, bis zu 10 Seiten)
+// Hard-Limit: 50 MB. Das tatsächliche Limit (Admin-Einstellung) wird in den Routen geprüft.
 await app.register(multipart, {
   limits: {
     fileSize: config.upload.maxSize,
