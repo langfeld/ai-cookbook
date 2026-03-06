@@ -632,6 +632,10 @@ function migrateDatabase() {
     db.exec("ALTER TABLE recipes ADD COLUMN nutrition_note TEXT DEFAULT NULL");
     console.log('  ↳ Migration: recipes.nutrition_note hinzugefügt');
   }
+  if (!recipeCols.includes('nutrition_details')) {
+    db.exec("ALTER TABLE recipes ADD COLUMN nutrition_details TEXT DEFAULT NULL");
+    console.log('  ↳ Migration: recipes.nutrition_details hinzugefügt');
+  }
 }
 
 /**

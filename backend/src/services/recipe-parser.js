@@ -76,7 +76,10 @@ const JSON_FORMAT = `{
     "carbs": 42,
     "fat": 12
   },
-  "nutrition_note": "Kurzer Hinweis zu den Nährwerten (1-2 Sätze, z.B. welche Zutat besonders kalorienreich ist oder ein leichterer Ersatz)"
+  "nutrition_details": [
+    { "name": "Zutatename", "amount": "200g", "calories": 150, "protein": 8, "carbs": 20, "fat": 5 }
+  ],
+  "nutrition_note": "Optionale Tipps: z.B. leichtere Alternativen mit Kalorienersparnis"
 }`;
 
 /**
@@ -119,6 +122,8 @@ ${INGREDIENT_RULES}
 - Schwierigkeitsgrad realistisch einschätzen
 - Kategorien aus den vorhandenen Kategorien wählen (mehrere möglich)
 - Schätze die Nährwerte PRO PORTION basierend auf den Zutaten: Kalorien (kcal), Eiweiß (g), Kohlenhydrate (g), Fett (g)
+- WICHTIG für nutrition_details: Fülle das Array mit EINEM Eintrag pro Zutat. Jeder Eintrag enthält name, amount (z.B. "200g"), calories, protein, carbs, fat — jeweils PRO PORTION (Gesamtmenge geteilt durch Portionen). Die Summe aller Einzelwerte MUSS exakt den Werten in nutrition entsprechen.
+- nutrition_note: NUR optionale Tipps (z.B. leichtere Alternativen). KEINE Nährwert-Aufschlüsselung hier — die steht in nutrition_details.
 `;
 
   const result = images.length > 1
@@ -152,6 +157,8 @@ ${INGREDIENT_RULES}
 - Realistische Mengenangaben und Zeiten
 - Kochschritte klar und nachvollziehbar
 - Schätze die Nährwerte PRO PORTION basierend auf den Zutaten: Kalorien (kcal), Eiweiß (g), Kohlenhydrate (g), Fett (g)
+- WICHTIG für nutrition_details: Fülle das Array mit EINEM Eintrag pro Zutat. Jeder Eintrag enthält name, amount (z.B. "200g"), calories, protein, carbs, fat — jeweils PRO PORTION (Gesamtmenge geteilt durch Portionen). Die Summe aller Einzelwerte MUSS exakt den Werten in nutrition entsprechen.
+- nutrition_note: NUR optionale Tipps (z.B. leichtere Alternativen). KEINE Nährwert-Aufschlüsselung hier — die steht in nutrition_details.
 `;
 
   const result = await ai.chatJSON(prompt, { maxTokens: 16384 });
@@ -298,6 +305,8 @@ ${INGREDIENT_RULES}
 - In den Kochschritten die Zutaten im Text erwähnen
 - Falls die Seite kein erkennbares Rezept enthält, erstelle ein Rezept basierend auf dem Titel oder Thema der Seite
 - Schätze die Nährwerte PRO PORTION basierend auf den Zutaten: Kalorien (kcal), Eiweiß (g), Kohlenhydrate (g), Fett (g)
+- WICHTIG für nutrition_details: Fülle das Array mit EINEM Eintrag pro Zutat. Jeder Eintrag enthält name, amount (z.B. "200g"), calories, protein, carbs, fat — jeweils PRO PORTION (Gesamtmenge geteilt durch Portionen). Die Summe aller Einzelwerte MUSS exakt den Werten in nutrition entsprechen.
+- nutrition_note: NUR optionale Tipps (z.B. leichtere Alternativen). KEINE Nährwert-Aufschlüsselung hier — die steht in nutrition_details.
 `;
 
   const recipe = await ai.chatJSON(prompt, { maxTokens: 16384 });
@@ -362,6 +371,8 @@ ${INGREDIENT_RULES}
 - In den Kochschritten die Zutaten im Text erwähnen
 - Schwierigkeitsgrad realistisch einschätzen
 - Aktualisiere die Nährwerte (nutrition) passend zu den geänderten Zutaten/Portionen. Schätze Kalorien (kcal), Eiweiß (g), Kohlenhydrate (g), Fett (g) pro Portion.
+- WICHTIG für nutrition_details: Fülle das Array mit EINEM Eintrag pro Zutat. Jeder Eintrag enthält name, amount (z.B. "200g"), calories, protein, carbs, fat — jeweils PRO PORTION (Gesamtmenge geteilt durch Portionen). Die Summe aller Einzelwerte MUSS exakt den Werten in nutrition entsprechen.
+- nutrition_note: NUR optionale Tipps (z.B. leichtere Alternativen). KEINE Nährwert-Aufschlüsselung hier — die steht in nutrition_details.
 `;
 
   const result = await ai.chatJSON(prompt, { maxTokens: 16384 });
@@ -390,13 +401,18 @@ Portionen: ${servings}
 Zutaten:
 ${ingredientList}
 
-WICHTIG: Berücksichtige JEDE Zutat mit ihrer exakten Menge bei der Berechnung.
+Gehe wie folgt vor:
+1. Berechne für JEDE Zutat ALLE vier Nährwerte: Kalorien (kcal), Eiweiß (g), Kohlenhydrate (g), Fett (g) — jeweils Gesamtmenge geteilt durch ${servings} Portionen = Wert pro Portion.
+2. Trage jeden Einzelwert in das "details"-Array ein (ein Objekt pro Zutat).
+3. Addiere alle Einzelwerte jeder Kategorie zu den Gesamtwerten pro Portion.
+4. Die Werte "calories", "protein", "carbs", "fat" MÜSSEN exakt diesen Summen entsprechen (gerundet auf ganze Zahlen).
+5. Optional: Schreibe in "note" NUR leichtere Alternativen/Tipps. KEINE Aufschlüsselung — die steht im details-Array.
 
 Antworte ausschließlich als JSON-Objekt (Zahlen, keine Strings):
-{"calories": <kcal pro Portion>, "protein": <Gramm pro Portion>, "carbs": <Gramm pro Portion>, "fat": <Gramm pro Portion>, "note": "Ausführlicher Hinweis (3-5 Sätze): Gehe JEDE kalorienreiche Zutat einzeln durch und nenne ihren ungefähren Kalorienanteil pro Portion. Nenne konkrete leichtere Ersatzvorschläge mit ungefährer Kalorienersparnis."}
+{"calories": <kcal pro Portion>, "protein": <g Eiweiß pro Portion>, "carbs": <g KH pro Portion>, "fat": <g Fett pro Portion>, "details": [{"name": "Zutatename", "amount": "Xg", "calories": <kcal/Portion>, "protein": <g/Portion>, "carbs": <g/Portion>, "fat": <g/Portion>}], "note": "Optionale Tipps: leichtere Alternativen mit Kalorienersparnis"}
 `;
 
-  const result = await ai.chatJSON(prompt, { temperature: 0.2, maxTokens: 1024 });
+  const result = await ai.chatJSON(prompt, { temperature: 0.2, maxTokens: 4096 });
   return result;
 }
 

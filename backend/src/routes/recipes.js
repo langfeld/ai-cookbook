@@ -64,6 +64,7 @@ function sanitizeAiRecipe(parsed) {
       })).filter(s => s.instruction)
       : [],
     nutrition: sanitizeNutrition(parsed.nutrition),
+    nutrition_details: sanitizeNutritionDetails(parsed.nutrition_details),
     nutrition_note: sanitize(parsed.nutrition_note, 500) || null,
   };
 }
@@ -87,6 +88,27 @@ function sanitizeNutrition(nutrition) {
     carbs: sanitizeVal(nutrition.carbs),
     fat: sanitizeVal(nutrition.fat),
   };
+}
+
+/**
+ * Sanitiert nutrition_details Array aus KI-Output.
+ * Gibt ein Array von { name, amount, calories, protein, carbs, fat } zurück oder null.
+ */
+function sanitizeNutritionDetails(details) {
+  if (!Array.isArray(details) || details.length === 0) return null;
+  const sanitizeVal = (v) => {
+    const n = parseFloat(v);
+    return (isNaN(n) || n < 0) ? 0 : Math.round(n);
+  };
+  const sanitized = details.slice(0, 200).map(d => ({
+    name: sanitize(String(d.name || ''), 300) || 'Unbekannt',
+    amount: sanitize(String(d.amount || ''), 100) || '',
+    calories: sanitizeVal(d.calories),
+    protein: sanitizeVal(d.protein),
+    carbs: sanitizeVal(d.carbs),
+    fat: sanitizeVal(d.fat),
+  }));
+  return sanitized.length > 0 ? JSON.stringify(sanitized) : null;
 }
 
 /**
@@ -176,6 +198,7 @@ export default async function recipesRoutes(fastify) {
     const result = await estimateNutrition(ingredients, servings || 4);
     const nutrition = sanitizeNutrition(result);
     nutrition.note = sanitize(result?.note, 1000) || null;
+    nutrition.details = result?.details ? JSON.parse(sanitizeNutritionDetails(result.details) || '[]') : [];
     return reply.send(nutrition);
   });
 
@@ -337,17 +360,18 @@ export default async function recipesRoutes(fastify) {
     },
   }, async (request, reply) => {
     const userId = request.user.id;
-    const { title, description, servings, prep_time, cook_time, difficulty, ingredients, steps, category_ids, notes, calories, protein, carbs, fat, nutrition_note } = request.body;
+    const { title, description, servings, prep_time, cook_time, difficulty, ingredients, steps, category_ids, notes, calories, protein, carbs, fat, nutrition_note, nutrition_details } = request.body;
 
     const totalTime = (prep_time || 0) + (cook_time || 0);
 
     const transaction = db.transaction(() => {
       // Rezept einfügen
       const recipeResult = db.prepare(`
-        INSERT INTO recipes (user_id, title, description, servings, prep_time, cook_time, total_time, difficulty, notes, calories, protein, carbs, fat, nutrition_note)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO recipes (user_id, title, description, servings, prep_time, cook_time, total_time, difficulty, notes, calories, protein, carbs, fat, nutrition_note, nutrition_details)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(userId, title, description, servings || 4, prep_time || 0, cook_time || 0, totalTime, difficulty || 'mittel', notes,
-        parseFloat(calories) || null, parseFloat(protein) || null, parseFloat(carbs) || null, parseFloat(fat) || null, nutrition_note || null);
+        parseFloat(calories) || null, parseFloat(protein) || null, parseFloat(carbs) || null, parseFloat(fat) || null, nutrition_note || null,
+        nutrition_details ? (typeof nutrition_details === 'string' ? nutrition_details : JSON.stringify(nutrition_details)) : null);
 
       const recipeId = recipeResult.lastInsertRowid;
 
@@ -461,8 +485,8 @@ export default async function recipesRoutes(fastify) {
     // Rezept in Datenbank speichern
     const transaction = db.transaction(() => {
       const recipeResult = db.prepare(`
-        INSERT INTO recipes (user_id, title, description, servings, prep_time, cook_time, total_time, difficulty, image_url, ai_generated, calories, protein, carbs, fat, nutrition_note)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?)
+        INSERT INTO recipes (user_id, title, description, servings, prep_time, cook_time, total_time, difficulty, image_url, ai_generated, calories, protein, carbs, fat, nutrition_note, nutrition_details)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?)
       `).run(
         userId,
         parsedRecipe.title,
@@ -477,7 +501,8 @@ export default async function recipesRoutes(fastify) {
         parsedRecipe.nutrition.protein,
         parsedRecipe.nutrition.carbs,
         parsedRecipe.nutrition.fat,
-        parsedRecipe.nutrition_note
+        parsedRecipe.nutrition_note,
+        parsedRecipe.nutrition_details
       );
 
       const recipeId = recipeResult.lastInsertRowid;
@@ -554,8 +579,8 @@ export default async function recipesRoutes(fastify) {
     // Gleiche Speicher-Logik wie bei Foto-Import (ohne Bild)
     const transaction = db.transaction(() => {
       const recipeResult = db.prepare(`
-        INSERT INTO recipes (user_id, title, description, servings, prep_time, cook_time, total_time, difficulty, ai_generated, calories, protein, carbs, fat, nutrition_note)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?)
+        INSERT INTO recipes (user_id, title, description, servings, prep_time, cook_time, total_time, difficulty, ai_generated, calories, protein, carbs, fat, nutrition_note, nutrition_details)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?)
       `).run(
         userId,
         parsedRecipe.title,
@@ -569,7 +594,8 @@ export default async function recipesRoutes(fastify) {
         parsedRecipe.nutrition.protein,
         parsedRecipe.nutrition.carbs,
         parsedRecipe.nutrition.fat,
-        parsedRecipe.nutrition_note
+        parsedRecipe.nutrition_note,
+        parsedRecipe.nutrition_details
       );
 
       const recipeId = recipeResult.lastInsertRowid;
@@ -675,8 +701,8 @@ export default async function recipesRoutes(fastify) {
     // Gleiche Speicher-Logik wie bei Text-Import
     const transaction = db.transaction(() => {
       const recipeResult = db.prepare(`
-        INSERT INTO recipes (user_id, title, description, servings, prep_time, cook_time, total_time, difficulty, image_url, source_url, ai_generated, notes, calories, protein, carbs, fat, nutrition_note)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?)
+        INSERT INTO recipes (user_id, title, description, servings, prep_time, cook_time, total_time, difficulty, image_url, source_url, ai_generated, notes, calories, protein, carbs, fat, nutrition_note, nutrition_details)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         userId,
         parsedRecipe.title,
@@ -693,7 +719,8 @@ export default async function recipesRoutes(fastify) {
         parsedRecipe.nutrition.protein,
         parsedRecipe.nutrition.carbs,
         parsedRecipe.nutrition.fat,
-        parsedRecipe.nutrition_note
+        parsedRecipe.nutrition_note,
+        parsedRecipe.nutrition_details
       );
 
       const recipeId = recipeResult.lastInsertRowid;
@@ -840,10 +867,10 @@ export default async function recipesRoutes(fastify) {
 
       const transaction = db.transaction(() => {
         db.prepare(`
-          UPDATE recipes SET title=?, description=?, servings=?, prep_time=?, cook_time=?, total_time=?, difficulty=?, calories=?, protein=?, carbs=?, fat=?, nutrition_note=?, updated_at=CURRENT_TIMESTAMP
+          UPDATE recipes SET title=?, description=?, servings=?, prep_time=?, cook_time=?, total_time=?, difficulty=?, calories=?, protein=?, carbs=?, fat=?, nutrition_note=?, nutrition_details=?, updated_at=CURRENT_TIMESTAMP
           WHERE id = ?
         `).run(revised.title, revised.description, revised.servings, revised.prep_time, revised.cook_time, totalTime, revised.difficulty,
-          revised.nutrition.calories, revised.nutrition.protein, revised.nutrition.carbs, revised.nutrition.fat, revised.nutrition_note, recipeId);
+          revised.nutrition.calories, revised.nutrition.protein, revised.nutrition.carbs, revised.nutrition.fat, revised.nutrition_note, revised.nutrition_details, recipeId);
 
         // Zutaten ersetzen
         db.prepare('DELETE FROM ingredients WHERE recipe_id = ?').run(recipeId);
@@ -880,8 +907,8 @@ export default async function recipesRoutes(fastify) {
       // Kopie erstellen
       const transaction = db.transaction(() => {
         const result = db.prepare(`
-          INSERT INTO recipes (user_id, title, description, servings, prep_time, cook_time, total_time, difficulty, image_url, source_url, ai_generated, notes, calories, protein, carbs, fat, nutrition_note)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?)
+          INSERT INTO recipes (user_id, title, description, servings, prep_time, cook_time, total_time, difficulty, image_url, source_url, ai_generated, notes, calories, protein, carbs, fat, nutrition_note, nutrition_details)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?)
         `).run(
           userId, revised.title, revised.description, revised.servings,
           revised.prep_time, revised.cook_time,
@@ -889,7 +916,7 @@ export default async function recipesRoutes(fastify) {
           revised.difficulty,
           recipe.image_url, recipe.source_url,
           recipe.notes ? `Überarbeitet aus: ${sanitize(recipe.title, 200)}\n${recipe.notes}` : `Überarbeitet aus: ${sanitize(recipe.title, 200)}`,
-          revised.nutrition.calories, revised.nutrition.protein, revised.nutrition.carbs, revised.nutrition.fat, revised.nutrition_note
+          revised.nutrition.calories, revised.nutrition.protein, revised.nutrition.carbs, revised.nutrition.fat, revised.nutrition_note, revised.nutrition_details
         );
 
         const newRecipeId = result.lastInsertRowid;
@@ -942,7 +969,7 @@ export default async function recipesRoutes(fastify) {
   }, async (request, reply) => {
     const userId = request.user.id;
     const recipeId = request.params.id;
-    const { title, description, servings, prep_time, cook_time, difficulty, ingredients, steps, category_ids, notes, calories, protein, carbs, fat, nutrition_note } = request.body;
+    const { title, description, servings, prep_time, cook_time, difficulty, ingredients, steps, category_ids, notes, calories, protein, carbs, fat, nutrition_note, nutrition_details } = request.body;
 
     // Prüfen ob Rezept dem User gehört
     const existing = db.prepare('SELECT id FROM recipes WHERE id = ? AND user_id = ?').get(recipeId, userId);
@@ -955,10 +982,11 @@ export default async function recipesRoutes(fastify) {
     const transaction = db.transaction(() => {
       // Rezept updaten
       db.prepare(`
-        UPDATE recipes SET title=?, description=?, servings=?, prep_time=?, cook_time=?, total_time=?, difficulty=?, notes=?, calories=?, protein=?, carbs=?, fat=?, nutrition_note=?, updated_at=CURRENT_TIMESTAMP
+        UPDATE recipes SET title=?, description=?, servings=?, prep_time=?, cook_time=?, total_time=?, difficulty=?, notes=?, calories=?, protein=?, carbs=?, fat=?, nutrition_note=?, nutrition_details=?, updated_at=CURRENT_TIMESTAMP
         WHERE id = ?
       `).run(title, description, servings, prep_time, cook_time, totalTime, difficulty, notes,
-        parseFloat(calories) || null, parseFloat(protein) || null, parseFloat(carbs) || null, parseFloat(fat) || null, nutrition_note || null, recipeId);
+        parseFloat(calories) || null, parseFloat(protein) || null, parseFloat(carbs) || null, parseFloat(fat) || null, nutrition_note || null,
+        nutrition_details ? (typeof nutrition_details === 'string' ? nutrition_details : JSON.stringify(nutrition_details)) : null, recipeId);
 
       // Kategorien aktualisieren
       if (category_ids) {

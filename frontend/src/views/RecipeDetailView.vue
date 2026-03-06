@@ -62,7 +62,7 @@
             <span v-if="recipe.fat" class="inline-flex items-center gap-1 bg-yellow-50 dark:bg-yellow-900/20 px-2 py-0.5 border border-yellow-200/60 dark:border-yellow-800/40 rounded-full text-yellow-700 dark:text-yellow-300 text-xs">
               🧈 {{ scaledNutrition.fat }}g Fett
             </span>
-            <button v-if="recipe.nutrition_note"
+            <button v-if="recipe.nutrition_note || parsedNutritionDetails.length"
               @click="showNutritionPopup = true"
               class="inline-flex justify-center items-center hover:bg-stone-100 dark:hover:bg-stone-800 rounded-full w-5 h-5 text-stone-400 hover:text-stone-600 dark:hover:text-stone-300 dark:text-stone-500 transition-colors cursor-pointer"
               title="Nährwert-Details">
@@ -458,6 +458,41 @@
                 </div>
               </div>
 
+              <!-- Aufschlüsselung pro Zutat -->
+              <div v-if="parsedNutritionDetails.length" class="overflow-x-auto">
+                <table class="w-full text-xs">
+                  <thead>
+                    <tr class="border-stone-200 dark:border-stone-700 border-b text-stone-500 dark:text-stone-400">
+                      <th class="py-1.5 pr-2 font-medium text-left">Zutat</th>
+                      <th class="px-2 py-1.5 font-medium text-right">Menge</th>
+                      <th class="px-2 py-1.5 font-medium text-right">kcal</th>
+                      <th class="px-2 py-1.5 font-medium text-right">E</th>
+                      <th class="px-2 py-1.5 font-medium text-right">KH</th>
+                      <th class="py-1.5 pl-2 font-medium text-right">F</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="(d, i) in parsedNutritionDetails" :key="i" class="border-stone-100 dark:border-stone-800 border-b">
+                      <td class="py-1.5 pr-2 text-stone-700 dark:text-stone-300">{{ d.name }}</td>
+                      <td class="px-2 py-1.5 text-stone-500 dark:text-stone-400 text-right">{{ d.amount }}</td>
+                      <td class="px-2 py-1.5 text-orange-600 dark:text-orange-400 text-right">{{ d.calories }}</td>
+                      <td class="px-2 py-1.5 text-blue-600 dark:text-blue-400 text-right">{{ d.protein }}g</td>
+                      <td class="px-2 py-1.5 text-amber-600 dark:text-amber-400 text-right">{{ d.carbs }}g</td>
+                      <td class="py-1.5 pl-2 text-yellow-600 dark:text-yellow-400 text-right">{{ d.fat }}g</td>
+                    </tr>
+                  </tbody>
+                  <tfoot>
+                    <tr class="font-semibold text-stone-800 dark:text-stone-100">
+                      <td class="pt-2 pr-2" colspan="2">Summe/Portion</td>
+                      <td class="px-2 pt-2 text-orange-700 dark:text-orange-300 text-right">{{ nutritionDetailsSum.calories }}</td>
+                      <td class="px-2 pt-2 text-blue-700 dark:text-blue-300 text-right">{{ nutritionDetailsSum.protein }}g</td>
+                      <td class="px-2 pt-2 text-amber-700 dark:text-amber-300 text-right">{{ nutritionDetailsSum.carbs }}g</td>
+                      <td class="pt-2 pl-2 text-yellow-700 dark:text-yellow-300 text-right">{{ nutritionDetailsSum.fat }}g</td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+
               <!-- KI-Hinweis -->
               <div v-if="recipe.nutrition_note" class="bg-stone-50 dark:bg-stone-800/50 p-3 rounded-xl">
                 <p class="text-stone-600 dark:text-stone-300 text-sm leading-relaxed whitespace-pre-line">💡 {{ recipe.nutrition_note }}</p>
@@ -799,6 +834,26 @@ const scaledNutrition = computed(() => {
     protein: Math.round((r.protein || 0) * 10) / 10,
     carbs: Math.round((r.carbs || 0) * 10) / 10,
     fat: Math.round((r.fat || 0) * 10) / 10,
+  };
+});
+
+const parsedNutritionDetails = computed(() => {
+  const raw = recipe.value?.nutrition_details;
+  if (!raw) return [];
+  try {
+    const arr = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    return Array.isArray(arr) ? arr : [];
+  } catch { return []; }
+});
+
+const nutritionDetailsSum = computed(() => {
+  const details = parsedNutritionDetails.value;
+  if (!details.length) return { calories: 0, protein: 0, carbs: 0, fat: 0 };
+  return {
+    calories: Math.round(details.reduce((s, d) => s + (d.calories || 0), 0)),
+    protein: Math.round(details.reduce((s, d) => s + (d.protein || 0), 0)),
+    carbs: Math.round(details.reduce((s, d) => s + (d.carbs || 0), 0)),
+    fat: Math.round(details.reduce((s, d) => s + (d.fat || 0), 0)),
   };
 });
 

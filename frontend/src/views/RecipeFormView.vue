@@ -143,6 +143,41 @@
             </div>
           </div>
         </div>
+        <!-- Nährwert-Aufschlüsselung (Tabelle) -->
+        <div v-if="parsedFormNutritionDetails.length" class="mt-2 overflow-x-auto">
+          <label class="form-label">Aufschlüsselung pro Zutat (pro Portion)</label>
+          <table class="mt-1 w-full text-xs">
+            <thead>
+              <tr class="border-stone-200 dark:border-stone-700 border-b text-stone-500 dark:text-stone-400">
+                <th class="py-1.5 pr-2 font-medium text-left">Zutat</th>
+                <th class="px-2 py-1.5 font-medium text-right">Menge</th>
+                <th class="px-2 py-1.5 font-medium text-right">kcal</th>
+                <th class="px-2 py-1.5 font-medium text-right">E</th>
+                <th class="px-2 py-1.5 font-medium text-right">KH</th>
+                <th class="py-1.5 pl-2 font-medium text-right">F</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="(d, i) in parsedFormNutritionDetails" :key="i" class="border-stone-100 dark:border-stone-800 border-b">
+                <td class="py-1 pr-2 text-stone-700 dark:text-stone-300">{{ d.name }}</td>
+                <td class="px-2 py-1 text-stone-500 dark:text-stone-400 text-right">{{ d.amount }}</td>
+                <td class="px-2 py-1 text-orange-600 dark:text-orange-400 text-right">{{ d.calories }}</td>
+                <td class="px-2 py-1 text-blue-600 dark:text-blue-400 text-right">{{ d.protein }}g</td>
+                <td class="px-2 py-1 text-amber-600 dark:text-amber-400 text-right">{{ d.carbs }}g</td>
+                <td class="py-1 pl-2 text-yellow-600 dark:text-yellow-400 text-right">{{ d.fat }}g</td>
+              </tr>
+            </tbody>
+            <tfoot>
+              <tr class="font-semibold text-stone-800 dark:text-stone-100">
+                <td class="pt-1.5" colspan="2">Summe</td>
+                <td class="px-2 pt-1.5 text-orange-700 dark:text-orange-300 text-right">{{ formNutritionDetailsSum.calories }}</td>
+                <td class="px-2 pt-1.5 text-blue-700 dark:text-blue-300 text-right">{{ formNutritionDetailsSum.protein }}g</td>
+                <td class="px-2 pt-1.5 text-amber-700 dark:text-amber-300 text-right">{{ formNutritionDetailsSum.carbs }}g</td>
+                <td class="pt-1.5 pl-2 text-yellow-700 dark:text-yellow-300 text-right">{{ formNutritionDetailsSum.fat }}g</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
         <!-- Nährwert-Hinweis -->
         <div v-if="form.nutrition_note" class="mt-2">
           <label class="form-label">KI-Hinweis</label>
@@ -307,6 +342,7 @@ const form = reactive({
   carbs: null,
   fat: null,
   nutrition_note: null,
+  nutrition_details: null,
   category_ids: [],
   ingredient_groups: [
     { name: '', items: [{ amount: null, unit: '', name: '', notes: '', is_optional: false }] }
@@ -340,6 +376,26 @@ const flatIngredients = computed(() => {
   return items;
 });
 
+const parsedFormNutritionDetails = computed(() => {
+  const raw = form.nutrition_details;
+  if (!raw) return [];
+  try {
+    const arr = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    return Array.isArray(arr) ? arr : [];
+  } catch { return []; }
+});
+
+const formNutritionDetailsSum = computed(() => {
+  const details = parsedFormNutritionDetails.value;
+  if (!details.length) return { calories: 0, protein: 0, carbs: 0, fat: 0 };
+  return {
+    calories: Math.round(details.reduce((s, d) => s + (d.calories || 0), 0)),
+    protein: Math.round(details.reduce((s, d) => s + (d.protein || 0), 0)),
+    carbs: Math.round(details.reduce((s, d) => s + (d.carbs || 0), 0)),
+    fat: Math.round(details.reduce((s, d) => s + (d.fat || 0), 0)),
+  };
+});
+
 async function estimateNutritionViaAI() {
   if (flatIngredients.value.length === 0) return;
   estimatingNutrition.value = true;
@@ -353,6 +409,7 @@ async function estimateNutritionViaAI() {
     if (result.carbs != null) form.carbs = result.carbs;
     if (result.fat != null) form.fat = result.fat;
     if (result.note) form.nutrition_note = result.note;
+    if (result.details) form.nutrition_details = result.details;
   } catch {
     // Fehler wird von useApi angezeigt
   } finally {
@@ -418,6 +475,7 @@ async function saveRecipe() {
       carbs: form.carbs || null,
       fat: form.fat || null,
       nutrition_note: form.nutrition_note || null,
+      nutrition_details: form.nutrition_details || null,
       ingredients,
       steps: form.steps.filter(s => s.instruction).map((s, i) => ({ ...s, step_number: i + 1 })),
     };
@@ -468,6 +526,7 @@ onMounted(async () => {
         carbs: r.carbs || null,
         fat: r.fat || null,
         nutrition_note: r.nutrition_note || null,
+        nutrition_details: r.nutrition_details ? (typeof r.nutrition_details === 'string' ? JSON.parse(r.nutrition_details) : r.nutrition_details) : null,
         category_ids: r.categories?.map(c => c.id) || [],
       });
 
