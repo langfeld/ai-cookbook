@@ -404,12 +404,23 @@ async function estimateNutritionViaAI() {
       ingredients: flatIngredients.value,
       servings: form.servings || 4,
     });
-    if (result.calories != null) form.calories = result.calories;
-    if (result.protein != null) form.protein = result.protein;
-    if (result.carbs != null) form.carbs = result.carbs;
-    if (result.fat != null) form.fat = result.fat;
     if (result.note) form.nutrition_note = result.note;
-    if (result.details) form.nutrition_details = result.details;
+    if (result.details) {
+      form.nutrition_details = result.details;
+      // Summen aus Details berechnen statt KI-Gesamtwerte zu verwenden (garantiert konsistent)
+      const details = Array.isArray(result.details) ? result.details : [];
+      if (details.length) {
+        form.calories = Math.round(details.reduce((s, d) => s + (d.calories || 0), 0));
+        form.protein = Math.round(details.reduce((s, d) => s + (d.protein || 0), 0));
+        form.carbs = Math.round(details.reduce((s, d) => s + (d.carbs || 0), 0));
+        form.fat = Math.round(details.reduce((s, d) => s + (d.fat || 0), 0));
+      }
+    } else {
+      if (result.calories != null) form.calories = result.calories;
+      if (result.protein != null) form.protein = result.protein;
+      if (result.carbs != null) form.carbs = result.carbs;
+      if (result.fat != null) form.fat = result.fat;
+    }
   } catch {
     // Fehler wird von useApi angezeigt
   } finally {

@@ -63,7 +63,20 @@ function sanitizeAiRecipe(parsed) {
         duration_minutes: Math.min(Math.max(parseInt(step.duration_minutes) || 0, 0), 1440),
       })).filter(s => s.instruction)
       : [],
-    nutrition: sanitizeNutrition(parsed.nutrition),
+    nutrition: (() => {
+      // Summen aus nutrition_details ableiten falls vorhanden (garantiert Konsistenz mit Tabelle)
+      const details = sanitizeNutritionDetails(parsed.nutrition_details);
+      if (details) {
+        const arr = JSON.parse(details);
+        return {
+          calories: Math.round(arr.reduce((s, d) => s + (d.calories || 0), 0)),
+          protein: Math.round(arr.reduce((s, d) => s + (d.protein || 0), 0)),
+          carbs: Math.round(arr.reduce((s, d) => s + (d.carbs || 0), 0)),
+          fat: Math.round(arr.reduce((s, d) => s + (d.fat || 0), 0)),
+        };
+      }
+      return sanitizeNutrition(parsed.nutrition);
+    })(),
     nutrition_details: sanitizeNutritionDetails(parsed.nutrition_details),
     nutrition_note: sanitize(parsed.nutrition_note, 500) || null,
   };
