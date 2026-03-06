@@ -790,16 +790,15 @@ function scaleAmountRaw(amount) {
   return (amount / recipe.value.servings) * adjustedServings.value;
 }
 
-// Nährwerte skaliert nach Portionsrechner
+// Nährwerte pro Portion (bleiben konstant, da bereits pro Portion gespeichert)
 const scaledNutrition = computed(() => {
   const r = recipe.value;
-  if (!r?.calories || !r.servings) return { calories: 0, protein: 0, carbs: 0, fat: 0 };
-  const factor = adjustedServings.value / r.servings;
+  if (!r?.calories) return { calories: 0, protein: 0, carbs: 0, fat: 0 };
   return {
-    calories: Math.round(r.calories * factor),
-    protein: Math.round((r.protein || 0) * factor * 10) / 10,
-    carbs: Math.round((r.carbs || 0) * factor * 10) / 10,
-    fat: Math.round((r.fat || 0) * factor * 10) / 10,
+    calories: Math.round(r.calories),
+    protein: Math.round((r.protein || 0) * 10) / 10,
+    carbs: Math.round((r.carbs || 0) * 10) / 10,
+    fat: Math.round((r.fat || 0) * 10) / 10,
   };
 });
 
