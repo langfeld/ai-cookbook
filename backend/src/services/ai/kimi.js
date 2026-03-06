@@ -3,12 +3,18 @@
  * Kimi / Moonshot AI Provider
  * ============================================
  * Implementiert die KI-Anbindung an Moonshot AI.
- * Unterstützt zwei Modell-Typen:
- *   - Reasoning: kimi-k2.5 (erzwingt temperature=1, liefert reasoning_content)
- *   - Standard:  moonshot-v1-8k/32k/128k (freie temperature, schneller, günstiger)
+ * Unterstützt drei Modell-Varianten:
+ *   - Kimi K2.5 Thinking: kimi-k2.5 mit thinking={type:"enabled"} (Standard)
+ *     → Reasoning, temperature fest 1.0
+ *   - Kimi K2.5 Instant:  kimi-k2.5 mit thinking={type:"disabled"}
+ *     → Schnell, kein Reasoning, temperature fest 0.6
+ *   - Standard:  moonshot-v1-8k/32k/128k (freie temperature, legacy)
+ *
+ * Bei kimi-k2.5 dürfen temperature, top_p, n, presence_penalty und
+ * frequency_penalty NICHT manuell gesetzt werden (API-Fehler!).
  *
  * Alle Modelle nutzen die OpenAI-kompatible API.
- * Dokumentation: https://platform.moonshot.cn/docs
+ * Dokumentation: https://platform.moonshot.ai/docs
  */
 
 import { BaseAIProvider } from './base.js';
@@ -17,8 +23,9 @@ export class KimiProvider extends BaseAIProvider {
   constructor(config) {
     super('Kimi / Moonshot AI');
     this.apiKey = config.apiKey;
-    this.baseUrl = config.baseUrl || 'https://api.moonshot.cn/v1';
+    this.baseUrl = config.baseUrl || 'https://api.moonshot.ai/v1';
     this.model = config.model || 'kimi-k2.5';
+    this.disableThinking = config.disableThinking || false;
 
     if (!this.apiKey) {
       console.warn('⚠️  KIMI_API_KEY nicht gesetzt! KI-Funktionen werden nicht verfügbar sein.');
@@ -26,13 +33,21 @@ export class KimiProvider extends BaseAIProvider {
   }
 
   /**
-   * Prüft ob das aktuelle Modell ein Reasoning-Modell ist.
-   * Reasoning-Modelle (kimi-k2.5, kimi-k2) erzwingen temperature=1
-   * und liefern `reasoning_content` statt/neben `content`.
+   * Prüft ob das aktuelle Modell Kimi K2.5 ist.
+   * K2.5 hat eigene Regeln: temperature/top_p sind fixiert,
+   * Thinking wird über den `thinking`-Parameter gesteuert.
+   */
+  get isK25Model() {
+    return /^kimi-k2\.5/i.test(this.model);
+  }
+
+  /**
+   * Prüft ob das aktuelle Modell ein älteres Reasoning-Modell ist (kimi-k2, nicht k2.5).
+   * Diese erzwingen temperature=1 und liefern `reasoning_content`.
    * Standard-Modelle (moonshot-v1-*) erlauben freie temperature.
    */
   get isReasoningModel() {
-    return /^kimi-k/i.test(this.model);
+    return /^kimi-k/i.test(this.model) && !this.isK25Model;
   }
 
   /**
@@ -55,9 +70,12 @@ export class KimiProvider extends BaseAIProvider {
       max_tokens: options.maxTokens ?? 4096,
     };
 
-    // Reasoning-Modelle (kimi-k2.5) erzwingen temperature=1
-    // Standard-Modelle (moonshot-v1-*) erlauben freie temperature
-    if (!this.isReasoningModel && options.temperature != null) {
+    // K2.5: thinking-Parameter setzen, temperature NICHT setzen (fest durch API)
+    if (this.isK25Model) {
+      body.thinking = { type: this.disableThinking ? 'disabled' : 'enabled' };
+    } else if (!this.isReasoningModel && options.temperature != null) {
+      // Ältere Reasoning-Modelle (kimi-k2) erzwingen temperature=1
+      // Standard-Modelle (moonshot-v1-*) erlauben freie temperature
       body.temperature = options.temperature;
     }
     if (options.json) body.response_format = { type: 'json_object' };
@@ -78,8 +96,8 @@ export class KimiProvider extends BaseAIProvider {
 
     const data = await response.json();
     const message = data.choices[0].message;
-    // Reasoning-Modelle liefern `content` + `reasoning_content`.
-    // Standard-Modelle liefern nur `content`.
+    // K2.5 und Standard-Modelle liefern `content`.
+    // Ältere Reasoning-Modelle liefern ggf. `reasoning_content` statt `content`.
     if (message.content) return message.content;
     if (this.isReasoningModel) {
       if (!options.json && message.reasoning_content) return message.reasoning_content;
@@ -126,7 +144,10 @@ export class KimiProvider extends BaseAIProvider {
       max_tokens: options.maxTokens ?? 4096,
     };
 
-    if (!this.isReasoningModel && options.temperature != null) {
+    // K2.5: thinking-Parameter setzen, temperature NICHT setzen (fest durch API)
+    if (this.isK25Model) {
+      body.thinking = { type: this.disableThinking ? 'disabled' : 'enabled' };
+    } else if (!this.isReasoningModel && options.temperature != null) {
       body.temperature = options.temperature;
     }
     if (options.json) body.response_format = { type: 'json_object' };

@@ -12,23 +12,23 @@ AI_PROVIDER=kimi
 KIMI_API_KEY=sk-dein-key
 KIMI_BASE_URL=https://api.moonshot.ai/v1
 KIMI_MODEL=kimi-k2.5
-KIMI_SIMPLE_MODEL=moonshot-v1-32k
+KIMI_SIMPLE_MODEL=kimi-k2.5
 ```
 
 :::caution
 Verwende `api.moonshot.ai` (International), **nicht** `api.moonshot.cn`.
 :::
 
-### Zwei Modell-Typen
+### Zwei Modell-Varianten
 
-Moonshot bietet zwei Modell-Typen:
+Das `kimi-k2.5`-Modell unterstützt zwei Modi über den `thinking`-Parameter:
 
-| Typ | Modelle | Verwendung |
-|-----|---------|------------|
-| **Reasoning** | `kimi-k2.5`, `kimi-k2` | Komplexe Aufgaben (Rezept-Import, Wochenplan-Reasoning). Erzwingen `temperature=1`. |
-| **Standard** | `moonshot-v1-8k/32k/128k` | Einfache strukturierte Aufgaben (JSON-Erzeugung). Schneller und günstiger. |
+| Variante | Modus | Verwendung |
+|----------|-------|------------|
+| **K2.5 Thinking** | `thinking: enabled` (Standard) | Komplexe Aufgaben (Rezept-Import, Wochenplan-Reasoning). Temperature fest 1.0. |
+| **K2.5 Instant** | `thinking: disabled` | Einfache strukturierte Aufgaben (JSON-Erzeugung, Nährwert-Schätzung). Schneller, temperature fest 0.6. |
 
-Das **schnelle Modell** (`KIMI_SIMPLE_MODEL`) wird automatisch für Aufgaben verwendet, die kein Reasoning benötigen — konfigurierbar im Admin-Panel unter *KI-Konfiguration → Schnelles Modell*.
+Das **schnelle Modell** (`KIMI_SIMPLE_MODEL`) nutzt automatisch den Instant-Modus (Thinking deaktiviert) — konfigurierbar im Admin-Panel unter *KI-Konfiguration → Schnelles Modell*.
 
 ## OpenAI
 

@@ -45,7 +45,7 @@ let simpleProviderName = null;
  * Gibt die aktive AI-Provider-Instanz zurück.
  * @param {object} [options]
  * @param {boolean} [options.simple=false] – Wenn true, wird ein schnelleres/einfacheres
- *   Modell verwendet (z.B. moonshot-v1-32k statt kimi-k2.5).
+ *   Modell verwendet (z.B. kimi-k2.5 mit deaktiviertem Thinking).
  *   Ideal für strukturierte Aufgaben wie JSON-Generierung.
  */
 export function getAIProvider(options = {}) {
@@ -59,7 +59,7 @@ export function getAIProvider(options = {}) {
       const simpleConfig = { ...aiConfig };
       const providerConfig = simpleConfig[providerName];
       if (providerConfig?.simpleModel) {
-        simpleConfig[providerName] = { ...providerConfig, model: providerConfig.simpleModel };
+        simpleConfig[providerName] = { ...providerConfig, model: providerConfig.simpleModel, disableThinking: true };
       }
       const factory = providerMap[providerName];
       if (!factory) {
