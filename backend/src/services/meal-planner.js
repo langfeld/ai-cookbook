@@ -16,6 +16,7 @@
 
 import db from '../config/database.js';
 import { getWeekStart, convertToBaseUnit, scaleIngredient, unitsCompatible } from '../utils/helpers.js';
+import { estimateNutrition } from './recipe-parser.js';
 
 const DAY_NAMES = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag', 'Sonntag'];
 
@@ -254,6 +255,33 @@ function scoreRecipe(recipe, context) {
     if (context.pantrySet.has(name)) score += 8;
   }
 
+  // 11. Kalorien-Passung (nur wenn calorieTarget gesetzt)
+  if (context.calorieTarget && context.calorieSlotTarget) {
+    const slotTarget = context.calorieSlotTarget;
+    if (recipe.calories != null && recipe.calories > 0) {
+      const deviationPct = Math.abs(recipe.calories - slotTarget) / slotTarget;
+
+      // Strictness-Parameter
+      const strictnessConfig = {
+        soft:     { maxBonus: 15, tolerance: 0.20, nullPoint: 0.50 },
+        moderate: { maxBonus: 25, tolerance: 0.15, nullPoint: 0.40 },
+        strict:   { maxBonus: 40, tolerance: 0.10, nullPoint: 0.30 },
+      };
+      const cfg = strictnessConfig[context.calorieStrictness] || strictnessConfig.moderate;
+
+      if (deviationPct <= cfg.tolerance) {
+        // Innerhalb Toleranz → voller Bonus
+        score += cfg.maxBonus;
+      } else if (deviationPct < cfg.nullPoint) {
+        // Linear abfallend bis 0
+        const ratio = 1 - (deviationPct - cfg.tolerance) / (cfg.nullPoint - cfg.tolerance);
+        score += Math.round(cfg.maxBonus * ratio);
+      }
+      // Über nullPoint hinaus → kein Bonus (0)
+    }
+    // Rezepte ohne Kaloriendaten → neutral (0 Bonus, kein Malus)
+  }
+
   return Math.max(score, 1); // Mindestens 1
 }
 
@@ -261,7 +289,21 @@ function scoreRecipe(recipe, context) {
  * Gewichtete Zufallsauswahl: Rezepte mit höherem Score werden wahrscheinlicher gewählt.
  */
 function weightedRandomPick(recipes, context) {
-  const scored = recipes.map(r => ({ recipe: r, score: scoreRecipe(r, context) }));
+  let eligible = recipes;
+
+  // Bei striktem Kalorien-Modus: Rezepte mit >50% Abweichung ausschließen
+  if (context.calorieTarget && context.calorieSlotTarget && context.calorieStrictness === 'strict') {
+    const slotTarget = context.calorieSlotTarget;
+    eligible = recipes.filter(r => {
+      if (r.calories == null || r.calories <= 0) return true; // Ohne Daten → nicht ausschließen
+      const deviationPct = Math.abs(r.calories - slotTarget) / slotTarget;
+      return deviationPct <= 0.50;
+    });
+    // Fallback: wenn alle rausfliegen, wieder alle nehmen
+    if (eligible.length === 0) eligible = recipes;
+  }
+
+  const scored = eligible.map(r => ({ recipe: r, score: scoreRecipe(r, context) }));
   scored.sort((a, b) => b.score - a.score);
 
   const totalWeight = scored.reduce((sum, s) => sum + s.score, 0);
@@ -419,6 +461,80 @@ export function getSuggestions(userId, { dayIdx = 0, mealType = 'mittag', exclud
 }
 
 // ============================================
+// Nährwert-Schätzung für Rezepte ohne Daten
+// ============================================
+
+/**
+ * Default-Verteilung der Kalorien auf Mahlzeiten-Slots (%)
+ */
+const DEFAULT_CALORIE_DISTRIBUTION = {
+  fruehstueck: 25,
+  mittag: 35,
+  abendessen: 30,
+  snack: 10,
+};
+
+/**
+ * Stellt sicher, dass alle Rezepte Nährwertdaten haben.
+ * Fehlende Werte werden per KI geschätzt und in der DB gespeichert (Cache).
+ * @param {Array} recipes - Rezept-Objekte (mit id, servings)
+ * @returns {Promise<number>} - Anzahl neu geschätzter Rezepte
+ */
+async function ensureNutritionData(recipes) {
+  const missing = recipes.filter(r => r.calories == null);
+  if (missing.length === 0) return 0;
+
+  console.log(`\uD83D\uDD25 ${missing.length} Rezepte ohne Kalorien-Daten – starte KI-Schätzung...`);
+
+  const CONCURRENCY = 5;
+  let estimated = 0;
+
+  // Zutaten für alle fehlenden Rezepte laden
+  const updateStmt = db.prepare(
+    'UPDATE recipes SET calories = ?, protein = ?, carbs = ?, fat = ?, nutrition_note = ? WHERE id = ?'
+  );
+
+  // Batch mit Concurrency-Limit verarbeiten
+  for (let i = 0; i < missing.length; i += CONCURRENCY) {
+    const batch = missing.slice(i, i + CONCURRENCY);
+    const promises = batch.map(async (recipe) => {
+      try {
+        const ingredients = db.prepare(
+          'SELECT name, amount, unit FROM ingredients WHERE recipe_id = ?'
+        ).all(recipe.id);
+
+        if (ingredients.length === 0) return;
+
+        const nutrition = await estimateNutrition(ingredients, recipe.servings || 4);
+        if (nutrition && nutrition.calories) {
+          // In DB cachen
+          updateStmt.run(
+            nutrition.calories,
+            nutrition.protein || null,
+            nutrition.carbs || null,
+            nutrition.fat || null,
+            nutrition.note || 'Automatisch geschätzt bei Wochenplan-Generierung',
+            recipe.id
+          );
+          // Rezept-Objekt aktualisieren (für sofortige Nutzung im Scoring)
+          recipe.calories = nutrition.calories;
+          recipe.protein = nutrition.protein || null;
+          recipe.carbs = nutrition.carbs || null;
+          recipe.fat = nutrition.fat || null;
+          estimated++;
+        }
+      } catch (err) {
+        console.warn(`\u26A0\uFE0F Nährwert-Schätzung für Rezept #${recipe.id} ("${recipe.title}") fehlgeschlagen:`, err.message);
+      }
+    });
+    await Promise.all(promises);
+  }
+
+  console.log(`\u2705 ${estimated} von ${missing.length} Rezepten mit Nährwerten ergänzt`);
+  return estimated;
+}
+
+// ============================================
 // Plan-Generierung
 // ============================================
 
@@ -437,6 +553,9 @@ export async function generateWeekPlan(userId, options = {}) {
     deduplicateCollections = true, // Rezepte in mehreren Sammlungen nur einmal zählen
     enableAiReasoning = false,    // KI-Begründung generieren?
     activeDays = [0, 1, 2, 3, 4, 5, 6], // Für welche Tage generiert wird
+    calorieTarget = null,         // kcal/Tag pro Person (null = deaktiviert)
+    calorieDistribution = null,   // { fruehstueck: 25, mittag: 35, ... } in %
+    calorieStrictness = 'moderate', // 'soft' | 'moderate' | 'strict'
   } = options;
 
   // --- 1. Alle Rezepte des Benutzers laden (ggf. gefiltert nach Sammlungen) ---
@@ -499,6 +618,15 @@ export async function generateWeekPlan(userId, options = {}) {
     };
   });
 
+  // --- 2b. Kalorien-Daten sicherstellen (bei aktivem Kalorien-Ziel) ---
+  let nutritionEstimatedCount = 0;
+  if (calorieTarget) {
+    nutritionEstimatedCount = await ensureNutritionData(recipeData);
+  }
+
+  // Effektive Kalorien-Verteilung berechnen
+  const effectiveDistribution = calorieDistribution || DEFAULT_CALORIE_DISTRIBUTION;
+
   // --- 3. Vorräte laden (nur ungebundene, nach Abzug der aktuellen Woche) ---
   const pantrySet = getUnassignedPantryNames(userId);
 
@@ -540,6 +668,10 @@ export async function generateWeekPlan(userId, options = {}) {
         usedIngredients,
         pantrySet,
         previousMealCategory: lastCategoryByMeal[mealType] || null,
+        // Kalorien-Kontext (null wenn nicht aktiv)
+        calorieTarget: calorieTarget || null,
+        calorieSlotTarget: calorieTarget ? calorieTarget * (effectiveDistribution[mealType] || 25) / 100 : null,
+        calorieStrictness: calorieTarget ? calorieStrictness : null,
       };
 
       const pick = weightedRandomPick(eligible, context);
@@ -574,7 +706,7 @@ export async function generateWeekPlan(userId, options = {}) {
   }
 
   // Reasoning wird separat generiert (async, nicht blockierend)
-  return { plan };
+  return { plan, nutritionEstimatedCount };
 }
 
 /**

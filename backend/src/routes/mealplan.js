@@ -54,6 +54,28 @@ export default async function mealplanRoutes(fastify) {
             default: [0, 1, 2, 3, 4, 5, 6],
             description: 'Für welche Wochentage Gerichte generiert werden (0=Mo...6=So)',
           },
+          calorieTarget: {
+            type: 'integer',
+            minimum: 800,
+            maximum: 5000,
+            description: 'Kalorien-Tagesziel pro Person (kcal). Wenn gesetzt, wird die Planung kalorienoptimiert.',
+          },
+          calorieDistribution: {
+            type: 'object',
+            properties: {
+              fruehstueck: { type: 'number', minimum: 5, maximum: 60 },
+              mittag: { type: 'number', minimum: 5, maximum: 60 },
+              abendessen: { type: 'number', minimum: 5, maximum: 60 },
+              snack: { type: 'number', minimum: 5, maximum: 60 },
+            },
+            description: 'Prozentuale Verteilung des Tagesziels auf Mahlzeiten-Slots (Summe ~100%)',
+          },
+          calorieStrictness: {
+            type: 'string',
+            enum: ['soft', 'moderate', 'strict'],
+            default: 'moderate',
+            description: 'Wie streng das Kalorien-Ziel verfolgt wird',
+          },
         },
       },
     },
@@ -91,6 +113,7 @@ export default async function mealplanRoutes(fastify) {
       return {
         planId,
         plan: savedPlan,
+        nutritionEstimatedCount: planData.nutritionEstimatedCount || 0,
         message: 'Wochenplan erfolgreich generiert!',
       };
     } catch (error) {

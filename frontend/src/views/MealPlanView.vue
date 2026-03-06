@@ -938,6 +938,126 @@
               </label>
             </div>
 
+            <!-- ═══ Kalorien-Optimierung ═══ -->
+            <div class="mb-6 pt-4 border-stone-200 dark:border-stone-700 border-t">
+              <!-- Haupt-Toggle -->
+              <label class="flex items-center gap-2 mb-3 cursor-pointer">
+                <input type="checkbox" v-model="calorieEnabled" class="rounded accent-primary-600" />
+                <div>
+                  <span class="font-medium text-stone-700 dark:text-stone-300 text-sm">🔥 Kalorien-Ziel berücksichtigen</span>
+                  <p class="text-stone-400 text-xs">Bevorzugt Rezepte, die zu deinem Tagesbudget passen</p>
+                </div>
+              </label>
+
+              <Transition name="fade">
+                <div v-if="calorieEnabled" class="space-y-4 mt-3 pl-1">
+
+                  <!-- Presets -->
+                  <div>
+                    <label class="block mb-2 font-medium text-stone-700 dark:text-stone-300 text-sm">Tagesziel</label>
+                    <div class="flex gap-1.5 mb-2">
+                      <button
+                        v-for="(preset, key) in CALORIE_PRESETS" :key="key"
+                        @click="caloriePreset = key"
+                        :class="[
+                          'flex-1 px-2 py-1.5 rounded-lg text-xs font-medium border transition-colors',
+                          caloriePreset === key
+                            ? 'border-primary-400 bg-primary-50 dark:bg-primary-950 text-primary-700 dark:text-primary-300'
+                            : 'border-stone-200 dark:border-stone-700 text-stone-500 dark:text-stone-400 hover:bg-stone-50 dark:hover:bg-stone-800'
+                        ]"
+                      >
+                        {{ preset.label }}<br>
+                        <span class="opacity-70 text-[10px]">{{ preset.description }}</span>
+                      </button>
+                    </div>
+                    <!-- Eigenes Ziel -->
+                    <div class="flex items-center gap-2">
+                      <input
+                        type="number"
+                        :value="calorieTarget"
+                        @input="onCalorieTargetInput($event.target.value)"
+                        min="800" max="5000" step="50"
+                        class="bg-stone-50 dark:bg-stone-800 px-3 py-1.5 border border-stone-200 dark:border-stone-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-400 w-24 text-stone-800 dark:text-stone-200 text-sm"
+                      />
+                      <span class="text-stone-400 text-xs">kcal / Tag</span>
+                      <span v-if="caloriePreset === 'custom'" class="bg-amber-50 dark:bg-amber-950 px-1.5 py-0.5 rounded font-medium text-[10px] text-amber-600 dark:text-amber-400">Eigenes Ziel</span>
+                    </div>
+                  </div>
+
+                  <!-- Strenge -->
+                  <div>
+                    <label class="block mb-2 font-medium text-stone-700 dark:text-stone-300 text-sm">Strenge</label>
+                    <div class="flex gap-1.5">
+                      <button
+                        v-for="s in [
+                          { key: 'soft', label: 'Locker', desc: 'Leichte Bevorzugung' },
+                          { key: 'moderate', label: 'Moderat', desc: 'Spürbare Bevorzugung' },
+                          { key: 'strict', label: 'Strikt', desc: 'Filtern + stark bevorzugen' },
+                        ]" :key="s.key"
+                        @click="calorieStrictness = s.key"
+                        :class="[
+                          'flex-1 px-2 py-1.5 rounded-lg text-xs font-medium border transition-colors text-center',
+                          calorieStrictness === s.key
+                            ? 'border-primary-400 bg-primary-50 dark:bg-primary-950 text-primary-700 dark:text-primary-300'
+                            : 'border-stone-200 dark:border-stone-700 text-stone-500 dark:text-stone-400 hover:bg-stone-50 dark:hover:bg-stone-800'
+                        ]"
+                        :title="s.desc"
+                      >
+                        {{ s.label }}
+                      </button>
+                    </div>
+                    <p class="mt-1 text-[10px] text-stone-400">
+                      {{ calorieStrictness === 'soft' ? 'Kalorien fließen leicht ins Scoring ein' : calorieStrictness === 'moderate' ? 'Spürbare Bevorzugung passender Rezepte' : 'Starke Bevorzugung, Ausreißer werden ausgeschlossen' }}
+                    </p>
+                  </div>
+
+                  <!-- Verteilung (Collapsible) -->
+                  <div>
+                    <button @click="showCalorieDistribution = !showCalorieDistribution"
+                      class="flex items-center gap-1.5 mb-2 font-medium text-stone-600 hover:text-stone-800 dark:hover:text-stone-200 dark:text-stone-400 text-sm transition-colors">
+                      <ChevronDown class="w-3.5 h-3.5 transition-transform duration-200" :class="{ 'rotate-180': showCalorieDistribution }" />
+                      Verteilung anpassen
+                    </button>
+
+                    <Transition name="fade">
+                      <div v-if="showCalorieDistribution" class="space-y-2">
+                        <div v-for="mt in allMealTypes" :key="mt.key" class="flex items-center gap-2">
+                          <span class="w-5 text-sm text-center">{{ mt.icon }}</span>
+                          <span class="w-20 text-stone-600 dark:text-stone-400 text-xs truncate">{{ mt.label }}</span>
+                          <input
+                            type="range"
+                            :value="calorieDistribution[mt.key]"
+                            @input="calorieDistribution[mt.key] = parseInt($event.target.value)"
+                            min="5" max="60" step="5"
+                            class="flex-1 h-1.5 accent-primary-600"
+                          />
+                          <span class="w-8 font-mono text-stone-600 dark:text-stone-400 text-xs text-right">{{ calorieDistribution[mt.key] }}%</span>
+                          <span class="w-14 text-[10px] text-stone-400 text-right">~{{ slotKcal(mt.key) }} kcal</span>
+                        </div>
+                        <div class="flex justify-between items-center pt-1">
+                          <span :class="['text-xs font-medium', Math.abs(distributionSum() - 100) > 5 ? 'text-amber-600' : 'text-stone-400']">
+                            Summe: {{ distributionSum() }}%
+                            <span v-if="Math.abs(distributionSum() - 100) > 5" class="ml-1">⚠️</span>
+                          </span>
+                          <button @click="resetDistribution" class="flex items-center gap-1 text-stone-400 hover:text-stone-600 text-xs transition-colors">
+                            <RotateCcw class="w-3 h-3" /> Zurücksetzen
+                          </button>
+                        </div>
+                      </div>
+                    </Transition>
+                  </div>
+
+                  <!-- Info: Fehlende Nährwerte -->
+                  <div class="flex items-start gap-2 bg-blue-50 dark:bg-blue-950/40 p-2.5 rounded-lg">
+                    <Info class="mt-0.5 w-3.5 h-3.5 text-blue-500 shrink-0" />
+                    <p class="text-[10px] text-blue-700 dark:text-blue-300 leading-relaxed">
+                      Rezepte ohne Nährwertdaten werden bei der Generierung automatisch per KI geschätzt und gespeichert. Das kann beim ersten Mal etwas länger dauern.
+                    </p>
+                  </div>
+                </div>
+              </Transition>
+            </div>
+
             <!-- Gesperrte Rezepte -->
             <div class="mb-6">
               <div class="flex justify-between items-center mb-2">
@@ -977,6 +1097,7 @@
                 {{ genSourceMode === 'all' ? 'Alle Rezepte' : `${genCollectionIds.length} Sammlung(en)` }}
                 · {{ genDeduplicate ? 'Duplikate werden vermieden' : 'Duplikate erlaubt' }}
                 · {{ genAiReasoning ? 'KI-Begründung an' : 'KI-Begründung aus' }}
+                <span v-if="calorieEnabled"> · 🔥 {{ calorieTarget }} kcal/Tag ({{ calorieStrictness === 'soft' ? 'locker' : calorieStrictness === 'moderate' ? 'moderat' : 'strikt' }})</span>
                 <span v-if="blocksStore.activeBlocks.length"> · {{ blocksStore.activeBlocks.length }} Rezept{{ blocksStore.activeBlocks.length > 1 ? 'e' : '' }} gesperrt</span>
               </p>
             </div>
@@ -1290,7 +1411,7 @@ import {
   Sparkles, ChevronLeft, ChevronRight, Check, Eye, RefreshCw,
   X, Clock, ChefHat, UtensilsCrossed, Plus, Minus, Star, Trash2,
   LayoutGrid, CalendarDays, Settings, Settings2, FolderOpen, Info,
-  Ban, ShieldOff, Lock, Unlock, Users, ChevronDown, FolderSearch, EllipsisVertical, Search, Flame,
+  Ban, ShieldOff, Lock, Unlock, Users, ChevronDown, FolderSearch, EllipsisVertical, Search, Flame, RotateCcw,
 } from 'lucide-vue-next';
 
 const router = useRouter();
@@ -1337,10 +1458,24 @@ const showSlotSettings = ref(false);
 const showPastDays = ref(false);
 const reasoningCollapsed = ref(true);
 
+// Kalorien-Optimierung
+const CALORIE_PRESETS = {
+  light: { label: 'Leicht', kcal: 1500, description: '~1500 kcal/Tag' },
+  balanced: { label: 'Ausgewogen', kcal: 2000, description: '~2000 kcal/Tag' },
+  active: { label: 'Sportlich', kcal: 2500, description: '~2500 kcal/Tag' },
+};
+const DEFAULT_DISTRIBUTION = { fruehstueck: 25, mittag: 35, abendessen: 30, snack: 10 };
+const calorieEnabled = ref(savedPrefs.calorieEnabled ?? false);
+const caloriePreset = ref(savedPrefs.caloriePreset ?? 'balanced');
+const calorieTarget = ref(savedPrefs.calorieTarget ?? 2000);
+const calorieDistribution = ref(savedPrefs.calorieDistribution ?? { ...DEFAULT_DISTRIBUTION });
+const calorieStrictness = ref(savedPrefs.calorieStrictness ?? 'moderate');
+const showCalorieDistribution = ref(false);
+
 
 
 // Bei Änderung automatisch in localStorage speichern
-watch([genMealTypes, genPersons, visibleSlots, genSourceMode, genCollectionIds, genDeduplicate, genAiReasoning, genActiveDays], () => {
+watch([genMealTypes, genPersons, visibleSlots, genSourceMode, genCollectionIds, genDeduplicate, genAiReasoning, genActiveDays, calorieEnabled, caloriePreset, calorieTarget, calorieDistribution, calorieStrictness], () => {
   localStorage.setItem(STORAGE_KEY, JSON.stringify({
     mealTypes: genMealTypes.value,
     personCount: genPersons.value,
@@ -1350,8 +1485,42 @@ watch([genMealTypes, genPersons, visibleSlots, genSourceMode, genCollectionIds, 
     deduplicate: genDeduplicate.value,
     aiReasoning: genAiReasoning.value,
     activeDays: genActiveDays.value,
+    calorieEnabled: calorieEnabled.value,
+    caloriePreset: caloriePreset.value,
+    calorieTarget: calorieTarget.value,
+    calorieDistribution: calorieDistribution.value,
+    calorieStrictness: calorieStrictness.value,
   }));
 }, { deep: true });
+
+// Preset → Target synchronisieren
+watch(caloriePreset, (preset) => {
+  if (preset !== 'custom' && CALORIE_PRESETS[preset]) {
+    calorieTarget.value = CALORIE_PRESETS[preset].kcal;
+  }
+});
+
+// Bei manueller Target-Änderung: Preset auf 'custom' setzen
+function onCalorieTargetInput(val) {
+  const num = parseInt(val);
+  if (!isNaN(num) && num >= 800 && num <= 5000) {
+    calorieTarget.value = num;
+    // Prüfen ob Wert einem Preset entspricht
+    const matchingPreset = Object.entries(CALORIE_PRESETS).find(([, p]) => p.kcal === num);
+    caloriePreset.value = matchingPreset ? matchingPreset[0] : 'custom';
+  }
+}
+
+// Verteilungs-Berechnung: Slot-kcal aus Prozent
+function slotKcal(slot) {
+  return Math.round(calorieTarget.value * (calorieDistribution.value[slot] || 0) / 100);
+}
+function distributionSum() {
+  return Object.values(calorieDistribution.value).reduce((s, v) => s + v, 0);
+}
+function resetDistribution() {
+  calorieDistribution.value = { ...DEFAULT_DISTRIBUTION };
+}
 
 const swapModal = ref({ show: false, entry: null, suggestions: [], loading: false });
 const swapSearch = ref('');
@@ -1580,8 +1749,18 @@ async function executeGenerate() {
       options.collectionIds = genCollectionIds.value;
       options.deduplicateCollections = genDeduplicate.value;
     }
+    // Kalorien-Optimierung nur wenn aktiviert
+    if (calorieEnabled.value) {
+      options.calorieTarget = calorieTarget.value;
+      options.calorieDistribution = calorieDistribution.value;
+      options.calorieStrictness = calorieStrictness.value;
+    }
     const data = await store.generatePlan(options);
-    showSuccess('Wochenplan erstellt! 🗓️');
+    let msg = 'Wochenplan erstellt! 🗓️';
+    if (data.nutritionEstimatedCount > 0) {
+      msg += ` (${data.nutritionEstimatedCount} Rezepte mit Nährwerten ergänzt)`;
+    }
+    showSuccess(msg);
 
     // KI-Reasoning im Hintergrund polled (blockiert UI nicht)
     if (genAiReasoning.value && data.planId) {
