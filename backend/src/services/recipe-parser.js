@@ -8,7 +8,18 @@
  */
 
 import { getAIProvider } from './ai/provider.js';
+import { getSetting } from '../config/settings.js';
 import sharp from 'sharp';
+
+/**
+ * Gibt den AI-Provider für Rezept-Parsing zurück.
+ * Wenn 'kimi_recipe_instant' aktiv ist, wird der schnelle Instant-Modus
+ * (ohne Thinking) verwendet, sonst der Standard-Provider mit Reasoning.
+ */
+function getRecipeAI() {
+  const useInstant = getSetting('kimi_recipe_instant', 'false') === 'true';
+  return getAIProvider(useInstant ? { simple: true } : {});
+}
 
 // ── Gemeinsamer Prompt-Block für Zutaten-Format ──
 const INGREDIENT_RULES = `
@@ -73,7 +84,7 @@ const JSON_FORMAT = `{
  * @returns {Promise<object>} - Strukturiertes Rezept-Objekt
  */
 export async function parseRecipeFromImage(imageBuffers, existingCategories = []) {
-  const ai = getAIProvider();
+  const ai = getRecipeAI();
   const rawImages = Array.isArray(imageBuffers) ? imageBuffers : [imageBuffers];
   const isMultiPage = rawImages.length > 1;
 
@@ -121,7 +132,7 @@ ${INGREDIENT_RULES}
  * @returns {Promise<object>} - Strukturiertes Rezept-Objekt
  */
 export async function parseRecipeFromText(text, existingCategories = []) {
-  const ai = getAIProvider();
+  const ai = getRecipeAI();
 
   const prompt = `
 Erstelle ein vollständiges, strukturiertes Rezept aus folgendem Text:
@@ -264,7 +275,7 @@ export async function parseRecipeFromUrl(url, existingCategories = []) {
     text = text.substring(0, maxChars) + '…';
   }
 
-  const ai = getAIProvider();
+  const ai = getRecipeAI();
 
   const prompt = `
 Extrahiere das Rezept von dieser Webseite und erstelle ein vollständiges, strukturiertes Rezept.
@@ -298,7 +309,7 @@ ${INGREDIENT_RULES}
  * @returns {Promise<object>} - Das überarbeitete Rezept im gleichen JSON-Format
  */
 export async function reviseRecipe(recipeData, userInstructions) {
-  const ai = getAIProvider();
+  const ai = getRecipeAI();
 
   // Bestehendes Rezept als kompaktes JSON für den Prompt
   const existingRecipe = {

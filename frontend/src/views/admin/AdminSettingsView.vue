@@ -136,6 +136,28 @@
             <p class="text-stone-400 dark:text-stone-500 text-xs">
               Das schnelle Modell wird für einfache Aufgaben wie Umrechnungs-Generierung verwendet (ohne Reasoning, günstiger & schneller).
             </p>
+
+            <!-- Rezept-Parsing: Instant-Modus -->
+            <div class="flex justify-between items-center pt-2 border-stone-200 dark:border-stone-700 border-t">
+              <div>
+                <p class="font-medium text-stone-700 dark:text-stone-200 text-sm">Rezept-Import: Instant-Modus</p>
+                <p class="mt-0.5 text-stone-400 dark:text-stone-500 text-xs">Nutzt K2.5 Instant (ohne Thinking) für Rezept-Import &amp; -Parsing — schneller, aber evtl. weniger genau</p>
+              </div>
+              <button
+                @click="toggleSetting('kimi_recipe_instant')"
+                :class="[
+                  'relative inline-flex h-6 w-11 shrink-0 rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out cursor-pointer',
+                  settingsMap.kimi_recipe_instant === 'true' ? 'bg-primary-600' : 'bg-stone-300 dark:bg-stone-600'
+                ]"
+              >
+                <span
+                  :class="[
+                    'pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                    settingsMap.kimi_recipe_instant === 'true' ? 'translate-x-5' : 'translate-x-0'
+                  ]"
+                ></span>
+              </button>
+            </div>
           </div>
 
           <!-- OpenAI -->
