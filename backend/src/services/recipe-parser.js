@@ -18,7 +18,9 @@ import sharp from 'sharp';
  */
 function getRecipeAI() {
   const useInstant = getSetting('kimi_recipe_instant', 'false') === 'true';
-  return getAIProvider(useInstant ? { simple: true } : {});
+  const provider = getAIProvider(useInstant ? { simple: true } : {});
+  console.log(`🧑‍🍳 Rezept-AI: ${provider.name} [Modus: ${useInstant ? 'Instant' : 'Thinking'}]`);
+  return provider;
 }
 
 // ── Gemeinsamer Prompt-Block für Zutaten-Format ──

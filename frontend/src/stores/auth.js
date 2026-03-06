@@ -13,6 +13,7 @@ import { apiRaw } from '@/composables/useApi.js';
 export const useAuthStore = defineStore('auth', () => {
   // --- State ---
   const user = ref(null);
+  const appConfig = ref({ maxUploadSize: 10 }); // Standard: 10 MB
   const token = ref(localStorage.getItem('zauberjournal-token') || localStorage.getItem('ai-cookbook-token') || null);
 
   // Alten localStorage-Key migrieren
@@ -74,6 +75,7 @@ export const useAuthStore = defineStore('auth', () => {
     try {
       const data = await apiRaw('/auth/me');
       user.value = data.user;
+      if (data.appConfig) appConfig.value = data.appConfig;
     } catch (err) {
       // Netzwerkfehler → Token behalten (könnte noch gültig sein)
       const msg = err?.message || '';
@@ -119,6 +121,7 @@ export const useAuthStore = defineStore('auth', () => {
 
   return {
     user,
+    appConfig,
     token,
     loading,
     isLoggedIn,

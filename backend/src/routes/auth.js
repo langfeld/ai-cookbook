@@ -9,6 +9,7 @@
 import bcrypt from 'bcryptjs';
 import db from '../config/database.js';
 import { createDefaultCategories } from '../config/database.js';
+import { getSetting } from '../config/settings.js';
 
 export default async function authRoutes(fastify) {
   // ============================================
@@ -225,7 +226,10 @@ export default async function authRoutes(fastify) {
       return { error: 'Benutzer nicht gefunden' };
     }
 
-    return { user };
+    // Öffentliche App-Einstellungen mitsenden (z.B. für Client-seitige Validierung)
+    const maxUploadSize = parseInt(getSetting('max_upload_size', '10'), 10);
+
+    return { user, appConfig: { maxUploadSize } };
   });
 
   // ============================================

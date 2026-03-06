@@ -56,7 +56,7 @@
             <div v-if="selectedFiles.length === 0" class="text-center">
               <Upload class="mx-auto mb-2 w-10 h-10 text-stone-400" />
               <p class="text-stone-500 text-sm">Klicke oder ziehe Fotos hierhin</p>
-              <p class="mt-1 text-stone-400 text-xs">Mehrere Seiten möglich · JPG, PNG, WebP bis 10 MB</p>
+              <p class="mt-1 text-stone-400 text-xs">Mehrere Seiten möglich · JPG, PNG, WebP bis {{ authStore.appConfig.maxUploadSize || 10 }} MB</p>
             </div>
             <div v-else class="flex flex-wrap justify-center gap-3 p-4 w-full">
               <div
@@ -159,10 +159,14 @@
 import { ref, computed } from 'vue';
 import { X, Camera, FileText, Globe, Upload, Sparkles, Plus, ImageIcon } from 'lucide-vue-next';
 import { useRecipesStore } from '@/stores/recipes.js';
+import { useAuthStore } from '@/stores/auth.js';
+import { useNotification } from '@/composables/useNotification.js';
 
 const emit = defineEmits(['close', 'imported']);
 
 const recipesStore = useRecipesStore();
+const authStore = useAuthStore();
+const { showError } = useNotification();
 
 const importMode = ref('photo');
 const selectedFiles = ref([]);
@@ -192,7 +196,14 @@ function handleFileSelect(event) {
   const files = Array.from(event.target.files);
   if (!files.length) return;
 
+  const maxMB = authStore.appConfig.maxUploadSize || 10;
+  const maxBytes = maxMB * 1024 * 1024;
+
   for (const file of files) {
+    if (file.size > maxBytes) {
+      showError(`„${file.name}" ist zu groß (${(file.size / 1024 / 1024).toFixed(1)} MB). Maximal ${maxMB} MB erlaubt.`);
+      continue;
+    }
     selectedFiles.value.push(file);
     previewUrls.value.push(URL.createObjectURL(file));
   }
@@ -219,9 +230,7 @@ async function handleImport() {
     emit('imported', result);
   } catch {
     // Fehler wird bereits von der API-Schicht (useApi) als Notification angezeigt.
-    // Rezeptliste wurde im Store-catch trotzdem aktualisiert,
-    // daher Modal schließen — das Rezept ist sehr wahrscheinlich bereits importiert.
-    emit('imported', null);
+    // Modal bleibt offen, damit der User es erneut versuchen kann.
   } finally {
     importing.value = false;
   }
