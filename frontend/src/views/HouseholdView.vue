@@ -290,8 +290,11 @@
               <FolderSync class="w-5 h-5 text-primary-600" />
               Daten migrieren
             </h3>
-            <p class="mb-4 text-stone-500 dark:text-stone-400 text-sm">
-              Verschiebe deine persönlichen Daten in den gemeinsamen Haushalt.
+            <p class="mb-2 text-stone-500 dark:text-stone-400 text-sm">
+              Verschiebe alle deine persönlichen Daten auf einmal in den gemeinsamen Haushalt.
+            </p>
+            <p class="mb-4 text-stone-400 dark:text-stone-500 text-xs">
+              💡 Tipp: Du kannst auch einzelne Rezepte freigeben – öffne dazu ein Rezept und klicke auf den „Haushalt"-Badge oder wähle im Menü „Für Haushalt freigeben".
             </p>
             <button
               @click="handleMigrate"

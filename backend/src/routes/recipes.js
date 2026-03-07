@@ -1659,6 +1659,71 @@ export default async function recipesRoutes(fastify) {
   });
 
   // ============================================
+  // Rezept-Haushalt-Freigabe (einzeln teilen/zurücknehmen)
+  // ============================================
+
+  /**
+   * PATCH /api/recipes/:id/household
+   * Setzt oder entfernt die Haushalt-Zuordnung eines einzelnen Rezepts.
+   * Nur der Besitzer (user_id) darf umschalten.
+   */
+  fastify.patch('/:id/household', {
+    schema: {
+      description: 'Rezept für den Haushalt freigeben oder zurücknehmen',
+      tags: ['Rezepte'],
+      security: [{ bearerAuth: [] }],
+      body: {
+        type: 'object',
+        required: ['shared'],
+        properties: {
+          shared: { type: 'boolean', description: 'true = Haushalt, false = privat' },
+        },
+      },
+    },
+  }, async (request, reply) => {
+    const recipeId = Number(request.params.id);
+    const userId = request.user.id;
+    const householdId = request.householdId;
+    const { shared } = request.body;
+
+    if (!householdId) {
+      return reply.status(400).send({ error: 'Kein aktiver Haushalt. Tritt zuerst einem Haushalt bei.' });
+    }
+
+    // Nur der Besitzer darf das Rezept umschalten
+    const recipe = db.prepare('SELECT id, title, user_id, household_id FROM recipes WHERE id = ?').get(recipeId);
+    if (!recipe) {
+      return reply.status(404).send({ error: 'Rezept nicht gefunden.' });
+    }
+    if (recipe.user_id !== userId) {
+      return reply.status(403).send({ error: 'Nur der Ersteller kann die Haushalt-Freigabe ändern.' });
+    }
+
+    const newHouseholdId = shared ? householdId : null;
+
+    db.prepare('UPDATE recipes SET household_id = ?, created_by_user_id = COALESCE(created_by_user_id, user_id) WHERE id = ?')
+      .run(newHouseholdId, recipeId);
+
+    // SSE-Broadcast an Haushaltsmitglieder
+    if (shared) {
+      broadcastToHousehold(householdId, 'recipe:shared', {
+        recipe_id: recipeId,
+        recipe_title: recipe.title,
+        user_id: userId,
+        username: request.user.username,
+      });
+    }
+
+    return {
+      shared,
+      household_id: newHouseholdId,
+      message: shared
+        ? `„${recipe.title}" ist jetzt für den Haushalt sichtbar.`
+        : `„${recipe.title}" ist jetzt nur noch für dich sichtbar.`,
+    };
+  });
+
+  // ============================================
   // Rezept-Link-Sharing (Einzelteilen per Link)
   // ============================================
 

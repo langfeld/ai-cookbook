@@ -49,6 +49,15 @@
       >
         🤖 KI
       </span>
+
+      <!-- Haushalt-Badge -->
+      <span
+        v-if="recipe.household_id"
+        class="top-2 left-2 absolute flex items-center gap-1 bg-primary-100/90 dark:bg-primary-900/80 backdrop-blur-sm px-1.5 py-0.5 rounded-full text-primary-700 dark:text-primary-300 text-xs"
+        title="Im Haushalt geteilt"
+      >
+        <Home class="w-3 h-3" />
+      </span>
     </div>
 
     <!-- Info -->
@@ -95,7 +104,7 @@
 </template>
 
 <script setup>
-import { Star, Clock, Users, ChefHat, Flame } from 'lucide-vue-next';
+import { Star, Clock, Users, ChefHat, Flame, Home } from 'lucide-vue-next';
 
 defineProps({
   recipe: { type: Object, required: true },

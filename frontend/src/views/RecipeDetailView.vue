@@ -39,6 +39,29 @@
             <button v-if="recipe.times_cooked" @click="showHistoryPopup = true" class="hover:bg-stone-200 dark:hover:bg-stone-700 transition-colors cursor-pointer meta-badge"><ChefHat class="w-3.5 h-3.5" /> {{ recipe.times_cooked }}×</button>
           </div>
 
+          <!-- Haushalt-Freigabe-Badge -->
+          <div v-if="householdStore.isInHousehold" class="mt-3">
+            <button
+              v-if="canToggleHousehold"
+              @click="toggleHouseholdSharing"
+              :disabled="togglingHousehold"
+              class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full font-medium text-xs transition-all cursor-pointer"
+              :class="isSharedWithHousehold
+                ? 'bg-primary-100 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 border border-primary-200 dark:border-primary-800 hover:bg-primary-200 dark:hover:bg-primary-900/50'
+                : 'bg-stone-100 dark:bg-stone-800 text-stone-500 dark:text-stone-400 border border-stone-200 dark:border-stone-700 hover:bg-stone-200 dark:hover:bg-stone-700'"
+            >
+              <Home v-if="isSharedWithHousehold" class="w-3.5 h-3.5" />
+              <Lock v-else class="w-3.5 h-3.5" />
+              {{ togglingHousehold ? '...' : isSharedWithHousehold ? 'Haushalt' : 'Nur für mich' }}
+            </button>
+            <span
+              v-else-if="isSharedWithHousehold"
+              class="inline-flex items-center gap-1.5 bg-primary-100 dark:bg-primary-900/30 px-2.5 py-1 border border-primary-200 dark:border-primary-800 rounded-full font-medium text-primary-700 dark:text-primary-300 text-xs"
+            >
+              <Home class="w-3.5 h-3.5" /> Haushalt
+            </span>
+          </div>
+
           <!-- Kategorien -->
           <div v-if="recipe.categories?.length" class="flex flex-wrap gap-2 mt-4">
             <span v-for="cat in recipe.categories" :key="cat.id"
@@ -107,6 +130,13 @@
                     class="flex items-center gap-2.5 hover:bg-stone-50 dark:hover:bg-stone-800 px-3 py-2 w-full text-stone-700 dark:text-stone-300 text-sm text-left transition-colors">
                     <Share2 class="w-4 h-4" /> Teilen
                   </button>
+                  <button v-if="canToggleHousehold" @click="toggleHouseholdSharing(); showMoreMenu = false"
+                    class="flex items-center gap-2.5 hover:bg-stone-50 dark:hover:bg-stone-800 px-3 py-2 w-full text-sm text-left transition-colors"
+                    :class="isSharedWithHousehold ? 'text-primary-600 dark:text-primary-400' : 'text-stone-700 dark:text-stone-300'">
+                    <Home v-if="isSharedWithHousehold" class="w-4 h-4" />
+                    <Lock v-else class="w-4 h-4" />
+                    {{ isSharedWithHousehold ? 'Privat machen' : 'Für Haushalt freigeben' }}
+                  </button>
                   <router-link :to="'/recipes/new?edit=' + recipe.id" @click="showMoreMenu = false"
                     class="flex items-center gap-2.5 hover:bg-stone-50 dark:hover:bg-stone-800 px-3 py-2 w-full text-stone-700 dark:text-stone-300 text-sm transition-colors">
                     <Pencil class="w-4 h-4" /> Bearbeiten
@@ -131,6 +161,13 @@
                       <button @click="handleShare(); showMoreMenu = false"
                         class="flex items-center gap-2.5 hover:bg-stone-50 dark:hover:bg-stone-800 px-4 py-3 w-full text-stone-700 dark:text-stone-300 text-sm text-left transition-colors">
                         <Share2 class="w-4 h-4" /> Teilen
+                      </button>
+                      <button v-if="canToggleHousehold" @click="toggleHouseholdSharing(); showMoreMenu = false"
+                        class="flex items-center gap-2.5 hover:bg-stone-50 dark:hover:bg-stone-800 px-4 py-3 w-full text-sm text-left transition-colors"
+                        :class="isSharedWithHousehold ? 'text-primary-600 dark:text-primary-400' : 'text-stone-700 dark:text-stone-300'">
+                        <Home v-if="isSharedWithHousehold" class="w-4 h-4" />
+                        <Lock v-else class="w-4 h-4" />
+                        {{ isSharedWithHousehold ? 'Privat machen' : 'Für Haushalt freigeben' }}
                       </button>
                       <router-link :to="'/recipes/new?edit=' + recipe.id" @click="showMoreMenu = false"
                         class="flex items-center gap-2.5 hover:bg-stone-50 dark:hover:bg-stone-800 px-4 py-3 w-full text-stone-700 dark:text-stone-300 text-sm transition-colors">
@@ -608,8 +645,10 @@ import { useRecipesStore } from '@/stores/recipes.js';
 import { useMealPlanStore } from '@/stores/mealplan.js';
 import { usePantryStore } from '@/stores/pantry.js';
 import { useNotification } from '@/composables/useNotification.js';
-import { Star, Clock, Users, ChefHat, Pencil, Plus, Minus, Trash2, CalendarPlus, X, ChevronLeft, ChevronRight, Maximize, Warehouse, RotateCcw, Smartphone, EllipsisVertical, Sparkles, HelpCircle, Share2, Link } from 'lucide-vue-next';
+import { Star, Clock, Users, ChefHat, Pencil, Plus, Minus, Trash2, CalendarPlus, X, ChevronLeft, ChevronRight, Maximize, Warehouse, RotateCcw, Smartphone, EllipsisVertical, Sparkles, HelpCircle, Share2, Link, Home, Lock } from 'lucide-vue-next';
 import { useWakeLock } from '@/composables/useWakeLock.js';
+import { useHouseholdStore } from '@/stores/household.js';
+import { useAuthStore } from '@/stores/auth.js';
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue';
 import QrCode from '@/components/ui/QrCode.vue';
 import AddToCollection from '@/components/collections/AddToCollection.vue';
@@ -624,6 +663,8 @@ const router = useRouter();
 const recipesStore = useRecipesStore();
 const mealPlanStore = useMealPlanStore();
 const pantryStore = usePantryStore();
+const householdStore = useHouseholdStore();
+const authStore = useAuthStore();
 const { showSuccess, showError: showShareError } = useNotification();
 const { loadIcons, getEmoji } = useIngredientIcons();
 const { isActive: wakeLockActive, isSupported: wakeLockSupported, toggle: toggleWakeLock } = useWakeLock();
@@ -639,6 +680,12 @@ const showShareModal = ref(false);
 const shareUrl = ref('');
 const shareCopied = ref(false);
 const canNativeShare = typeof navigator !== 'undefined' && !!navigator.share;
+const togglingHousehold = ref(false);
+
+// Haushalt-Freigabe
+const isOwnRecipe = computed(() => recipe.value && authStore.user && recipe.value.user_id === authStore.user.id);
+const isSharedWithHousehold = computed(() => !!recipe.value?.household_id);
+const canToggleHousehold = computed(() => householdStore.isInHousehold && isOwnRecipe.value);
 // Touch-Erkennung mit mehreren Heuristiken (Brave blockiert ggf. maxTouchPoints)
 const isTouchDevice = ref(
   'ontouchstart' in window ||
@@ -1079,6 +1126,30 @@ async function handleShare() {
     if (err.name !== 'AbortError') {
       showShareError('Teilen fehlgeschlagen');
     }
+  }
+}
+
+/** Rezept für Haushalt freigeben/zurücknehmen */
+async function toggleHouseholdSharing() {
+  if (!canToggleHousehold.value || togglingHousehold.value) return;
+  togglingHousehold.value = true;
+  try {
+    const newShared = !isSharedWithHousehold.value;
+    const result = await apiRaw(`/recipes/${recipe.value.id}/household`, {
+      method: 'PATCH',
+      body: { shared: newShared },
+    });
+    // Rezept-Objekt im Store aktualisieren
+    if (recipe.value) {
+      recipe.value.household_id = result.household_id;
+    }
+    showSuccess(result.message);
+  } catch (err) {
+    if (err.name !== 'AbortError') {
+      showShareError(err.message || 'Fehler beim Ändern der Freigabe');
+    }
+  } finally {
+    togglingHousehold.value = false;
   }
 }
 
