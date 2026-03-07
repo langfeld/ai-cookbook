@@ -235,6 +235,7 @@ export default async function recipesRoutes(fastify) {
           favorite: { type: 'boolean' },
           difficulty: { type: 'string' },
           collectionId: { type: 'integer' },
+          householdOnly: { type: 'boolean' },
           sort: { type: 'string', enum: ['title', 'created_at', 'last_cooked_at', 'total_time', 'times_cooked'] },
           order: { type: 'string', enum: ['asc', 'desc'] },
           limit: { type: 'integer', default: 50 },
@@ -243,7 +244,7 @@ export default async function recipesRoutes(fastify) {
       },
     },
   }, async (request) => {
-    const { search, category, favorite, difficulty, collectionId, sort = 'created_at', order = 'desc', limit, offset } = request.query;
+    const { search, category, favorite, difficulty, collectionId, householdOnly, sort = 'created_at', order = 'desc', limit, offset } = request.query;
     const userId = request.user.id;
     const householdId = request.householdId;
     const { clause: hhClause, params: hhParams } = householdWhereClause(userId, householdId, 'r');
@@ -290,6 +291,12 @@ export default async function recipesRoutes(fastify) {
     if (difficulty) {
       query += ' AND r.difficulty = ?';
       params.push(difficulty);
+    }
+
+    // Haushalt-Only-Filter: nur Rezepte mit household_id (keine privaten)
+    if (householdOnly && householdId) {
+      query += ' AND r.household_id = ?';
+      params.push(householdId);
     }
 
     query += ' GROUP BY r.id';

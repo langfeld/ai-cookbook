@@ -866,12 +866,21 @@
               </p>
             </div>
 
-            <!-- Aktive Sammlungs-Info -->
+            <!-- Aktive Sammlungs-/Haushalt-Info -->
             <div v-if="genSourceMode === 'collections' && genCollectionIds.length > 0"
               class="flex items-center gap-2 bg-primary-50 dark:bg-primary-950 mb-4 px-3 py-2 border border-primary-200 dark:border-primary-800 rounded-lg">
               <FolderOpen class="w-4 h-4 text-primary-500 shrink-0" />
               <p class="text-primary-700 dark:text-primary-300 text-xs">
                 <span class="font-medium">{{ genCollectionIds.length }} Sammlung(en)</span> aktiv
+                <button @click="showGenSettings = true; showGenerateModal = false"
+                  class="ml-1 underline hover:no-underline">ändern</button>
+              </p>
+            </div>
+            <div v-else-if="genSourceMode === 'household'"
+              class="flex items-center gap-2 bg-primary-50 dark:bg-primary-950 mb-4 px-3 py-2 border border-primary-200 dark:border-primary-800 rounded-lg">
+              <Home class="w-4 h-4 text-primary-500 shrink-0" />
+              <p class="text-primary-700 dark:text-primary-300 text-xs">
+                <span class="font-medium">Nur Haushalt-Rezepte</span>
                 <button @click="showGenSettings = true; showGenerateModal = false"
                   class="ml-1 underline hover:no-underline">ändern</button>
               </p>
@@ -908,10 +917,20 @@
                 <input type="radio" v-model="genSourceMode" value="all" class="accent-primary-600" />
                 <span class="text-stone-700 dark:text-stone-300 text-sm">Alle Rezepte</span>
               </label>
+              <label v-if="householdStore.isInHousehold" class="flex items-center gap-2 mb-2 cursor-pointer">
+                <input type="radio" v-model="genSourceMode" value="household" class="accent-primary-600" />
+                <span class="flex items-center gap-1.5 text-stone-700 dark:text-stone-300 text-sm">
+                  <Home class="w-3.5 h-3.5 text-primary-500" />
+                  Nur Haushalt-Rezepte
+                </span>
+              </label>
               <label class="flex items-center gap-2 cursor-pointer">
                 <input type="radio" v-model="genSourceMode" value="collections" class="accent-primary-600" />
                 <span class="text-stone-700 dark:text-stone-300 text-sm">Nur bestimmte Sammlungen</span>
               </label>
+              <p v-if="genSourceMode === 'household'" class="mt-2 text-stone-400 dark:text-stone-500 text-xs">
+                Nur Rezepte, die für den Haushalt freigegeben wurden – keine privaten.
+              </p>
             </div>
 
             <!-- Sammlungs-Auswahl (nur wenn "collections" gewählt) -->
@@ -1122,7 +1141,7 @@
             <div class="bg-stone-50 dark:bg-stone-800 mb-4 p-3 rounded-lg">
               <p class="text-stone-600 dark:text-stone-400 text-xs">
                 <span class="font-medium">Aktiv:</span>
-                {{ genSourceMode === 'all' ? 'Alle Rezepte' : `${genCollectionIds.length} Sammlung(en)` }}
+                {{ genSourceMode === 'all' ? 'Alle Rezepte' : genSourceMode === 'household' ? 'Nur Haushalt-Rezepte' : `${genCollectionIds.length} Sammlung(en)` }}
                 · {{ genDeduplicate ? 'Duplikate werden vermieden' : 'Duplikate erlaubt' }}
                 · {{ genAiReasoning ? 'KI-Begründung an' : 'KI-Begründung aus' }}
                 <span v-if="calorieEnabled"> · 🔥 {{ calorieTarget }} kcal/Tag ({{ calorieStrictness === 'soft' ? 'locker' : calorieStrictness === 'moderate' ? 'moderat' : 'strikt' }})</span>
@@ -1441,7 +1460,7 @@ import {
   Sparkles, ChevronLeft, ChevronRight, Check, Eye, RefreshCw,
   X, Clock, ChefHat, UtensilsCrossed, Plus, Minus, Star, Trash2,
   LayoutGrid, CalendarDays, Settings, Settings2, FolderOpen, Info,
-  Ban, ShieldOff, Lock, Unlock, Users, ChevronDown, FolderSearch, EllipsisVertical, Search, Flame, RotateCcw,
+  Ban, ShieldOff, Lock, Unlock, Users, ChevronDown, FolderSearch, EllipsisVertical, Search, Flame, RotateCcw, Home,
 } from 'lucide-vue-next';
 
 const router = useRouter();
@@ -1480,7 +1499,11 @@ const savedPrefs = (() => {
 const genMealTypes = ref(savedPrefs.mealTypes ?? ['fruehstueck', 'mittag', 'abendessen']);
 const genPersons = ref(savedPrefs.personCount ?? 4);
 const visibleSlots = ref(savedPrefs.visibleSlots ?? ['fruehstueck', 'mittag', 'abendessen', 'snack']);
-const genSourceMode = ref(savedPrefs.sourceMode ?? 'all');
+const genSourceMode = ref(
+  savedPrefs.sourceMode === 'household' && !householdStore.isInHousehold
+    ? 'all'
+    : (savedPrefs.sourceMode ?? 'all')
+);
 const genCollectionIds = ref(savedPrefs.collectionIds ?? []);
 const genDeduplicate = ref(savedPrefs.deduplicate ?? true);
 const genAiReasoning = ref(savedPrefs.aiReasoning ?? false);
@@ -1791,6 +1814,10 @@ async function executeGenerate() {
     if (genSourceMode.value === 'collections' && genCollectionIds.value.length > 0) {
       options.collectionIds = genCollectionIds.value;
       options.deduplicateCollections = genDeduplicate.value;
+    }
+    // Haushalt-Only-Filter
+    if (genSourceMode.value === 'household') {
+      options.householdOnly = true;
     }
     // Kalorien-Optimierung nur wenn aktiviert
     if (calorieEnabled.value) {

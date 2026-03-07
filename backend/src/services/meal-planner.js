@@ -562,6 +562,7 @@ export async function generateWeekPlan(userId, options = {}) {
     calorieDistribution = null,   // { fruehstueck: 25, mittag: 35, ... } in %
     calorieStrictness = 'moderate', // 'soft' | 'moderate' | 'strict'
     householdId = null,
+    householdOnly = false,        // Nur Haushalt-Rezepte (keine privaten)
   } = options;
 
   // --- 1. Alle Rezepte des Benutzers laden (ggf. gefiltert nach Sammlungen) ---
@@ -572,6 +573,12 @@ export async function generateWeekPlan(userId, options = {}) {
     `SELECT recipe_id FROM recipe_blocks WHERE (${rbWhere.clause}) AND blocked_until >= date('now')`
   ).all(...rbWhere.params).map(b => b.recipe_id);
   const allExcludeIds = [...new Set([...excludeRecipeIds, ...blockedRecipeIds])];
+
+  // Haushalt-Only-Filter: nur Rezepte mit household_id = householdId (keine privaten)
+  let householdOnlyFilter = '';
+  if (householdOnly && householdId) {
+    householdOnlyFilter = `AND r.household_id = ${parseInt(householdId)}`;
+  }
 
   let collectionFilter = '';
   if (collectionIds.length > 0) {
@@ -602,6 +609,7 @@ export async function generateWeekPlan(userId, options = {}) {
     LEFT JOIN categories c ON rc.category_id = c.id
     WHERE (${rWhere.clause})
     ${allExcludeIds.length ? `AND r.id NOT IN (${allExcludeIds.join(',')})` : ''}
+    ${householdOnlyFilter}
     ${collectionFilter}
     GROUP BY r.id
     ORDER BY r.last_cooked_at ASC NULLS FIRST, r.times_cooked ASC

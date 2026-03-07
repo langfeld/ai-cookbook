@@ -78,6 +78,11 @@ export default async function mealplanRoutes(fastify) {
             default: 'moderate',
             description: 'Wie streng das Kalorien-Ziel verfolgt wird',
           },
+          householdOnly: {
+            type: 'boolean',
+            default: false,
+            description: 'Nur Haushalt-Rezepte verwenden (keine privaten). Erfordert aktiven Haushalt.',
+          },
         },
       },
     },

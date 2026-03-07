@@ -120,6 +120,21 @@
         <Star class="w-4 h-4" :class="{ 'fill-amber-400': recipesStore.filters.favorite }" />
         Favoriten
       </button>
+
+      <!-- Haushalt-Filter -->
+      <button
+        v-if="householdStore.isInHousehold"
+        @click="toggleHouseholdFilter"
+        :class="[
+          'flex items-center gap-1 px-3 py-2 rounded-lg border text-sm transition-colors',
+          recipesStore.filters.householdOnly
+            ? 'bg-primary-50 dark:bg-primary-900/30 border-primary-300 dark:border-primary-700 text-primary-700 dark:text-primary-300'
+            : 'bg-stone-50 dark:bg-stone-800 border-stone-200 dark:border-stone-700 text-stone-500',
+        ]"
+      >
+        <Home class="w-4 h-4" />
+        Haushalt
+      </button>
     </div>
 
     <!-- Rezept-Grid -->
@@ -265,7 +280,8 @@ import { ref, onMounted } from 'vue';
 import { useRecipesStore } from '@/stores/recipes.js';
 import { useAuthStore } from '@/stores/auth.js';
 import { useCollectionsStore } from '@/stores/collections.js';
-import { Search, Sparkles, Plus, Star, BookOpen, ArrowDownUp, CheckSquare, Square, Check, Trash2, FolderOpen, FolderPlus, FolderMinus } from 'lucide-vue-next';
+import { useHouseholdStore } from '@/stores/household.js';
+import { Search, Sparkles, Plus, Star, BookOpen, ArrowDownUp, CheckSquare, Square, Check, Trash2, FolderOpen, FolderPlus, FolderMinus, Home } from 'lucide-vue-next';
 import RecipeCard from '@/components/recipes/RecipeCard.vue';
 import RecipeImportModal from '@/components/recipes/RecipeImportModal.vue';
 import CollectionManager from '@/components/collections/CollectionManager.vue';
@@ -276,6 +292,7 @@ import { useNotification } from '@/composables/useNotification.js';
 const recipesStore = useRecipesStore();
 const authStore = useAuthStore();
 const collectionsStore = useCollectionsStore();
+const householdStore = useHouseholdStore();
 const { showSuccess, showError } = useNotification();
 const showPhotoImport = ref(false);
 const showCollectionManager = ref(false);
@@ -301,6 +318,11 @@ function debouncedFetch() {
 
 function toggleFavoriteFilter() {
   recipesStore.filters.favorite = recipesStore.filters.favorite ? null : true;
+  recipesStore.fetchRecipes();
+}
+
+function toggleHouseholdFilter() {
+  recipesStore.filters.householdOnly = recipesStore.filters.householdOnly ? null : true;
   recipesStore.fetchRecipes();
 }
 
