@@ -60,10 +60,10 @@ export const usePantryStore = defineStore('pantry', () => {
     return data;
   }
 
-  /** Rezept-Ansicht invalidieren (falls geladen) */
+  /** Rezept-Ansicht invalidieren (falls geladen) – silent refresh ohne Loading-Spinner */
   function invalidateRecipeView() {
     if (recipeViewData.value) {
-      fetchRecipeView(selectedWeekStart.value);
+      fetchRecipeView(selectedWeekStart.value, { silent: true });
     }
   }
 
@@ -83,11 +83,20 @@ export const usePantryStore = defineStore('pantry', () => {
     return data;
   }
 
-  /** Vorrat löschen */
+  /** Vorrat löschen (optimistisch) */
   async function removeItem(id) {
-    await api.del(`/pantry/${id}`);
+    // Optimistic UI: sofort aus lokaler Liste entfernen
+    const removedItem = items.value.find(i => i.id === id);
     items.value = items.value.filter(i => i.id !== id);
     invalidateRecipeView();
+
+    try {
+      await api.del(`/pantry/${id}`);
+    } catch (err) {
+      // Fehler: Item wiederherstellen
+      if (removedItem) items.value.push(removedItem);
+      throw err;
+    }
   }
 
   /** Mehrere Vorräte auf einmal löschen */
@@ -134,8 +143,8 @@ export const usePantryStore = defineStore('pantry', () => {
   }
 
   /** Rezept-Ansicht laden (gruppiert nach Wochenplan-Rezepten) */
-  async function fetchRecipeView(weekStart = null) {
-    recipeViewLoading.value = true;
+  async function fetchRecipeView(weekStart = null, { silent = false } = {}) {
+    if (!silent) recipeViewLoading.value = true;
     try {
       const params = new URLSearchParams();
       if (weekStart) params.set('weekStart', weekStart);
@@ -153,13 +162,13 @@ export const usePantryStore = defineStore('pantry', () => {
         const futureWeek = sorted.find(w => w.week_start >= today);
         const target = futureWeek || sorted[sorted.length - 1];
         if (target && target.week_start !== data.weekStart) {
-          return await fetchRecipeView(target.week_start);
+          return await fetchRecipeView(target.week_start, { silent });
         }
       }
 
       return data;
     } finally {
-      recipeViewLoading.value = false;
+      if (!silent) recipeViewLoading.value = false;
     }
   }
 
