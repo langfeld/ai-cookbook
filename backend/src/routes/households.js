@@ -898,6 +898,7 @@ export default async function householdRoutes(fastify) {
       body: {
         type: 'object',
         properties: {
+          include_recipes: { type: 'boolean', default: true, description: 'Rezepte migrieren' },
           exclude_recipe_ids: {
             type: 'array',
             items: { type: 'integer' },
@@ -928,8 +929,9 @@ export default async function householdRoutes(fastify) {
     const stats = db.transaction(() => {
       const result = {};
 
-      // Rezepte migrieren (außer ausgeschlossene)
-      if (excludeIds.size > 0) {
+      // Rezepte migrieren (optional, außer ausgeschlossene)
+      if (opts.include_recipes !== false) {
+        if (excludeIds.size > 0) {
         const placeholders = [...excludeIds].map(() => '?').join(',');
         result.recipes = db.prepare(`
           UPDATE recipes SET household_id = ?, created_by_user_id = COALESCE(created_by_user_id, user_id)
@@ -940,6 +942,7 @@ export default async function householdRoutes(fastify) {
           UPDATE recipes SET household_id = ?, created_by_user_id = COALESCE(created_by_user_id, user_id)
           WHERE user_id = ? AND household_id IS NULL
         `).run(householdId, userId).changes;
+      }
       }
 
       // Kategorien

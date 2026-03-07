@@ -286,23 +286,140 @@
 
           <!-- Datenmigration -->
           <div class="bg-white dark:bg-stone-800 p-5 border border-stone-200 dark:border-stone-700 rounded-2xl">
-            <h3 class="flex items-center gap-2 mb-4 font-display font-semibold text-stone-800 dark:text-stone-100">
+            <h3 class="flex items-center gap-2 mb-3 font-display font-semibold text-stone-800 dark:text-stone-100">
               <FolderSync class="w-5 h-5 text-primary-600" />
-              Daten migrieren
+              Daten in den Haushalt übernehmen
             </h3>
-            <p class="mb-2 text-stone-500 dark:text-stone-400 text-sm">
-              Verschiebe alle deine persönlichen Daten auf einmal in den gemeinsamen Haushalt.
-            </p>
-            <p class="mb-4 text-stone-400 dark:text-stone-500 text-xs">
-              💡 Tipp: Du kannst auch einzelne Rezepte freigeben – öffne dazu ein Rezept und klicke auf den „Haushalt"-Badge oder wähle im Menü „Für Haushalt freigeben".
-            </p>
+
+            <!-- Erklärung -->
+            <div class="flex items-start gap-2.5 bg-blue-50 dark:bg-blue-950/30 mb-4 p-3 border border-blue-100 dark:border-blue-900/50 rounded-xl">
+              <Info class="mt-0.5 w-4 h-4 text-blue-500 shrink-0" />
+              <div class="text-blue-700 dark:text-blue-300 text-xs leading-relaxed">
+                <p class="mb-1">Beim Migrieren werden deine <strong>persönlichen Daten</strong> für alle Haushaltsmitglieder sichtbar. Deine Daten gehören weiterhin dir – sie werden nur zusätzlich im Haushalt geteilt.</p>
+                <p>Wähle aus, welche Daten du teilen möchtest. Du kannst die Migration jederzeit für weitere Bereiche wiederholen.</p>
+              </div>
+            </div>
+
+            <!-- Erfolgs-Anzeige -->
+            <div v-if="migrateResult" class="flex items-start gap-2.5 bg-emerald-50 dark:bg-emerald-950/30 mb-4 p-3 border border-emerald-200 dark:border-emerald-900/50 rounded-xl">
+              <CheckCircle2 class="mt-0.5 w-4 h-4 text-emerald-500 shrink-0" />
+              <div class="text-emerald-700 dark:text-emerald-300 text-xs leading-relaxed">
+                <p class="mb-1 font-medium">Migration abgeschlossen!</p>
+                <ul class="space-y-0.5">
+                  <li v-if="migrateResult.recipes != null">📖 {{ migrateResult.recipes }} Rezept{{ migrateResult.recipes !== 1 ? 'e' : '' }}</li>
+                  <li v-if="migrateResult.categories != null">🏷️ {{ migrateResult.categories }} Kategorie{{ migrateResult.categories !== 1 ? 'n' : '' }}</li>
+                  <li v-if="migrateResult.collections != null">📂 {{ migrateResult.collections }} Sammlung{{ migrateResult.collections !== 1 ? 'en' : '' }}</li>
+                  <li v-if="migrateResult.meal_plans != null">📅 {{ migrateResult.meal_plans }} Wochenplan{{ migrateResult.meal_plans !== 1 ? 'pläne' : '' }}</li>
+                  <li v-if="migrateResult.shopping_lists != null">🛒 {{ migrateResult.shopping_lists }} Einkaufsliste{{ migrateResult.shopping_lists !== 1 ? 'n' : '' }}</li>
+                  <li v-if="migrateResult.pantry != null">🏠 {{ migrateResult.pantry }} Vorrats-Eintrag{{ migrateResult.pantry !== 1 ? 'e' : '' }}</li>
+                  <li v-if="migrateResult.ingredient_aliases != null">🔗 {{ migrateResult.ingredient_aliases }} Zutaten-Alias{{ migrateResult.ingredient_aliases !== 1 ? 'e' : '' }}</li>
+                  <li v-if="migrateResult.recipe_blocks != null">🚫 {{ migrateResult.recipe_blocks }} Rezept-Sperre{{ migrateResult.recipe_blocks !== 1 ? 'n' : '' }}</li>
+                </ul>
+              </div>
+            </div>
+
+            <!-- Toggle für Details -->
+            <button @click="showMigrateDetails = !showMigrateDetails"
+              class="flex items-center gap-2 mb-3 text-stone-600 hover:text-stone-800 dark:hover:text-stone-200 dark:text-stone-400 text-sm transition-colors">
+              <ChevronDown class="w-4 h-4 transition-transform duration-200" :class="{ 'rotate-180': showMigrateDetails }" />
+              <span class="font-medium">Was wird migriert?</span>
+              <span class="bg-primary-100 dark:bg-primary-900/40 px-1.5 py-0.5 rounded-full text-primary-600 dark:text-primary-400 text-xs">
+                {{ Object.values(migrateOptions).filter(Boolean).length }} von {{ Object.keys(migrateOptions).length }}
+              </span>
+            </button>
+
+            <Transition name="fade">
+              <div v-if="showMigrateDetails" class="space-y-2 mb-4">
+                <!-- Rezepte -->
+                <label class="flex items-start gap-3 hover:bg-stone-50 dark:hover:bg-stone-750 p-2.5 rounded-xl transition-colors cursor-pointer">
+                  <input type="checkbox" v-model="migrateOptions.recipes" class="mt-0.5 accent-primary-600" />
+                  <BookOpen class="mt-0.5 w-4 h-4 text-primary-500 shrink-0" />
+                  <div class="flex-1">
+                    <span class="font-medium text-stone-700 dark:text-stone-300 text-sm">Rezepte</span>
+                    <p class="text-stone-400 text-xs">Alle privaten Rezepte werden für den Haushalt sichtbar. Alternativ kannst du Rezepte auch einzeln auf der Rezeptseite freigeben.</p>
+                  </div>
+                </label>
+
+                <!-- Kategorien -->
+                <label class="flex items-start gap-3 hover:bg-stone-50 dark:hover:bg-stone-750 p-2.5 rounded-xl transition-colors cursor-pointer">
+                  <input type="checkbox" v-model="migrateOptions.categories" class="mt-0.5 accent-primary-600" />
+                  <Tags class="mt-0.5 w-4 h-4 text-amber-500 shrink-0" />
+                  <div class="flex-1">
+                    <span class="font-medium text-stone-700 dark:text-stone-300 text-sm">Kategorien</span>
+                    <p class="text-stone-400 text-xs">Deine Rezept-Kategorien teilen, damit alle im Haushalt dieselben Kategorien sehen und nutzen können.</p>
+                  </div>
+                </label>
+
+                <!-- Sammlungen -->
+                <label class="flex items-start gap-3 hover:bg-stone-50 dark:hover:bg-stone-750 p-2.5 rounded-xl transition-colors cursor-pointer">
+                  <input type="checkbox" v-model="migrateOptions.collections" class="mt-0.5 accent-primary-600" />
+                  <FolderOpen class="mt-0.5 w-4 h-4 text-violet-500 shrink-0" />
+                  <div class="flex-1">
+                    <span class="font-medium text-stone-700 dark:text-stone-300 text-sm">Sammlungen</span>
+                    <p class="text-stone-400 text-xs">Rezept-Sammlungen (z. B. „Party", „Schnelle Küche") im Haushalt teilen.</p>
+                  </div>
+                </label>
+
+                <!-- Wochenpläne -->
+                <label class="flex items-start gap-3 hover:bg-stone-50 dark:hover:bg-stone-750 p-2.5 rounded-xl transition-colors cursor-pointer">
+                  <input type="checkbox" v-model="migrateOptions.mealPlans" class="mt-0.5 accent-primary-600" />
+                  <CalendarDays class="mt-0.5 w-4 h-4 text-blue-500 shrink-0" />
+                  <div class="flex-1">
+                    <span class="font-medium text-stone-700 dark:text-stone-300 text-sm">Wochenpläne</span>
+                    <p class="text-stone-400 text-xs">Bestehende Wochenpläne teilen, sodass alle sehen können was geplant ist.</p>
+                  </div>
+                </label>
+
+                <!-- Einkaufslisten -->
+                <label class="flex items-start gap-3 hover:bg-stone-50 dark:hover:bg-stone-750 p-2.5 rounded-xl transition-colors cursor-pointer">
+                  <input type="checkbox" v-model="migrateOptions.shoppingLists" class="mt-0.5 accent-primary-600" />
+                  <ShoppingCart class="mt-0.5 w-4 h-4 text-emerald-500 shrink-0" />
+                  <div class="flex-1">
+                    <span class="font-medium text-stone-700 dark:text-stone-300 text-sm">Einkaufslisten</span>
+                    <p class="text-stone-400 text-xs">Aktive Einkaufslisten gemeinsam nutzen – ideal zum Aufteilen der Einkäufe.</p>
+                  </div>
+                </label>
+
+                <!-- Vorratskammer -->
+                <label class="flex items-start gap-3 hover:bg-stone-50 dark:hover:bg-stone-750 p-2.5 rounded-xl transition-colors cursor-pointer">
+                  <input type="checkbox" v-model="migrateOptions.pantry" class="mt-0.5 accent-primary-600" />
+                  <Warehouse class="mt-0.5 w-4 h-4 text-orange-500 shrink-0" />
+                  <div class="flex-1">
+                    <span class="font-medium text-stone-700 dark:text-stone-300 text-sm">Vorratskammer</span>
+                    <p class="text-stone-400 text-xs">Vorräte teilen, damit alle sehen was noch da ist und der Wochenplan darauf aufbauen kann.</p>
+                  </div>
+                </label>
+
+                <!-- Zutaten-Aliase -->
+                <label class="flex items-start gap-3 hover:bg-stone-50 dark:hover:bg-stone-750 p-2.5 rounded-xl transition-colors cursor-pointer">
+                  <input type="checkbox" v-model="migrateOptions.aliases" class="mt-0.5 accent-primary-600" />
+                  <Tags class="mt-0.5 w-4 h-4 text-teal-500 shrink-0" />
+                  <div class="flex-1">
+                    <span class="font-medium text-stone-700 dark:text-stone-300 text-sm">Zutaten-Aliase</span>
+                    <p class="text-stone-400 text-xs">Zuordnungen wie „Paradeiser → Tomate" teilen, damit die Einkaufsliste für alle korrekt zusammengefasst wird.</p>
+                  </div>
+                </label>
+
+                <!-- Rezept-Sperren -->
+                <label class="flex items-start gap-3 hover:bg-stone-50 dark:hover:bg-stone-750 p-2.5 rounded-xl transition-colors cursor-pointer">
+                  <input type="checkbox" v-model="migrateOptions.blocks" class="mt-0.5 accent-primary-600" />
+                  <ShieldOff class="mt-0.5 w-4 h-4 text-red-400 shrink-0" />
+                  <div class="flex-1">
+                    <span class="font-medium text-stone-700 dark:text-stone-300 text-sm">Rezept-Sperren</span>
+                    <p class="text-stone-400 text-xs">Gesperrte Rezepte (z. B. „4 Wochen nicht vorschlagen") für den ganzen Haushalt übernehmen.</p>
+                  </div>
+                </label>
+              </div>
+            </Transition>
+
+            <!-- Migrate Button -->
             <button
               @click="handleMigrate"
-              :disabled="migrating"
+              :disabled="migrating || !Object.values(migrateOptions).some(Boolean)"
               class="flex items-center gap-2 bg-amber-500 hover:bg-amber-600 disabled:opacity-50 px-4 py-2.5 rounded-xl font-medium text-white text-sm transition-colors"
             >
-              <FolderSync class="w-4 h-4" />
-              {{ migrating ? 'Migriere...' : 'Alle Daten migrieren' }}
+              <FolderSync class="w-4 h-4" :class="{ 'animate-spin': migrating }" />
+              {{ migrating ? 'Migriere...' : 'Ausgewählte Daten migrieren' }}
             </button>
           </div>
         </div>
@@ -475,7 +592,7 @@ import { useNotification } from '@/composables/useNotification.js';
 import { apiRaw } from '@/composables/useApi.js';
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue';
 import QrCode from '@/components/ui/QrCode.vue';
-import { Home, Users, UserPlus, UserMinus, Plus, Settings, LogOut, Trash2, Activity, FolderSync, BarChart3 } from 'lucide-vue-next';
+import { Home, Users, UserPlus, UserMinus, Plus, Settings, LogOut, Trash2, Activity, FolderSync, BarChart3, BookOpen, FolderOpen, CalendarDays, ShoppingCart, Warehouse, Tags, ShieldOff, ChevronDown, Info, CheckCircle2 } from 'lucide-vue-next';
 
 const householdStore = useHouseholdStore();
 const authStore = useAuthStore();
@@ -490,6 +607,18 @@ const joining = ref(false);
 const newHouseholdName = ref('');
 const creating = ref(false);
 const migrating = ref(false);
+const showMigrateDetails = ref(false);
+const migrateResult = ref(null);
+const migrateOptions = ref({
+  recipes: true,
+  categories: true,
+  collections: true,
+  mealPlans: true,
+  shoppingLists: true,
+  pantry: true,
+  aliases: true,
+  blocks: true,
+});
 const showInviteModal = ref(false);
 const showSettingsModal = ref(false);
 const inviteCode = ref(null);
@@ -614,15 +743,37 @@ async function handleRename() {
 }
 
 async function handleMigrate() {
+  const selected = Object.entries(migrateOptions.value).filter(([, v]) => v).map(([k]) => k);
+  if (!selected.length) return;
+
+  const labels = {
+    recipes: 'Rezepte', categories: 'Kategorien', collections: 'Sammlungen',
+    mealPlans: 'Wochenpläne', shoppingLists: 'Einkaufslisten', pantry: 'Vorratskammer',
+    aliases: 'Zutaten-Aliase', blocks: 'Rezept-Sperren',
+  };
+  const selectedLabels = selected.map(k => labels[k]).join(', ');
+
   confirmAction.value = {
     title: 'Daten migrieren',
-    message: 'Alle deine persönlichen Rezepte, Wochenpläne, Einkaufslisten und Vorräte werden in den gemeinsamen Haushalt verschoben. Diese Aktion kann nicht rückgängig gemacht werden.',
+    message: `Folgende Bereiche werden für den Haushalt freigegeben: ${selectedLabels}. Alle Mitglieder im Haushalt können diese Daten dann sehen und bearbeiten.`,
     confirmText: 'Migrieren',
     variant: 'warning',
     onConfirm: async () => {
       migrating.value = true;
+      migrateResult.value = null;
       try {
-        const result = await householdStore.migrateData(householdStore.activeHouseholdId);
+        const opts = {
+          include_recipes: migrateOptions.value.recipes,
+          include_categories: migrateOptions.value.categories,
+          include_collections: migrateOptions.value.collections,
+          include_meal_plans: migrateOptions.value.mealPlans,
+          include_shopping_lists: migrateOptions.value.shoppingLists,
+          include_pantry: migrateOptions.value.pantry,
+          include_aliases: migrateOptions.value.aliases,
+          include_blocks: migrateOptions.value.blocks,
+        };
+        const result = await householdStore.migrateData(householdStore.activeHouseholdId, opts);
+        migrateResult.value = result.migrated || {};
         showSuccess(result.message || 'Daten erfolgreich migriert!');
       } catch (err) {
         showError(err.message);
