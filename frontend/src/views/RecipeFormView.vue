@@ -149,12 +149,12 @@
           <table class="mt-1 w-full text-xs">
             <thead>
               <tr class="border-stone-200 dark:border-stone-700 border-b text-stone-500 dark:text-stone-400">
-                <th class="py-1.5 pr-2 font-medium text-left">Zutat</th>
-                <th class="px-2 py-1.5 font-medium text-right">Menge</th>
-                <th class="px-2 py-1.5 font-medium text-right">kcal</th>
-                <th class="px-2 py-1.5 font-medium text-right">E</th>
-                <th class="px-2 py-1.5 font-medium text-right">KH</th>
-                <th class="py-1.5 pl-2 font-medium text-right">F</th>
+                <th class="py-1.5 pr-2 font-medium hover:text-stone-700 dark:hover:text-stone-200 text-left cursor-pointer select-none" @click="toggleFormNutritionSort('name')">Zutat{{ formNutritionSortIcon('name') }}</th>
+                <th class="px-2 py-1.5 font-medium hover:text-stone-700 dark:hover:text-stone-200 text-right cursor-pointer select-none" @click="toggleFormNutritionSort('amount')">Menge{{ formNutritionSortIcon('amount') }}</th>
+                <th class="px-2 py-1.5 font-medium hover:text-stone-700 dark:hover:text-stone-200 text-right cursor-pointer select-none" @click="toggleFormNutritionSort('calories')">kcal{{ formNutritionSortIcon('calories') }}</th>
+                <th class="px-2 py-1.5 font-medium hover:text-stone-700 dark:hover:text-stone-200 text-right cursor-pointer select-none" @click="toggleFormNutritionSort('protein')">E{{ formNutritionSortIcon('protein') }}</th>
+                <th class="px-2 py-1.5 font-medium hover:text-stone-700 dark:hover:text-stone-200 text-right cursor-pointer select-none" @click="toggleFormNutritionSort('carbs')">KH{{ formNutritionSortIcon('carbs') }}</th>
+                <th class="py-1.5 pl-2 font-medium hover:text-stone-700 dark:hover:text-stone-200 text-right cursor-pointer select-none" @click="toggleFormNutritionSort('fat')">F{{ formNutritionSortIcon('fat') }}</th>
               </tr>
             </thead>
             <tbody>
@@ -376,12 +376,37 @@ const flatIngredients = computed(() => {
   return items;
 });
 
+const formNutritionSortKey = ref('name');
+const formNutritionSortAsc = ref(true);
+
+function toggleFormNutritionSort(key) {
+  if (formNutritionSortKey.value === key) {
+    formNutritionSortAsc.value = !formNutritionSortAsc.value;
+  } else {
+    formNutritionSortKey.value = key;
+    formNutritionSortAsc.value = key === 'name';
+  }
+}
+
+function formNutritionSortIcon(key) {
+  if (formNutritionSortKey.value !== key) return '';
+  return formNutritionSortAsc.value ? ' ↑' : ' ↓';
+}
+
 const parsedFormNutritionDetails = computed(() => {
   const raw = form.nutrition_details;
   if (!raw) return [];
   try {
     const arr = typeof raw === 'string' ? JSON.parse(raw) : raw;
-    return Array.isArray(arr) ? arr : [];
+    if (!Array.isArray(arr)) return [];
+    const key = formNutritionSortKey.value;
+    const dir = formNutritionSortAsc.value ? 1 : -1;
+    return [...arr].sort((a, b) => {
+      if (key === 'name') return dir * (a.name || '').localeCompare(b.name || '', 'de');
+      const aNum = key === 'amount' ? parseFloat(a.amount) || 0 : (a[key] || 0);
+      const bNum = key === 'amount' ? parseFloat(b.amount) || 0 : (b[key] || 0);
+      return dir * (aNum - bNum);
+    });
   } catch { return []; }
 });
 

@@ -115,7 +115,7 @@ function sanitizeNutritionDetails(details) {
   };
   const sanitized = details.slice(0, 200).map(d => ({
     name: sanitize(String(d.name || ''), 300) || 'Unbekannt',
-    amount: sanitize(String(d.amount || ''), 100) || '',
+    amount: sanitize(String(d.amount || '').replace(/\s*\(.*\)\s*/g, '').trim(), 100) || '',
     calories: sanitizeVal(d.calories),
     protein: sanitizeVal(d.protein),
     carbs: sanitizeVal(d.carbs),
