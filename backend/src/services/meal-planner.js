@@ -14,7 +14,7 @@
  * Optional: KI generiert eine kurze Begründung zum Plan.
  */
 
-import db from '../config/database.js';
+import db, { householdWhereClause } from '../config/database.js';
 import { getWeekStart, convertToBaseUnit, scaleIngredient, unitsCompatible } from '../utils/helpers.js';
 import { estimateNutrition } from './recipe-parser.js';
 
@@ -29,17 +29,19 @@ const DAY_NAMES = ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'S
  * Komplexe zutat-spezifische Umrechnungen (z.B. 1 Zwiebel = 80g) sind nicht
  * mehr nötig, da natürliche Einheiten durchgängig verwendet werden.
  */
-function getUnassignedPantryNames(userId) {
+function getUnassignedPantryNames(userId, householdId) {
+  const pWhere = householdWhereClause(userId, householdId);
   const pantryItems = db.prepare(
-    'SELECT ingredient_name, amount, unit, is_permanent FROM pantry WHERE user_id = ? AND amount > 0'
-  ).all(userId);
+    `SELECT ingredient_name, amount, unit, is_permanent FROM pantry WHERE (${pWhere.clause}) AND amount > 0`
+  ).all(...pWhere.params);
 
   if (!pantryItems.length) return new Set();
 
   // Alias-Map laden
+  const aWhere = householdWhereClause(userId, householdId);
   const aliasRows = db.prepare(
-    'SELECT alias_name, canonical_name FROM ingredient_aliases WHERE user_id = ?'
-  ).all(userId);
+    `SELECT alias_name, canonical_name FROM ingredient_aliases WHERE (${aWhere.clause})`
+  ).all(...aWhere.params);
   const aliasMap = new Map();
   for (const r of aliasRows) aliasMap.set(r.alias_name.toLowerCase(), r.canonical_name.toLowerCase());
   const resolveAlias = (name) => aliasMap.get(name.toLowerCase()) || name.toLowerCase();
@@ -58,9 +60,10 @@ function getUnassignedPantryNames(userId) {
 
   // Aktuelle Woche: ungekochte Rezepte finden
   const weekStart = getWeekStart(new Date());
+  const mpWhere = householdWhereClause(userId, householdId);
   const plan = db.prepare(
-    'SELECT id FROM meal_plans WHERE user_id = ? AND week_start = ?'
-  ).get(userId, weekStart);
+    `SELECT id FROM meal_plans WHERE (${mpWhere.clause}) AND week_start = ?`
+  ).get(...mpWhere.params, weekStart);
 
   if (plan) {
     const entries = db.prepare(`
@@ -323,10 +326,11 @@ function weightedRandomPick(recipes, context) {
 /**
  * Liefert bewertete Rezeptvorschläge für einen bestimmten Slot.
  */
-export function getSuggestions(userId, { dayIdx = 0, mealType = 'mittag', excludeRecipeIds = [], planId = null, limit = 8, search = null } = {}) {
+export function getSuggestions(userId, { dayIdx = 0, mealType = 'mittag', excludeRecipeIds = [], planId = null, limit = 8, search = null, householdId = null } = {}) {
   const isSearch = search && search.trim().length > 0;
   const searchTerm = isSearch ? `%${search.trim().toLowerCase()}%` : null;
 
+  const rWhere = householdWhereClause(userId, householdId, 'r');
   const recipes = db.prepare(`
     SELECT r.*, GROUP_CONCAT(DISTINCT c.name) as category_names,
       (SELECT COUNT(*) FROM cooking_history ch WHERE ch.recipe_id = r.id) as cook_count,
@@ -335,17 +339,18 @@ export function getSuggestions(userId, { dayIdx = 0, mealType = 'mittag', exclud
     FROM recipes r
     LEFT JOIN recipe_categories rc ON r.id = rc.recipe_id
     LEFT JOIN categories c ON rc.category_id = c.id
-    WHERE r.user_id = ?
+    WHERE (${rWhere.clause})
     GROUP BY r.id
-  `).all(userId);
+  `).all(...rWhere.params);
 
-  const pantrySet = getUnassignedPantryNames(userId);
+  const pantrySet = getUnassignedPantryNames(userId, householdId);
   const excludeSet = new Set(excludeRecipeIds);
 
   // Gesperrte Rezepte laden und ausschließen
+  const rbWhere = householdWhereClause(userId, householdId);
   const blockedIds = db.prepare(
-    "SELECT recipe_id FROM recipe_blocks WHERE user_id = ? AND blocked_until >= date('now')"
-  ).all(userId).map(b => b.recipe_id);
+    `SELECT recipe_id FROM recipe_blocks WHERE (${rbWhere.clause}) AND blocked_until >= date('now')`
+  ).all(...rbWhere.params).map(b => b.recipe_id);
   blockedIds.forEach(id => excludeSet.add(id));
 
   // Zutaten aller Rezepte im aktuellen Plan sammeln (für Einkaufsüberlappung)
@@ -556,14 +561,16 @@ export async function generateWeekPlan(userId, options = {}) {
     calorieTarget = null,         // kcal/Tag pro Person (null = deaktiviert)
     calorieDistribution = null,   // { fruehstueck: 25, mittag: 35, ... } in %
     calorieStrictness = 'moderate', // 'soft' | 'moderate' | 'strict'
+    householdId = null,
   } = options;
 
   // --- 1. Alle Rezepte des Benutzers laden (ggf. gefiltert nach Sammlungen) ---
 
   // Gesperrte Rezepte laden
+  const rbWhere = householdWhereClause(userId, householdId);
   const blockedRecipeIds = db.prepare(
-    "SELECT recipe_id FROM recipe_blocks WHERE user_id = ? AND blocked_until >= date('now')"
-  ).all(userId).map(b => b.recipe_id);
+    `SELECT recipe_id FROM recipe_blocks WHERE (${rbWhere.clause}) AND blocked_until >= date('now')`
+  ).all(...rbWhere.params).map(b => b.recipe_id);
   const allExcludeIds = [...new Set([...excludeRecipeIds, ...blockedRecipeIds])];
 
   let collectionFilter = '';
@@ -582,6 +589,7 @@ export async function generateWeekPlan(userId, options = {}) {
     }
   }
 
+  const rWhere = householdWhereClause(userId, householdId, 'r');
   const recipes = db.prepare(`
     SELECT
       r.*,
@@ -592,12 +600,12 @@ export async function generateWeekPlan(userId, options = {}) {
     FROM recipes r
     LEFT JOIN recipe_categories rc ON r.id = rc.recipe_id
     LEFT JOIN categories c ON rc.category_id = c.id
-    WHERE r.user_id = ?
+    WHERE (${rWhere.clause})
     ${allExcludeIds.length ? `AND r.id NOT IN (${allExcludeIds.join(',')})` : ''}
     ${collectionFilter}
     GROUP BY r.id
     ORDER BY r.last_cooked_at ASC NULLS FIRST, r.times_cooked ASC
-  `).all(userId);
+  `).all(...rWhere.params);
 
   if (recipes.length < 3) {
     throw new Error(
@@ -628,7 +636,7 @@ export async function generateWeekPlan(userId, options = {}) {
   const effectiveDistribution = calorieDistribution || DEFAULT_CALORIE_DISTRIBUTION;
 
   // --- 3. Vorräte laden (nur ungebundene, nach Abzug der aktuellen Woche) ---
-  const pantrySet = getUnassignedPantryNames(userId);
+  const pantrySet = getUnassignedPantryNames(userId, householdId);
 
   // --- 4. Algorithmische Planung ---
   const plan = [];
@@ -764,21 +772,21 @@ export async function generateReasoning(plan) {
 /**
  * Speichert einen generierten Wochenplan in der Datenbank
  */
-export function saveMealPlan(userId, weekStart, planData) {
+export function saveMealPlan(userId, weekStart, planData, householdId) {
   const plan = planData.plan;
   if (!Array.isArray(plan) || plan.length === 0) {
     throw new Error('Kein gültiger Wochenplan zum Speichern vorhanden.');
   }
 
   const insertPlan = db.prepare(
-    'INSERT INTO meal_plans (user_id, week_start, reasoning) VALUES (?, ?, ?)'
+    'INSERT INTO meal_plans (user_id, week_start, reasoning, household_id) VALUES (?, ?, ?, ?)'
   );
   const insertEntry = db.prepare(
     'INSERT INTO meal_plan_entries (meal_plan_id, recipe_id, day_of_week, meal_type, servings) VALUES (?, ?, ?, ?, ?)'
   );
 
   const transaction = db.transaction(() => {
-    const { lastInsertRowid: planId } = insertPlan.run(userId, weekStart, planData.reasoning || null);
+    const { lastInsertRowid: planId } = insertPlan.run(userId, weekStart, planData.reasoning || null, householdId || null);
 
     for (const day of plan) {
       const dayNum = day.day ?? plan.indexOf(day);
@@ -798,10 +806,11 @@ export function saveMealPlan(userId, weekStart, planData) {
 /**
  * Lädt einen Wochenplan mit allen Details
  */
-export function getMealPlan(userId, weekStart) {
+export function getMealPlan(userId, weekStart, householdId) {
+  const hw = householdWhereClause(userId, householdId);
   const plan = db.prepare(
-    'SELECT id, user_id, week_start, created_at, reasoning, is_locked FROM meal_plans WHERE user_id = ? AND week_start = ?'
-  ).get(userId, weekStart);
+    `SELECT id, user_id, week_start, created_at, reasoning, is_locked FROM meal_plans WHERE (${hw.clause}) AND week_start = ?`
+  ).get(...hw.params, weekStart);
 
   if (!plan) return null;
 

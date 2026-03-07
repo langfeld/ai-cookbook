@@ -136,6 +136,7 @@
 import { ref, computed, onMounted, watch } from 'vue';
 import { RouterView, useRouter } from 'vue-router';
 import { useAuthStore } from '@/stores/auth.js';
+import { useHouseholdStore } from '@/stores/household.js';
 import { useTheme } from '@/composables/useTheme.js';
 import { useNetworkStatus } from '@/composables/useNetworkStatus.js';
 import { offlineQueue } from '@/services/offlineQueue.js';
@@ -147,6 +148,7 @@ import PwaInstallBanner from '@/components/layout/PwaInstallBanner.vue';
 import PwaUpdateBanner from '@/components/layout/PwaUpdateBanner.vue';
 
 const authStore = useAuthStore();
+const householdStore = useHouseholdStore();
 const { isDark } = useTheme();
 const { isOnline, justReconnected } = useNetworkStatus();
 const { pendingCount, pendingActions } = offlineQueue;
@@ -173,8 +175,21 @@ function toggleSidebar() {
   }
 }
 
-// Auth-Status beim App-Start prüfen
-onMounted(() => {
-  authStore.checkAuth();
+// Auth-Status beim App-Start prüfen + Household laden
+onMounted(async () => {
+  await authStore.checkAuth();
+  if (authStore.isLoggedIn) {
+    await householdStore.fetchHouseholds();
+    householdStore.connectSSE();
+  }
+});
+
+// Bei Logout Household-Store zurücksetzen
+watch(() => authStore.isLoggedIn, (loggedIn) => {
+  if (!loggedIn) {
+    householdStore.$reset();
+  } else {
+    householdStore.fetchHouseholds().then(() => householdStore.connectSSE());
+  }
 });
 </script>

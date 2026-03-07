@@ -121,6 +121,7 @@ import {
   SmilePlus,
   DatabaseBackup,
   FolderDown,
+  Home,
 } from 'lucide-vue-next';
 import { usePantryStore } from '@/stores/pantry.js';
 import { useShoppingStore } from '@/stores/shopping.js';
@@ -162,6 +163,7 @@ const navItems = computed(() => [
     badge: pantryStore.expiringCount || null,
   },
   { to: '/my-data', label: 'Meine Daten', icon: FolderDown },
+  { to: '/household', label: 'Haushalt', icon: Home },
 ]);
 
 // Admin-Navigations-Einträge

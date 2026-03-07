@@ -15,6 +15,7 @@
  * Foto-Import, Favoriten und Kochhistorie.
  */
 
+import crypto from 'crypto';
 import db from '../config/database.js';
 import { parseRecipeFromImage, parseRecipeFromText, parseRecipeFromUrl, suggestCategories, reviseRecipe, estimateNutrition } from '../services/recipe-parser.js';
 // autoGenerateConversions entfernt – natürliche Einheiten + KI-Aggregation statt manueller Umrechnungstabelle
@@ -24,6 +25,8 @@ import { writeFileSync, readFileSync, existsSync } from 'fs';
 import { resolve, join } from 'path';
 import sharp from 'sharp';
 import { generateId, safePath, getWeekStart, scaleIngredient, convertToBaseUnit, unitsCompatible, comparePantryAmount, sanitize, isPrivateUrl, validateDate } from '../utils/helpers.js';
+import { householdWhereClause } from '../config/database.js';
+import { broadcastToHousehold } from './household-events.js';
 
 const ALLOWED_MIMES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/heic', 'image/heif']);
 const VALID_DIFFICULTIES = new Set(['easy', 'medium', 'hard', 'einfach', 'mittel', 'schwer']);
@@ -181,8 +184,8 @@ function deductPantryForRecipe(userId, recipeId, originalServings, targetServing
 }
 
 export default async function recipesRoutes(fastify) {
-  // Alle Rezept-Routen erfordern Authentifizierung
-  fastify.addHook('onRequest', fastify.authenticate);
+  // Alle Rezept-Routen erfordern Authentifizierung + Haushalt-Auflösung
+  fastify.addHook('onRequest', fastify.resolveHousehold);
 
   /**
    * POST /api/recipes/estimate-nutrition
@@ -242,17 +245,22 @@ export default async function recipesRoutes(fastify) {
   }, async (request) => {
     const { search, category, favorite, difficulty, collectionId, sort = 'created_at', order = 'desc', limit, offset } = request.query;
     const userId = request.user.id;
+    const householdId = request.householdId;
+    const { clause: hhClause, params: hhParams } = householdWhereClause(userId, householdId, 'r');
 
     let query = `
       SELECT DISTINCT r.*,
         GROUP_CONCAT(DISTINCT c.name) as category_names,
-        GROUP_CONCAT(DISTINCT c.icon) as category_icons
+        GROUP_CONCAT(DISTINCT c.icon) as category_icons,
+        u_creator.display_name as creator_display_name,
+        u_creator.username as creator_username
       FROM recipes r
       LEFT JOIN recipe_categories rc ON r.id = rc.recipe_id
       LEFT JOIN categories c ON rc.category_id = c.id
-      WHERE r.user_id = ?
+      LEFT JOIN users u_creator ON r.created_by_user_id = u_creator.id
+      WHERE (${hhClause})
     `;
-    const params = [userId];
+    const params = [...hhParams];
 
     // Sammlungs-Filter
     if (collectionId) {
@@ -304,9 +312,10 @@ export default async function recipesRoutes(fastify) {
     const recipes = db.prepare(query).all(...params);
 
     // Gesamtanzahl für Pagination
+    const { clause: countClause, params: countParams } = householdWhereClause(userId, householdId, 'r');
     const total = db.prepare(
-      'SELECT COUNT(*) as count FROM recipes WHERE user_id = ?'
-    ).get(userId).count;
+      `SELECT COUNT(*) as count FROM recipes r WHERE (${countClause})`
+    ).get(...countParams).count;
 
     return { recipes, total };
   });
@@ -322,9 +331,10 @@ export default async function recipesRoutes(fastify) {
       security: [{ bearerAuth: [] }],
     },
   }, async (request, reply) => {
+    const { clause: hhClause, params: hhParams } = householdWhereClause(request.user.id, request.householdId);
     const recipe = db.prepare(
-      'SELECT * FROM recipes WHERE id = ? AND user_id = ?'
-    ).get(request.params.id, request.user.id);
+      `SELECT * FROM recipes WHERE id = ? AND (${hhClause})`
+    ).get(request.params.id, ...hhParams);
 
     if (!recipe) {
       return reply.status(404).send({ error: 'Rezept nicht gefunden' });
@@ -373,18 +383,20 @@ export default async function recipesRoutes(fastify) {
     },
   }, async (request, reply) => {
     const userId = request.user.id;
-    const { title, description, servings, prep_time, cook_time, difficulty, ingredients, steps, category_ids, notes, calories, protein, carbs, fat, nutrition_note, nutrition_details } = request.body;
+    const { title, description, servings, prep_time, cook_time, difficulty, ingredients, steps, category_ids, notes, calories, protein, carbs, fat, nutrition_note, nutrition_details, is_household } = request.body;
 
     const totalTime = (prep_time || 0) + (cook_time || 0);
+    const householdId = is_household !== false ? request.householdId : null; // Standard: Haushalt (wenn vorhanden)
 
     const transaction = db.transaction(() => {
       // Rezept einfügen
       const recipeResult = db.prepare(`
-        INSERT INTO recipes (user_id, title, description, servings, prep_time, cook_time, total_time, difficulty, notes, calories, protein, carbs, fat, nutrition_note, nutrition_details)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO recipes (user_id, title, description, servings, prep_time, cook_time, total_time, difficulty, notes, calories, protein, carbs, fat, nutrition_note, nutrition_details, household_id, created_by_user_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(userId, title, description, servings || 4, prep_time || 0, cook_time || 0, totalTime, difficulty || 'mittel', notes,
         parseFloat(calories) || null, parseFloat(protein) || null, parseFloat(carbs) || null, parseFloat(fat) || null, nutrition_note || null,
-        nutrition_details ? (typeof nutrition_details === 'string' ? nutrition_details : JSON.stringify(nutrition_details)) : null);
+        nutrition_details ? (typeof nutrition_details === 'string' ? nutrition_details : JSON.stringify(nutrition_details)) : null,
+        householdId, userId);
 
       const recipeId = recipeResult.lastInsertRowid;
 
@@ -424,6 +436,7 @@ export default async function recipesRoutes(fastify) {
     });
 
     const recipeId = transaction();
+    broadcastToHousehold(householdId, 'recipe:created', { id: recipeId, title }, userId);
     return reply.status(201).send({ id: recipeId, message: 'Rezept erstellt!' });
   });
 
@@ -485,10 +498,11 @@ export default async function recipesRoutes(fastify) {
       return reply.status(400).send({ error: 'Keine Bilder hochgeladen' });
     }
 
-    // Kategorien des Users laden
+    // Kategorien des Users laden (eigene + Haushalt)
+    const { clause: catClause, params: catParams } = householdWhereClause(userId, request.householdId);
     const categories = db.prepare(
-      'SELECT name FROM categories WHERE user_id = ?'
-    ).all(userId);
+      `SELECT name FROM categories WHERE ${catClause}`
+    ).all(...catParams);
     const categoryNames = categories.map(c => c.name);
 
     // KI-Rezepterkennung starten (ein oder mehrere Bilder)
@@ -498,8 +512,8 @@ export default async function recipesRoutes(fastify) {
     // Rezept in Datenbank speichern
     const transaction = db.transaction(() => {
       const recipeResult = db.prepare(`
-        INSERT INTO recipes (user_id, title, description, servings, prep_time, cook_time, total_time, difficulty, image_url, ai_generated, calories, protein, carbs, fat, nutrition_note, nutrition_details)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?)
+        INSERT INTO recipes (user_id, title, description, servings, prep_time, cook_time, total_time, difficulty, image_url, ai_generated, calories, protein, carbs, fat, nutrition_note, nutrition_details, household_id, created_by_user_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         userId,
         parsedRecipe.title,
@@ -515,7 +529,9 @@ export default async function recipesRoutes(fastify) {
         parsedRecipe.nutrition.carbs,
         parsedRecipe.nutrition.fat,
         parsedRecipe.nutrition_note,
-        parsedRecipe.nutrition_details
+        parsedRecipe.nutrition_details,
+        request.householdId,
+        userId
       );
 
       const recipeId = recipeResult.lastInsertRowid;
@@ -585,15 +601,16 @@ export default async function recipesRoutes(fastify) {
     const userId = request.user.id;
     const { text } = request.body;
 
-    const categories = db.prepare('SELECT name FROM categories WHERE user_id = ?').all(userId);
+    const { clause: catClause, params: catParams } = householdWhereClause(userId, request.householdId);
+    const categories = db.prepare(`SELECT name FROM categories WHERE ${catClause}`).all(...catParams);
     const rawParsed = await parseRecipeFromText(text, categories.map(c => c.name));
     const parsedRecipe = sanitizeAiRecipe(rawParsed);
 
     // Gleiche Speicher-Logik wie bei Foto-Import (ohne Bild)
     const transaction = db.transaction(() => {
       const recipeResult = db.prepare(`
-        INSERT INTO recipes (user_id, title, description, servings, prep_time, cook_time, total_time, difficulty, ai_generated, calories, protein, carbs, fat, nutrition_note, nutrition_details)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?)
+        INSERT INTO recipes (user_id, title, description, servings, prep_time, cook_time, total_time, difficulty, ai_generated, calories, protein, carbs, fat, nutrition_note, nutrition_details, household_id, created_by_user_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         userId,
         parsedRecipe.title,
@@ -608,7 +625,9 @@ export default async function recipesRoutes(fastify) {
         parsedRecipe.nutrition.carbs,
         parsedRecipe.nutrition.fat,
         parsedRecipe.nutrition_note,
-        parsedRecipe.nutrition_details
+        parsedRecipe.nutrition_details,
+        request.householdId,
+        userId
       );
 
       const recipeId = recipeResult.lastInsertRowid;
@@ -673,7 +692,8 @@ export default async function recipesRoutes(fastify) {
       return reply.status(400).send({ error: 'URLs zu internen/privaten Adressen sind nicht erlaubt.' });
     }
 
-    const categories = db.prepare('SELECT name FROM categories WHERE user_id = ?').all(userId);
+    const { clause: catClause, params: catParams } = householdWhereClause(userId, request.householdId);
+    const categories = db.prepare(`SELECT name FROM categories WHERE ${catClause}`).all(...catParams);
     const { recipe: rawParsed, imageUrl: sourceImageUrl } = await parseRecipeFromUrl(url, categories.map(c => c.name));
     const parsedRecipe = sanitizeAiRecipe(rawParsed);
 
@@ -714,8 +734,8 @@ export default async function recipesRoutes(fastify) {
     // Gleiche Speicher-Logik wie bei Text-Import
     const transaction = db.transaction(() => {
       const recipeResult = db.prepare(`
-        INSERT INTO recipes (user_id, title, description, servings, prep_time, cook_time, total_time, difficulty, image_url, source_url, ai_generated, notes, calories, protein, carbs, fat, nutrition_note, nutrition_details)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO recipes (user_id, title, description, servings, prep_time, cook_time, total_time, difficulty, image_url, source_url, ai_generated, notes, calories, protein, carbs, fat, nutrition_note, nutrition_details, household_id, created_by_user_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         userId,
         parsedRecipe.title,
@@ -733,7 +753,9 @@ export default async function recipesRoutes(fastify) {
         parsedRecipe.nutrition.carbs,
         parsedRecipe.nutrition.fat,
         parsedRecipe.nutrition_note,
-        parsedRecipe.nutrition_details
+        parsedRecipe.nutrition_details,
+        request.householdId,
+        userId
       );
 
       const recipeId = recipeResult.lastInsertRowid;
@@ -790,8 +812,9 @@ export default async function recipesRoutes(fastify) {
     const userId = request.user.id;
     const recipeId = request.params.id;
 
-    // Ownership-Check
-    const existing = db.prepare('SELECT id FROM recipes WHERE id = ? AND user_id = ?').get(recipeId, userId);
+    // Ownership-Check (eigene + Haushalt-Rezepte)
+    const { clause: hhClause, params: hhParams } = householdWhereClause(userId, request.householdId);
+    const existing = db.prepare(`SELECT id FROM recipes WHERE id = ? AND (${hhClause})`).get(recipeId, ...hhParams);
     if (!existing) {
       return reply.status(404).send({ error: 'Rezept nicht gefunden' });
     }
@@ -851,7 +874,8 @@ export default async function recipesRoutes(fastify) {
     const { instructions, mode } = request.body;
 
     // Bestehendes Rezept vollständig laden (Ownership-Check)
-    const recipe = db.prepare('SELECT * FROM recipes WHERE id = ? AND user_id = ?').get(recipeId, userId);
+    const { clause: hhClause, params: hhParams } = householdWhereClause(userId, request.householdId);
+    const recipe = db.prepare(`SELECT * FROM recipes WHERE id = ? AND (${hhClause})`).get(recipeId, ...hhParams);
     if (!recipe) {
       return reply.status(404).send({ error: 'Rezept nicht gefunden' });
     }
@@ -984,8 +1008,9 @@ export default async function recipesRoutes(fastify) {
     const recipeId = request.params.id;
     const { title, description, servings, prep_time, cook_time, difficulty, ingredients, steps, category_ids, notes, calories, protein, carbs, fat, nutrition_note, nutrition_details } = request.body;
 
-    // Prüfen ob Rezept dem User gehört
-    const existing = db.prepare('SELECT id FROM recipes WHERE id = ? AND user_id = ?').get(recipeId, userId);
+    // Prüfen ob Rezept dem User gehört (eigene + Haushalt-Rezepte)
+    const { clause: hhClause, params: hhParams } = householdWhereClause(userId, request.householdId);
+    const existing = db.prepare(`SELECT id FROM recipes WHERE id = ? AND (${hhClause})`).get(recipeId, ...hhParams);
     if (!existing) {
       return reply.status(404).send({ error: 'Rezept nicht gefunden' });
     }
@@ -1034,6 +1059,7 @@ export default async function recipesRoutes(fastify) {
     });
 
     transaction();
+    broadcastToHousehold(request.householdId, 'recipe:updated', { id: recipeId }, userId);
     return { message: 'Rezept aktualisiert!' };
   });
 
@@ -1051,8 +1077,9 @@ export default async function recipesRoutes(fastify) {
     const userId = request.user.id;
     const recipeId = request.params.id;
 
-    // Prüfen ob Rezept dem User gehört
-    const existing = db.prepare('SELECT id, image_url FROM recipes WHERE id = ? AND user_id = ?').get(recipeId, userId);
+    // Prüfen ob Rezept dem User gehört (eigene + Haushalt-Rezepte)
+    const { clause: hhClause, params: hhParams } = householdWhereClause(userId, request.householdId);
+    const existing = db.prepare(`SELECT id, image_url FROM recipes WHERE id = ? AND (${hhClause})`).get(recipeId, ...hhParams);
     if (!existing) {
       return reply.status(404).send({ error: 'Rezept nicht gefunden' });
     }
@@ -1119,8 +1146,9 @@ export default async function recipesRoutes(fastify) {
     const userId = request.user.id;
     const recipeId = request.params.id;
 
-    // Rezept holen (für Bild-Pfad)
-    const recipe = db.prepare('SELECT id, image_url FROM recipes WHERE id = ? AND user_id = ?').get(recipeId, userId);
+    // Rezept holen (für Bild-Pfad; eigene + Haushalt-Rezepte)
+    const { clause: hhClause, params: hhParams } = householdWhereClause(userId, request.householdId);
+    const recipe = db.prepare(`SELECT id, image_url FROM recipes WHERE id = ? AND (${hhClause})`).get(recipeId, ...hhParams);
     if (!recipe) {
       return reply.status(404).send({ error: 'Rezept nicht gefunden' });
     }
@@ -1145,6 +1173,7 @@ export default async function recipesRoutes(fastify) {
     // Rezept löschen (CASCADE löscht Zutaten, Schritte, Kategorien, Wochenplan-Einträge)
     db.prepare('DELETE FROM recipes WHERE id = ?').run(recipeId);
 
+    broadcastToHousehold(request.householdId, 'recipe:deleted', { id: recipeId }, userId);
     return { message: 'Rezept gelöscht' };
   });
 
@@ -1216,9 +1245,10 @@ export default async function recipesRoutes(fastify) {
   fastify.post('/:id/favorite', {
     schema: { description: 'Favorit umschalten', tags: ['Rezepte'], security: [{ bearerAuth: [] }] },
   }, async (request) => {
+    const { clause: hhClause, params: hhParams } = householdWhereClause(request.user.id, request.householdId);
     db.prepare(
-      'UPDATE recipes SET is_favorite = NOT is_favorite WHERE id = ? AND user_id = ?'
-    ).run(request.params.id, request.user.id);
+      `UPDATE recipes SET is_favorite = NOT is_favorite WHERE id = ? AND (${hhClause})`
+    ).run(request.params.id, ...hhParams);
 
     const recipe = db.prepare('SELECT is_favorite FROM recipes WHERE id = ?').get(request.params.id);
     return { is_favorite: !!recipe.is_favorite };
@@ -1352,8 +1382,9 @@ export default async function recipesRoutes(fastify) {
     const userId = request.user.id;
     const includeImages = request.query.include_images === true || request.query.include_images === 'true';
 
-    // Alle Rezepte des Users laden
-    const recipes = db.prepare('SELECT * FROM recipes WHERE user_id = ?').all(userId);
+    // Alle Rezepte des Users laden (eigene + Haushalt)
+    const { clause: hhClause, params: hhParams } = householdWhereClause(userId, request.householdId);
+    const recipes = db.prepare(`SELECT * FROM recipes WHERE ${hhClause}`).all(...hhParams);
 
     const exportData = {
       version: '1.0',
@@ -1480,8 +1511,9 @@ export default async function recipesRoutes(fastify) {
       }
     }
 
-    // Kategorien des Users laden
-    const userCategories = db.prepare('SELECT id, name FROM categories WHERE user_id = ?').all(userId);
+    // Kategorien des Users laden (eigene + Haushalt)
+    const { clause: catClause, params: catParams } = householdWhereClause(userId, request.householdId);
+    const userCategories = db.prepare(`SELECT id, name FROM categories WHERE ${catClause}`).all(...catParams);
     const catMap = new Map(userCategories.map(c => [c.name, c.id]));
 
     let imported = 0;
@@ -1498,10 +1530,11 @@ export default async function recipesRoutes(fastify) {
             continue;
           }
 
-          // Duplikat-Check: gleiches Rezept (Titel) beim selben User?
+          // Duplikat-Check: gleiches Rezept (Titel) beim selben User oder Haushalt?
+          const { clause: dupClause, params: dupParams } = householdWhereClause(userId, request.householdId);
           const existing = db.prepare(
-            'SELECT id FROM recipes WHERE user_id = ? AND title = ? COLLATE NOCASE'
-          ).get(userId, recipe.title.trim());
+            `SELECT id FROM recipes WHERE (${dupClause}) AND title = ? COLLATE NOCASE`
+          ).get(...dupParams, recipe.title.trim());
           if (existing) {
             skipped++;
             errors.push(`Übersprungen (Duplikat): „${recipe.title}"`);
@@ -1511,8 +1544,8 @@ export default async function recipesRoutes(fastify) {
           // Rezept einfügen
           const title = sanitize(recipe.title, 300);
           const recipeResult = db.prepare(`
-            INSERT INTO recipes (user_id, title, description, servings, prep_time, cook_time, total_time, difficulty, source_url, is_favorite, notes, ai_generated)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO recipes (user_id, title, description, servings, prep_time, cook_time, total_time, difficulty, source_url, is_favorite, notes, ai_generated, household_id, created_by_user_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           `).run(
             userId,
             title,
@@ -1525,7 +1558,9 @@ export default async function recipesRoutes(fastify) {
             sanitize(recipe.source_url, 2000) || null,
             recipe.is_favorite ? 1 : 0,
             sanitize(recipe.notes, 2000) || null,
-            recipe.ai_generated ? 1 : 0
+            recipe.ai_generated ? 1 : 0,
+            request.householdId,
+            userId
           );
 
           const recipeId = recipeResult.lastInsertRowid;
@@ -1620,6 +1655,289 @@ export default async function recipesRoutes(fastify) {
       imported,
       skipped,
       errors: errors.length ? errors : undefined,
+    };
+  });
+
+  // ============================================
+  // Rezept-Link-Sharing (Einzelteilen per Link)
+  // ============================================
+
+  /**
+   * POST /api/recipes/:id/share
+   * Erstellt einen Share-Link für ein Rezept.
+   * Nur der Besitzer oder Haushaltsmitglieder können teilen.
+   */
+  fastify.post('/:id/share', {
+    schema: {
+      description: 'Share-Link für ein Rezept erstellen',
+      tags: ['Rezepte'],
+      security: [{ bearerAuth: [] }],
+      body: {
+        type: 'object',
+        properties: {
+          expires_in_days: { type: 'integer', minimum: 1, maximum: 365 },
+        },
+      },
+    },
+  }, async (request, reply) => {
+    const recipeId = Number(request.params.id);
+    const userId = request.user.id;
+    const householdId = request.householdId;
+    const { expires_in_days } = request.body || {};
+
+    // Prüfe ob Rezept existiert und Zugang erlaubt ist
+    const hhWhere = householdWhereClause(userId, householdId, 'r');
+    const recipe = db.prepare(`
+      SELECT r.id, r.title FROM recipes r WHERE r.id = ? AND (${hhWhere.clause})
+    `).get(recipeId, ...hhWhere.params);
+
+    if (!recipe) {
+      return reply.code(404).send({ error: 'Rezept nicht gefunden' });
+    }
+
+    // Token generieren (URL-safe, 32 Bytes = 43 Zeichen Base64url)
+    const shareToken = crypto.randomBytes(32).toString('base64url');
+
+    const expiresAt = expires_in_days
+      ? new Date(Date.now() + expires_in_days * 24 * 60 * 60 * 1000).toISOString()
+      : null;
+
+    db.prepare(`
+      INSERT INTO recipe_shares (recipe_id, share_token, created_by, expires_at)
+      VALUES (?, ?, ?, ?)
+    `).run(recipeId, shareToken, userId, expiresAt);
+
+    return {
+      share_token: shareToken,
+      share_url: `/shared/${shareToken}`,
+      expires_at: expiresAt,
+      recipe_title: recipe.title,
+    };
+  });
+
+  /**
+   * GET /api/recipes/:id/shares
+   * Listet alle aktiven Share-Links für ein Rezept.
+   */
+  fastify.get('/:id/shares', {
+    schema: {
+      description: 'Share-Links eines Rezepts auflisten',
+      tags: ['Rezepte'],
+      security: [{ bearerAuth: [] }],
+    },
+  }, async (request, reply) => {
+    const recipeId = Number(request.params.id);
+    const userId = request.user.id;
+    const householdId = request.householdId;
+
+    // Zugangsprüfung
+    const hhWhere = householdWhereClause(userId, householdId, 'r');
+    const recipe = db.prepare(`
+      SELECT r.id FROM recipes r WHERE r.id = ? AND (${hhWhere.clause})
+    `).get(recipeId, ...hhWhere.params);
+
+    if (!recipe) {
+      return reply.code(404).send({ error: 'Rezept nicht gefunden' });
+    }
+
+    const shares = db.prepare(`
+      SELECT rs.id, rs.share_token, rs.expires_at, rs.created_at, u.username as created_by_name
+      FROM recipe_shares rs
+      JOIN users u ON u.id = rs.created_by
+      WHERE rs.recipe_id = ?
+      ORDER BY rs.created_at DESC
+    `).all(recipeId);
+
+    // Abgelaufene markieren
+    const now = new Date().toISOString();
+    return shares.map(s => ({
+      ...s,
+      is_expired: s.expires_at ? s.expires_at < now : false,
+    }));
+  });
+
+  /**
+   * DELETE /api/recipes/share/:token
+   * Löscht einen Share-Link.
+   */
+  fastify.delete('/share/:token', {
+    schema: {
+      description: 'Share-Link löschen',
+      tags: ['Rezepte'],
+      security: [{ bearerAuth: [] }],
+    },
+  }, async (request, reply) => {
+    const token = request.params.token;
+    const userId = request.user.id;
+    const householdId = request.householdId;
+
+    // Finde den Share und prüfe Berechtigung
+    const share = db.prepare(`
+      SELECT rs.id, rs.recipe_id, rs.created_by
+      FROM recipe_shares rs
+      WHERE rs.share_token = ?
+    `).get(token);
+
+    if (!share) {
+      return reply.code(404).send({ error: 'Share-Link nicht gefunden' });
+    }
+
+    // Nur der Ersteller oder ein Haushaltsmitglied mit Zugriff kann löschen
+    const hhWhere = householdWhereClause(userId, householdId, 'r');
+    const hasAccess = db.prepare(`
+      SELECT 1 FROM recipes r WHERE r.id = ? AND (${hhWhere.clause})
+    `).get(share.recipe_id, ...hhWhere.params);
+
+    if (!hasAccess) {
+      return reply.code(403).send({ error: 'Nicht berechtigt' });
+    }
+
+    db.prepare('DELETE FROM recipe_shares WHERE id = ?').run(share.id);
+    return { message: 'Share-Link gelöscht' };
+  });
+
+  /**
+   * POST /api/recipes/shared/:token/import
+   * Importiert ein geteiltes Rezept in die eigene Sammlung.
+   * Erfordert Auth (der Importierende muss eingeloggt sein).
+   */
+  fastify.post('/shared/:token/import', {
+    schema: {
+      description: 'Geteiltes Rezept in eigene Sammlung importieren',
+      tags: ['Rezepte'],
+      security: [{ bearerAuth: [] }],
+    },
+  }, async (request, reply) => {
+    const token = request.params.token;
+    const userId = request.user.id;
+    const householdId = request.householdId;
+
+    const share = db.prepare(`
+      SELECT rs.recipe_id, rs.expires_at
+      FROM recipe_shares rs
+      WHERE rs.share_token = ?
+    `).get(token);
+
+    if (!share) {
+      return reply.code(404).send({ error: 'Share-Link nicht gefunden oder ungültig' });
+    }
+
+    if (share.expires_at && new Date(share.expires_at) < new Date()) {
+      return reply.code(410).send({ error: 'Share-Link ist abgelaufen' });
+    }
+
+    // Original-Rezept laden
+    const original = db.prepare('SELECT * FROM recipes WHERE id = ?').get(share.recipe_id);
+    if (!original) {
+      return reply.code(404).send({ error: 'Rezept nicht mehr verfügbar' });
+    }
+
+    // Duplikat-Check: Hat der User/Haushalt das gleiche Rezept schon?
+    const hhWhere = householdWhereClause(userId, householdId, 'r');
+    const existing = db.prepare(`
+      SELECT r.id FROM recipes r
+      WHERE r.title = ? AND (${hhWhere.clause})
+    `).get(original.title, ...hhWhere.params);
+
+    if (existing) {
+      return reply.code(409).send({
+        error: 'Rezept mit diesem Titel existiert bereits',
+        existing_id: existing.id,
+      });
+    }
+
+    const newId = generateId();
+    let newImageUrl = null;
+
+    // Bild kopieren falls vorhanden
+    if (original.image_url) {
+      try {
+        const originalPath = resolve(config.upload.path, original.image_url);
+        if (existsSync(originalPath)) {
+          const ext = original.image_url.split('.').pop();
+          newImageUrl = `recipes/${newId}.${ext}`;
+          const newPath = resolve(config.upload.path, newImageUrl);
+          const imgData = readFileSync(originalPath);
+          writeFileSync(newPath, imgData);
+        }
+      } catch {
+        // Bild-Kopie fehlgeschlagen, nicht kritisch
+      }
+    }
+
+    const transaction = db.transaction(() => {
+      // Neues Rezept anlegen
+      db.prepare(`
+        INSERT INTO recipes (
+          id, user_id, household_id, created_by_user_id,
+          title, description, servings, prep_time, cook_time,
+          difficulty, image_url, source_url, tags,
+          calories, protein, carbs, fat,
+          nutrition_details, nutrition_note
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        newId, userId, householdId, userId,
+        original.title, original.description, original.servings,
+        original.prep_time, original.cook_time, original.difficulty,
+        newImageUrl, original.source_url, original.tags,
+        original.calories, original.protein, original.carbs, original.fat,
+        original.nutrition_details, original.nutrition_note
+      );
+
+      // Zutaten kopieren
+      const ingredients = db.prepare(
+        'SELECT * FROM ingredients WHERE recipe_id = ? ORDER BY sort_order'
+      ).all(share.recipe_id);
+      const insertIng = db.prepare(`
+        INSERT INTO ingredients (recipe_id, name, amount, unit, group_name, sort_order, is_optional, notes)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+      for (const ing of ingredients) {
+        insertIng.run(newId, ing.name, ing.amount, ing.unit, ing.group_name, ing.sort_order, ing.is_optional, ing.notes);
+      }
+
+      // Kochschritte kopieren
+      const steps = db.prepare(
+        'SELECT * FROM cooking_steps WHERE recipe_id = ? ORDER BY step_number'
+      ).all(share.recipe_id);
+      const insertStep = db.prepare(`
+        INSERT INTO cooking_steps (recipe_id, step_number, title, instruction, duration_minutes)
+        VALUES (?, ?, ?, ?, ?)
+      `);
+      for (const step of steps) {
+        insertStep.run(newId, step.step_number, step.title, step.instruction, step.duration_minutes);
+      }
+
+      // Kategorien: Nur existierende Kategorien des Empfängers matchen (nach Name)
+      const sourceCategories = db.prepare(`
+        SELECT c.name FROM categories c
+        JOIN recipe_categories rc ON rc.category_id = c.id
+        WHERE rc.recipe_id = ?
+      `).all(share.recipe_id);
+
+      if (sourceCategories.length) {
+        const destHhWhere = householdWhereClause(userId, householdId, 'c');
+        const findCat = db.prepare(`
+          SELECT c.id FROM categories c WHERE c.name = ? AND (${destHhWhere.clause})
+        `);
+        const insertCat = db.prepare(
+          'INSERT OR IGNORE INTO recipe_categories (recipe_id, category_id) VALUES (?, ?)'
+        );
+        for (const sc of sourceCategories) {
+          const destCat = findCat.get(sc.name, ...destHhWhere.params);
+          if (destCat) {
+            insertCat.run(newId, destCat.id);
+          }
+        }
+      }
+    });
+
+    transaction();
+
+    return {
+      message: 'Rezept erfolgreich importiert',
+      recipe_id: newId,
+      title: original.title,
     };
   });
 }

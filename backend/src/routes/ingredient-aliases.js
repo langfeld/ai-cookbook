@@ -13,10 +13,10 @@
  * Generierung komplett herausgefiltert.
  */
 
-import db from '../config/database.js';
+import db, { householdWhereClause } from '../config/database.js';
 
 export default async function ingredientAliasRoutes(fastify) {
-  fastify.addHook('onRequest', fastify.authenticate);
+  fastify.addHook('onRequest', fastify.resolveHousehold);
 
   // ─────────────────────────────────────────────
   // GET / – Alle Aliase des Benutzers
@@ -28,9 +28,10 @@ export default async function ingredientAliasRoutes(fastify) {
       security: [{ bearerAuth: [] }],
     },
   }, async (request) => {
+    const { clause, params } = householdWhereClause(request.user.id, request.householdId);
     const aliases = db.prepare(
-      'SELECT * FROM ingredient_aliases WHERE user_id = ? ORDER BY canonical_name, alias_name'
-    ).all(request.user.id);
+      `SELECT * FROM ingredient_aliases WHERE (${clause}) ORDER BY canonical_name, alias_name`
+    ).all(...params);
 
     // Gruppiert nach canonical_name für bessere Darstellung
     const grouped = {};
@@ -72,22 +73,23 @@ export default async function ingredientAliasRoutes(fastify) {
 
     // Prüfen ob der Alias-Name bereits als canonical_name eines anderen Alias existiert
     // Falls ja, cascade: alle Aliase dieses canonical_name werden auf den neuen canonical_name umgebogen
+    const { clause, params } = householdWhereClause(userId, request.householdId);
     const existingAsCanonical = db.prepare(
-      'SELECT * FROM ingredient_aliases WHERE user_id = ? AND canonical_name = ? COLLATE NOCASE'
-    ).all(userId, alias_name.trim());
+      `SELECT * FROM ingredient_aliases WHERE (${clause}) AND canonical_name = ? COLLATE NOCASE`
+    ).all(...params, alias_name.trim());
 
     const transaction = db.transaction(() => {
       // Cascade: Wenn alias_name selbst ein canonical_name war, alle seine Aliase umhängen
       if (existingAsCanonical.length > 0) {
         db.prepare(
-          'UPDATE ingredient_aliases SET canonical_name = ? WHERE user_id = ? AND canonical_name = ? COLLATE NOCASE'
-        ).run(canonical_name.trim(), userId, alias_name.trim());
+          `UPDATE ingredient_aliases SET canonical_name = ? WHERE (${clause}) AND canonical_name = ? COLLATE NOCASE`
+        ).run(canonical_name.trim(), ...params, alias_name.trim());
       }
 
       // Neuen Alias einfügen (oder ignorieren wenn schon vorhanden)
       db.prepare(
-        'INSERT OR REPLACE INTO ingredient_aliases (user_id, canonical_name, alias_name) VALUES (?, ?, ?)'
-      ).run(userId, canonical_name.trim(), alias_name.trim());
+        'INSERT OR REPLACE INTO ingredient_aliases (user_id, household_id, canonical_name, alias_name) VALUES (?, ?, ?, ?)'
+      ).run(userId, request.householdId || null, canonical_name.trim(), alias_name.trim());
     });
 
     transaction();
@@ -123,11 +125,12 @@ export default async function ingredientAliasRoutes(fastify) {
     const { source_item_ids, target_item_id, canonical_name } = request.body;
 
     // Ziel-Item laden
+    const { clause: slClause, params: slParams } = householdWhereClause(userId, request.householdId, 'sl');
     const targetItem = db.prepare(`
       SELECT sli.* FROM shopping_list_items sli
       JOIN shopping_lists sl ON sli.shopping_list_id = sl.id
-      WHERE sli.id = ? AND sl.user_id = ?
-    `).get(target_item_id, userId);
+      WHERE sli.id = ? AND (${slClause})
+    `).get(target_item_id, ...slParams);
 
     if (!targetItem) {
       return reply.status(404).send({ error: 'Ziel-Artikel nicht gefunden.' });
@@ -139,8 +142,8 @@ export default async function ingredientAliasRoutes(fastify) {
       const item = db.prepare(`
         SELECT sli.* FROM shopping_list_items sli
         JOIN shopping_lists sl ON sli.shopping_list_id = sl.id
-        WHERE sli.id = ? AND sl.user_id = ?
-      `).get(sourceId, userId);
+        WHERE sli.id = ? AND (${slClause})
+      `).get(sourceId, ...slParams);
       if (!item) {
         return reply.status(404).send({ error: `Artikel mit ID ${sourceId} nicht gefunden.` });
       }
@@ -190,8 +193,8 @@ export default async function ingredientAliasRoutes(fastify) {
       for (const name of allNames) {
         if (name.toLowerCase().trim() !== canonical_name.toLowerCase().trim()) {
           db.prepare(
-            'INSERT OR REPLACE INTO ingredient_aliases (user_id, canonical_name, alias_name) VALUES (?, ?, ?)'
-          ).run(userId, canonical_name.trim(), name.trim());
+            'INSERT OR REPLACE INTO ingredient_aliases (user_id, household_id, canonical_name, alias_name) VALUES (?, ?, ?, ?)'
+          ).run(userId, request.householdId || null, canonical_name.trim(), name.trim());
         }
       }
     });
@@ -199,9 +202,10 @@ export default async function ingredientAliasRoutes(fastify) {
     transaction();
 
     // Aktualisierte Liste zurückgeben
+    const { clause: listClause, params: listParams } = householdWhereClause(userId, request.householdId);
     const list = db.prepare(
-      'SELECT * FROM shopping_lists WHERE user_id = ? AND is_active = 1 ORDER BY created_at DESC LIMIT 1'
-    ).get(userId);
+      `SELECT * FROM shopping_lists WHERE (${listClause}) AND is_active = 1 ORDER BY created_at DESC LIMIT 1`
+    ).get(...listParams);
 
     if (!list) return reply.send({ success: true, items: [] });
 
@@ -226,9 +230,10 @@ export default async function ingredientAliasRoutes(fastify) {
       },
     },
   }, async (request, reply) => {
+    const { clause, params } = householdWhereClause(request.user.id, request.householdId);
     const result = db.prepare(
-      'DELETE FROM ingredient_aliases WHERE id = ? AND user_id = ?'
-    ).run(request.params.id, request.user.id);
+      `DELETE FROM ingredient_aliases WHERE id = ? AND (${clause})`
+    ).run(request.params.id, ...params);
 
     if (result.changes === 0) {
       return reply.status(404).send({ error: 'Alias nicht gefunden.' });
@@ -247,9 +252,10 @@ export default async function ingredientAliasRoutes(fastify) {
       security: [{ bearerAuth: [] }],
     },
   }, async (request) => {
+    const { clause, params } = householdWhereClause(request.user.id, request.householdId);
     const blocked = db.prepare(
-      'SELECT * FROM blocked_ingredients WHERE user_id = ? ORDER BY ingredient_name'
-    ).all(request.user.id);
+      `SELECT * FROM blocked_ingredients WHERE (${clause}) ORDER BY ingredient_name`
+    ).all(...params);
     return { blocked };
   });
 
@@ -275,8 +281,8 @@ export default async function ingredientAliasRoutes(fastify) {
 
     try {
       db.prepare(
-        'INSERT OR IGNORE INTO blocked_ingredients (user_id, ingredient_name) VALUES (?, ?)'
-      ).run(userId, ingredientName);
+        'INSERT OR IGNORE INTO blocked_ingredients (user_id, household_id, ingredient_name) VALUES (?, ?, ?)'
+      ).run(userId, request.householdId || null, ingredientName);
     } catch {
       // UNIQUE constraint – bereits geblockt, kein Fehler
     }
@@ -298,9 +304,10 @@ export default async function ingredientAliasRoutes(fastify) {
       },
     },
   }, async (request, reply) => {
+    const { clause, params } = householdWhereClause(request.user.id, request.householdId);
     const result = db.prepare(
-      'DELETE FROM blocked_ingredients WHERE id = ? AND user_id = ?'
-    ).run(request.params.id, request.user.id);
+      `DELETE FROM blocked_ingredients WHERE id = ? AND (${clause})`
+    ).run(request.params.id, ...params);
 
     if (result.changes === 0) {
       return reply.status(404).send({ error: 'Geblockte Zutat nicht gefunden.' });
@@ -320,14 +327,15 @@ export default async function ingredientAliasRoutes(fastify) {
     },
   }, async (request, reply) => {
     const userId = request.user.id;
+    const { clause, params } = householdWhereClause(userId, request.householdId);
 
     const aliases = db.prepare(
-      'SELECT canonical_name, alias_name FROM ingredient_aliases WHERE user_id = ? ORDER BY canonical_name, alias_name'
-    ).all(userId);
+      `SELECT canonical_name, alias_name FROM ingredient_aliases WHERE (${clause}) ORDER BY canonical_name, alias_name`
+    ).all(...params);
 
     const blocked = db.prepare(
-      'SELECT ingredient_name FROM blocked_ingredients WHERE user_id = ? ORDER BY ingredient_name'
-    ).all(userId);
+      `SELECT ingredient_name FROM blocked_ingredients WHERE (${clause}) ORDER BY ingredient_name`
+    ).all(...params);
 
     const exportData = {
       version: '1.0',
@@ -404,19 +412,21 @@ export default async function ingredientAliasRoutes(fastify) {
     let aliasImported = 0, aliasUpdated = 0, aliasSkipped = 0;
     let blockedImported = 0, blockedSkipped = 0;
 
+    const { clause, params } = householdWhereClause(userId, request.householdId);
+
     const upsertAlias = db.prepare(`
-      INSERT INTO ingredient_aliases (user_id, canonical_name, alias_name)
-      VALUES (?, ?, ?)
+      INSERT INTO ingredient_aliases (user_id, household_id, canonical_name, alias_name)
+      VALUES (?, ?, ?, ?)
       ON CONFLICT(user_id, alias_name) DO UPDATE SET
         canonical_name = excluded.canonical_name
     `);
 
     const findExistingAlias = db.prepare(
-      'SELECT id FROM ingredient_aliases WHERE user_id = ? AND LOWER(alias_name) = LOWER(?)'
+      `SELECT id FROM ingredient_aliases WHERE (${clause}) AND LOWER(alias_name) = LOWER(?)`
     );
 
     const insertBlocked = db.prepare(
-      'INSERT OR IGNORE INTO blocked_ingredients (user_id, ingredient_name) VALUES (?, ?)'
+      'INSERT OR IGNORE INTO blocked_ingredients (user_id, household_id, ingredient_name) VALUES (?, ?, ?)'
     );
 
     const transaction = db.transaction(() => {
@@ -428,8 +438,8 @@ export default async function ingredientAliasRoutes(fastify) {
             const aliasName = String(alias.alias_name || '').trim().slice(0, 300);
             if (!canonicalName || !aliasName) { aliasSkipped++; continue; }
 
-            const existing = findExistingAlias.get(userId, aliasName);
-            upsertAlias.run(userId, canonicalName, aliasName);
+            const existing = findExistingAlias.get(...params, aliasName);
+            upsertAlias.run(userId, request.householdId || null, canonicalName, aliasName);
             if (existing) { aliasUpdated++; } else { aliasImported++; }
           } catch {
             aliasSkipped++;
@@ -444,7 +454,7 @@ export default async function ingredientAliasRoutes(fastify) {
             const name = String(item.ingredient_name || '').trim().slice(0, 300);
             if (!name) { blockedSkipped++; continue; }
 
-            const result = insertBlocked.run(userId, name);
+            const result = insertBlocked.run(userId, request.householdId || null, name);
             if (result.changes > 0) { blockedImported++; } else { blockedSkipped++; }
           } catch {
             blockedSkipped++;

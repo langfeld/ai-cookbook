@@ -8,9 +8,10 @@
  */
 
 import db from '../config/database.js';
+import { householdWhereClause } from '../config/database.js';
 
 export default async function collectionsRoutes(fastify) {
-  fastify.addHook('onRequest', fastify.authenticate);
+  fastify.addHook('onRequest', fastify.resolveHousehold);
 
   // ─────────────────────────────────────────────
   // GET / – Alle Sammlungen des Benutzers
@@ -22,13 +23,14 @@ export default async function collectionsRoutes(fastify) {
       security: [{ bearerAuth: [] }],
     },
   }, async (request) => {
+    const hhWhere = householdWhereClause(request.user.id, request.householdId, 'c');
     const collections = db.prepare(`
       SELECT c.*,
         (SELECT COUNT(*) FROM recipe_collections rc WHERE rc.collection_id = c.id) as recipe_count
       FROM collections c
-      WHERE c.user_id = ?
+      WHERE ${hhWhere.clause}
       ORDER BY c.sort_order ASC, c.name ASC
-    `).all(request.user.id);
+    `).all(...hhWhere.params);
 
     return { collections };
   });
@@ -54,23 +56,24 @@ export default async function collectionsRoutes(fastify) {
   }, async (request, reply) => {
     const { name, icon = '📁', color = '#6366f1' } = request.body;
     const userId = request.user.id;
+    const hhWhere = householdWhereClause(userId, request.householdId);
 
     // Prüfen ob Name bereits existiert
     const existing = db.prepare(
-      'SELECT id FROM collections WHERE user_id = ? AND name = ?'
-    ).get(userId, name);
+      `SELECT id FROM collections WHERE (${hhWhere.clause}) AND name = ?`
+    ).get(...hhWhere.params, name);
     if (existing) {
       return reply.status(409).send({ error: `Sammlung "${name}" existiert bereits.` });
     }
 
     // Höchste Sortierreihenfolge ermitteln
     const maxOrder = db.prepare(
-      'SELECT COALESCE(MAX(sort_order), 0) as max_order FROM collections WHERE user_id = ?'
-    ).get(userId).max_order;
+      `SELECT COALESCE(MAX(sort_order), 0) as max_order FROM collections WHERE (${hhWhere.clause})`
+    ).get(...hhWhere.params).max_order;
 
     const { lastInsertRowid } = db.prepare(
-      'INSERT INTO collections (user_id, name, icon, color, sort_order) VALUES (?, ?, ?, ?, ?)'
-    ).run(userId, name, icon, color, maxOrder + 1);
+      'INSERT INTO collections (user_id, name, icon, color, sort_order, household_id) VALUES (?, ?, ?, ?, ?, ?)'
+    ).run(userId, name, icon, color, maxOrder + 1, request.householdId || null);
 
     const collection = db.prepare('SELECT * FROM collections WHERE id = ?').get(lastInsertRowid);
     return { message: `Sammlung "${name}" erstellt!`, collection: { ...collection, recipe_count: 0 } };
@@ -96,6 +99,7 @@ export default async function collectionsRoutes(fastify) {
   }, async (request, reply) => {
     const { id } = request.params;
     const { name, icon, color } = request.body;
+    const hhWhere = householdWhereClause(request.user.id, request.householdId);
 
     const result = db.prepare(`
       UPDATE collections
@@ -103,8 +107,8 @@ export default async function collectionsRoutes(fastify) {
           icon = COALESCE(?, icon),
           color = COALESCE(?, color),
           updated_at = CURRENT_TIMESTAMP
-      WHERE id = ? AND user_id = ?
-    `).run(name, icon, color, id, request.user.id);
+      WHERE id = ? AND (${hhWhere.clause})
+    `).run(name, icon, color, id, ...hhWhere.params);
 
     if (result.changes === 0) {
       return reply.status(404).send({ error: 'Sammlung nicht gefunden.' });
@@ -129,9 +133,10 @@ export default async function collectionsRoutes(fastify) {
       security: [{ bearerAuth: [] }],
     },
   }, async (request, reply) => {
+    const hhWhere = householdWhereClause(request.user.id, request.householdId);
     const result = db.prepare(
-      'DELETE FROM collections WHERE id = ? AND user_id = ?'
-    ).run(request.params.id, request.user.id);
+      `DELETE FROM collections WHERE id = ? AND (${hhWhere.clause})`
+    ).run(request.params.id, ...hhWhere.params);
 
     if (result.changes === 0) {
       return reply.status(404).send({ error: 'Sammlung nicht gefunden.' });
@@ -153,9 +158,10 @@ export default async function collectionsRoutes(fastify) {
     const { id } = request.params;
 
     // Prüfen ob Sammlung dem Benutzer gehört
+    const hhWhere = householdWhereClause(request.user.id, request.householdId);
     const collection = db.prepare(
-      'SELECT id FROM collections WHERE id = ? AND user_id = ?'
-    ).get(id, request.user.id);
+      `SELECT id FROM collections WHERE id = ? AND (${hhWhere.clause})`
+    ).get(id, ...hhWhere.params);
     if (!collection) {
       return reply.status(404).send({ error: 'Sammlung nicht gefunden.' });
     }
@@ -200,9 +206,10 @@ export default async function collectionsRoutes(fastify) {
     const { recipeIds } = request.body;
 
     // Prüfen ob Sammlung dem Benutzer gehört
+    const hhWhere = householdWhereClause(request.user.id, request.householdId);
     const collection = db.prepare(
-      'SELECT id, name FROM collections WHERE id = ? AND user_id = ?'
-    ).get(id, request.user.id);
+      `SELECT id, name FROM collections WHERE id = ? AND (${hhWhere.clause})`
+    ).get(id, ...hhWhere.params);
     if (!collection) {
       return reply.status(404).send({ error: 'Sammlung nicht gefunden.' });
     }
@@ -253,9 +260,10 @@ export default async function collectionsRoutes(fastify) {
     const { recipeIds } = request.body;
 
     // Prüfen ob Sammlung dem Benutzer gehört
+    const hhWhere = householdWhereClause(request.user.id, request.householdId);
     const collection = db.prepare(
-      'SELECT id, name FROM collections WHERE id = ? AND user_id = ?'
-    ).get(id, request.user.id);
+      `SELECT id, name FROM collections WHERE id = ? AND (${hhWhere.clause})`
+    ).get(id, ...hhWhere.params);
     if (!collection) {
       return reply.status(404).send({ error: 'Sammlung nicht gefunden.' });
     }
@@ -294,9 +302,10 @@ export default async function collectionsRoutes(fastify) {
     const { id, recipeId } = request.params;
 
     // Prüfen ob Sammlung dem Benutzer gehört
+    const hhWhere = householdWhereClause(request.user.id, request.householdId);
     const collection = db.prepare(
-      'SELECT id FROM collections WHERE id = ? AND user_id = ?'
-    ).get(id, request.user.id);
+      `SELECT id FROM collections WHERE id = ? AND (${hhWhere.clause})`
+    ).get(id, ...hhWhere.params);
     if (!collection) {
       return reply.status(404).send({ error: 'Sammlung nicht gefunden.' });
     }
@@ -323,12 +332,13 @@ export default async function collectionsRoutes(fastify) {
     },
   }, async (request, reply) => {
     const userId = request.user.id;
+    const hhWhere = householdWhereClause(userId, request.householdId, 'c');
 
     const collections = db.prepare(`
       SELECT c.* FROM collections c
-      WHERE c.user_id = ?
+      WHERE ${hhWhere.clause}
       ORDER BY c.sort_order ASC, c.name ASC
-    `).all(userId);
+    `).all(...hhWhere.params);
 
     const exportData = {
       version: '1.0',
@@ -371,6 +381,7 @@ export default async function collectionsRoutes(fastify) {
     },
   }, async (request, reply) => {
     const userId = request.user.id;
+    const hhWhere = householdWhereClause(userId, request.householdId);
     let importData;
 
     // Multipart oder JSON-Body
@@ -405,7 +416,7 @@ export default async function collectionsRoutes(fastify) {
     let recipesLinked = 0;
 
     // Alle Rezepte des Users für Titel-Matching
-    const userRecipes = db.prepare('SELECT id, title FROM recipes WHERE user_id = ?').all(userId);
+    const userRecipes = db.prepare(`SELECT id, title FROM recipes WHERE (${hhWhere.clause})`).all(...hhWhere.params);
     const recipeTitleMap = new Map(userRecipes.map(r => [r.title.toLowerCase(), r.id]));
 
     const transaction = db.transaction(() => {
@@ -422,8 +433,8 @@ export default async function collectionsRoutes(fastify) {
 
         // Existiert die Sammlung schon?
         const existing = db.prepare(
-          'SELECT id FROM collections WHERE user_id = ? AND name = ? COLLATE NOCASE'
-        ).get(userId, name);
+          `SELECT id FROM collections WHERE (${hhWhere.clause}) AND name = ? COLLATE NOCASE`
+        ).get(...hhWhere.params, name);
 
         let collectionId;
         if (existing) {
@@ -436,8 +447,8 @@ export default async function collectionsRoutes(fastify) {
         } else {
           // Neu erstellen
           const result = db.prepare(
-            'INSERT INTO collections (user_id, name, icon, color, sort_order) VALUES (?, ?, ?, ?, ?)'
-          ).run(userId, name, icon, color, sortOrder);
+            'INSERT INTO collections (user_id, name, icon, color, sort_order, household_id) VALUES (?, ?, ?, ?, ?, ?)'
+          ).run(userId, name, icon, color, sortOrder, request.householdId || null);
           collectionId = result.lastInsertRowid;
           imported++;
         }
@@ -481,13 +492,14 @@ export default async function collectionsRoutes(fastify) {
   }, async (request) => {
     const { recipeId } = request.params;
 
+    const hhWhere = householdWhereClause(request.user.id, request.householdId, 'c');
     const collections = db.prepare(`
       SELECT c.*, rc.added_at as collection_added_at
       FROM collections c
       JOIN recipe_collections rc ON c.id = rc.collection_id
-      WHERE rc.recipe_id = ? AND c.user_id = ?
+      WHERE rc.recipe_id = ? AND (${hhWhere.clause})
       ORDER BY c.sort_order ASC, c.name ASC
-    `).all(recipeId, request.user.id);
+    `).all(recipeId, ...hhWhere.params);
 
     return { collections };
   });

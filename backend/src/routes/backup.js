@@ -14,7 +14,7 @@
  * - Maximale Größenlimits pro Datentyp
  */
 
-import db from '../config/database.js';
+import db, { householdWhereClause } from '../config/database.js';
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
 import { resolve, join } from 'path';
 import sharp from 'sharp';
@@ -46,7 +46,7 @@ function sanitize(val, maxLen = LIMITS.maxStringLength) {
 }
 
 export default async function backupRoutes(fastify) {
-  fastify.addHook('onRequest', fastify.authenticate);
+  fastify.addHook('onRequest', fastify.resolveHousehold);
 
   // ============================================
   // GET /api/backup/export
@@ -66,10 +66,12 @@ export default async function backupRoutes(fastify) {
     },
   }, async (request, reply) => {
     const userId = request.user.id;
+    const householdId = request.householdId;
+    const hhWhere = householdWhereClause(userId, householdId);
     const includeImages = request.query.include_images === true || request.query.include_images === 'true';
 
     // ── Rezepte ──
-    const recipes = db.prepare('SELECT * FROM recipes WHERE user_id = ?').all(userId);
+    const recipes = db.prepare(`SELECT * FROM recipes WHERE (${hhWhere.clause})`).all(...hhWhere.params);
     const exportedRecipes = [];
 
     for (const recipe of recipes) {
@@ -123,8 +125,8 @@ export default async function backupRoutes(fastify) {
 
     // ── Sammlungen ──
     const collections = db.prepare(
-      'SELECT * FROM collections WHERE user_id = ? ORDER BY sort_order ASC, name ASC'
-    ).all(userId);
+      `SELECT * FROM collections WHERE (${hhWhere.clause}) ORDER BY sort_order ASC, name ASC`
+    ).all(...hhWhere.params);
 
     const exportedCollections = collections.map(col => {
       const recipeTitles = db.prepare(`
@@ -145,11 +147,11 @@ export default async function backupRoutes(fastify) {
 
     // ── Vorratsschrank ──
     const pantryItems = db.prepare(
-      'SELECT ingredient_name, amount, unit, category, expiry_date, notes, is_permanent FROM pantry WHERE user_id = ? ORDER BY category, ingredient_name'
-    ).all(userId);
+      `SELECT ingredient_name, amount, unit, category, expiry_date, notes, is_permanent FROM pantry WHERE (${hhWhere.clause}) ORDER BY category, ingredient_name`
+    ).all(...hhWhere.params);
 
     // ── Wochenpläne ──
-    const mealPlans = db.prepare('SELECT * FROM meal_plans WHERE user_id = ?').all(userId);
+    const mealPlans = db.prepare(`SELECT * FROM meal_plans WHERE (${hhWhere.clause})`).all(...hhWhere.params);
     const exportedMealPlans = mealPlans.map(plan => {
       const entries = db.prepare(`
         SELECT mpe.day_of_week, mpe.meal_type, mpe.servings, mpe.is_cooked, r.title as recipe_title
@@ -166,7 +168,7 @@ export default async function backupRoutes(fastify) {
     });
 
     // ── Einkaufslisten ──
-    const shoppingLists = db.prepare('SELECT * FROM shopping_lists WHERE user_id = ?').all(userId);
+    const shoppingLists = db.prepare(`SELECT * FROM shopping_lists WHERE (${hhWhere.clause})`).all(...hhWhere.params);
     const exportedShoppingLists = shoppingLists.map(list => {
       const items = db.prepare(`
         SELECT sli.ingredient_name, sli.amount, sli.unit, sli.is_checked,
@@ -186,21 +188,29 @@ export default async function backupRoutes(fastify) {
     });
 
     // ── Rezept-Sperren ──
+    const hhRb = householdWhereClause(userId, householdId, 'rb');
     const recipeBlocks = db.prepare(`
       SELECT rb.blocked_until, rb.reason, rb.created_at, r.title as recipe_title
       FROM recipe_blocks rb
       JOIN recipes r ON rb.recipe_id = r.id
-      WHERE rb.user_id = ?
-    `).all(userId);
+      WHERE (${hhRb.clause})
+    `).all(...hhRb.params);
 
     // ── Zutaten-Einstellungen ──
     const ingredientAliases = db.prepare(
-      'SELECT canonical_name, alias_name FROM ingredient_aliases WHERE user_id = ?'
-    ).all(userId);
+      `SELECT canonical_name, alias_name FROM ingredient_aliases WHERE (${hhWhere.clause})`
+    ).all(...hhWhere.params);
 
     const blockedIngredients = db.prepare(
-      'SELECT ingredient_name FROM blocked_ingredients WHERE user_id = ?'
-    ).all(userId).map(b => b.ingredient_name);
+      `SELECT ingredient_name FROM blocked_ingredients WHERE (${hhWhere.clause})`
+    ).all(...hhWhere.params).map(b => b.ingredient_name);
+
+    // ── Haushalt-Info ──
+    let householdInfo = null;
+    if (householdId) {
+      const hh = db.prepare('SELECT id, name FROM households WHERE id = ?').get(householdId);
+      if (hh) householdInfo = { id: hh.id, name: hh.name };
+    }
 
     // ── Export zusammenstellen ──
     const exportData = {
@@ -208,6 +218,7 @@ export default async function backupRoutes(fastify) {
       exported_at: new Date().toISOString(),
       source: 'Zauberjournal',
       type: 'full_backup',
+      household: householdInfo,
       summary: {
         recipes: exportedRecipes.length,
         collections: exportedCollections.length,
@@ -247,6 +258,7 @@ export default async function backupRoutes(fastify) {
     },
   }, async (request, reply) => {
     const userId = request.user.id;
+    const householdId = request.householdId;
     let importData;
 
     // ── Parse Input ──
@@ -304,17 +316,20 @@ export default async function backupRoutes(fastify) {
     // ── Bilder, die nach der Transaction verarbeitet werden ──
     const pendingImages = [];
 
+    // ── Household-Scope ──
+    const hhWhere = householdWhereClause(userId, householdId);
+
     // ── Kategorie-Cache (um Duplikate zu vermeiden) ──
     const catMap = new Map();
-    const existingCats = db.prepare('SELECT id, name FROM categories WHERE user_id = ?').all(userId);
+    const existingCats = db.prepare(`SELECT id, name FROM categories WHERE (${hhWhere.clause})`).all(...hhWhere.params);
     for (const c of existingCats) catMap.set(c.name.toLowerCase(), c.id);
 
     function getOrCreateCategory(cat) {
       const key = cat.name.toLowerCase();
       if (catMap.has(key)) return catMap.get(key);
       const res = db.prepare(
-        'INSERT INTO categories (user_id, name, icon, color) VALUES (?, ?, ?, ?)'
-      ).run(userId, cat.name, cat.icon || '📁', cat.color || '#6366f1');
+        'INSERT INTO categories (user_id, name, icon, color, household_id) VALUES (?, ?, ?, ?, ?)'
+      ).run(userId, cat.name, cat.icon || '📁', cat.color || '#6366f1', householdId || null);
       catMap.set(key, res.lastInsertRowid);
       return res.lastInsertRowid;
     }
@@ -322,7 +337,7 @@ export default async function backupRoutes(fastify) {
     // Map: Rezepttitel (lowercase) → neue ID (nach Import)
     const importedRecipeMap = new Map();
     // Auch bestehende Rezepte für Referenzierung
-    const existingRecipes = db.prepare('SELECT id, title FROM recipes WHERE user_id = ?').all(userId);
+    const existingRecipes = db.prepare(`SELECT id, title FROM recipes WHERE (${hhWhere.clause})`).all(...hhWhere.params);
     for (const r of existingRecipes) importedRecipeMap.set(r.title.toLowerCase(), r.id);
 
     // ═══════════════════════════════════════════
@@ -341,8 +356,8 @@ export default async function backupRoutes(fastify) {
 
         // Duplikat-Check per Titel
         const existingRecipe = db.prepare(
-          'SELECT id FROM recipes WHERE user_id = ? AND LOWER(title) = LOWER(?)'
-        ).get(userId, title);
+          `SELECT id FROM recipes WHERE (${hhWhere.clause}) AND LOWER(title) = LOWER(?)`
+        ).get(...hhWhere.params, title);
         if (existingRecipe) {
           importedRecipeMap.set(title.toLowerCase(), existingRecipe.id);
           result.recipes.skipped++;
@@ -352,8 +367,8 @@ export default async function backupRoutes(fastify) {
         const VALID_DIFFICULTIES = new Set(['easy','medium','hard','einfach','mittel','schwer']);
 
         const recipeResult = db.prepare(`
-          INSERT INTO recipes (user_id, title, description, servings, prep_time, cook_time, total_time, difficulty, source_url, is_favorite, notes, ai_generated, times_cooked, last_cooked_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          INSERT INTO recipes (user_id, title, description, servings, prep_time, cook_time, total_time, difficulty, source_url, is_favorite, notes, ai_generated, times_cooked, last_cooked_at, household_id, created_by_user_id)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `).run(
           userId,
           title,
@@ -369,6 +384,8 @@ export default async function backupRoutes(fastify) {
           recipe.ai_generated ? 1 : 0,
           Math.min(parseInt(recipe.times_cooked) || 0, 99999),
           recipe.last_cooked_at || null,
+          householdId || null,
+          userId,
         );
 
         const newRecipeId = recipeResult.lastInsertRowid;
@@ -439,8 +456,8 @@ export default async function backupRoutes(fastify) {
         const sortOrder = typeof col.sort_order === 'number' ? Math.min(Math.max(Math.floor(col.sort_order), 0), 9999) : 0;
 
         const existing = db.prepare(
-          'SELECT id FROM collections WHERE user_id = ? AND name = ? COLLATE NOCASE'
-        ).get(userId, name);
+          `SELECT id FROM collections WHERE (${hhWhere.clause}) AND name = ? COLLATE NOCASE`
+        ).get(...hhWhere.params, name);
 
         let collectionId;
         if (existing) {
@@ -451,8 +468,8 @@ export default async function backupRoutes(fastify) {
           result.collections.updated++;
         } else {
           const res = db.prepare(
-            'INSERT INTO collections (user_id, name, icon, color, sort_order) VALUES (?, ?, ?, ?, ?)'
-          ).run(userId, name, icon, color, sortOrder);
+            'INSERT INTO collections (user_id, name, icon, color, sort_order, household_id) VALUES (?, ?, ?, ?, ?, ?)'
+          ).run(userId, name, icon, color, sortOrder, householdId || null);
           collectionId = res.lastInsertRowid;
           result.collections.imported++;
         }
@@ -481,8 +498,8 @@ export default async function backupRoutes(fastify) {
 
         const name = sanitize(item.ingredient_name, 200);
         const existingItem = db.prepare(
-          'SELECT id, amount FROM pantry WHERE user_id = ? AND LOWER(ingredient_name) = LOWER(?)'
-        ).get(userId, name);
+          `SELECT id, amount FROM pantry WHERE (${hhWhere.clause}) AND LOWER(ingredient_name) = LOWER(?)`
+        ).get(...hhWhere.params, name);
 
         if (existingItem) {
           db.prepare('UPDATE pantry SET amount = amount + ? WHERE id = ?').run(
@@ -493,7 +510,7 @@ export default async function backupRoutes(fastify) {
         } else {
           const expiryDate = (item.expiry_date && /^\d{4}-\d{2}-\d{2}$/.test(item.expiry_date)) ? item.expiry_date : null;
           db.prepare(
-            'INSERT INTO pantry (user_id, ingredient_name, amount, unit, category, expiry_date, notes, is_permanent) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+            'INSERT INTO pantry (user_id, ingredient_name, amount, unit, category, expiry_date, notes, is_permanent, household_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
           ).run(
             userId, name,
             Math.min(Math.max(parseFloat(item.amount) || 1, 0), 99999),
@@ -502,6 +519,7 @@ export default async function backupRoutes(fastify) {
             expiryDate,
             sanitize(item.notes || '', 500),
             item.is_permanent ? 1 : 0,
+            householdId || null,
           );
           result.pantry.imported++;
         }
@@ -517,16 +535,16 @@ export default async function backupRoutes(fastify) {
 
         // Duplikat-Check
         const existingPlan = db.prepare(
-          'SELECT id FROM meal_plans WHERE user_id = ? AND week_start = ?'
-        ).get(userId, plan.week_start);
+          `SELECT id FROM meal_plans WHERE (${hhWhere.clause}) AND week_start = ?`
+        ).get(...hhWhere.params, plan.week_start);
         if (existingPlan) {
           result.meal_plans.skipped++;
           continue;
         }
 
         const planResult = db.prepare(
-          'INSERT INTO meal_plans (user_id, week_start) VALUES (?, ?)'
-        ).run(userId, plan.week_start);
+          'INSERT INTO meal_plans (user_id, week_start, household_id) VALUES (?, ?, ?)'
+        ).run(userId, plan.week_start, householdId || null);
         const newPlanId = planResult.lastInsertRowid;
         result.meal_plans.imported++;
 
@@ -539,7 +557,7 @@ export default async function backupRoutes(fastify) {
             }
             if (!recipeId && entry.recipe_id) {
               // Fallback: direkte ID wenn vorhanden und dem User gehört
-              const check = db.prepare('SELECT id FROM recipes WHERE id = ? AND user_id = ?').get(entry.recipe_id, userId);
+              const check = db.prepare(`SELECT id FROM recipes WHERE id = ? AND (${hhWhere.clause})`).get(entry.recipe_id, ...hhWhere.params);
               if (check) recipeId = check.id;
             }
             if (!recipeId) continue;
@@ -561,8 +579,8 @@ export default async function backupRoutes(fastify) {
       // ── 5. Einkaufslisten (immer als inaktiv importieren) ──
       for (const list of shoppingLists) {
         const listResult = db.prepare(
-          'INSERT INTO shopping_lists (user_id, name, is_active) VALUES (?, ?, 0)'
-        ).run(userId, sanitize(list.name || 'Import', 200));
+          'INSERT INTO shopping_lists (user_id, name, is_active, household_id) VALUES (?, ?, 0, ?)'
+        ).run(userId, sanitize(list.name || 'Import', 200), householdId || null);
         const newListId = listResult.lastInsertRowid;
         result.shopping_lists.imported++;
 
@@ -604,8 +622,8 @@ export default async function backupRoutes(fastify) {
         }
 
         const existingBlock = db.prepare(
-          'SELECT id FROM recipe_blocks WHERE user_id = ? AND recipe_id = ?'
-        ).get(userId, recipeId);
+          `SELECT id FROM recipe_blocks WHERE (${hhWhere.clause}) AND recipe_id = ?`
+        ).get(...hhWhere.params, recipeId);
 
         if (existingBlock) {
           db.prepare(
@@ -614,8 +632,8 @@ export default async function backupRoutes(fastify) {
           result.recipe_blocks.updated++;
         } else {
           db.prepare(
-            'INSERT INTO recipe_blocks (user_id, recipe_id, blocked_until, reason) VALUES (?, ?, ?, ?)'
-          ).run(userId, recipeId, block.blocked_until || null, sanitize(block.reason || '', 500));
+            'INSERT INTO recipe_blocks (user_id, household_id, recipe_id, blocked_until, reason) VALUES (?, ?, ?, ?, ?)'
+          ).run(userId, householdId || null, recipeId, block.blocked_until || null, sanitize(block.reason || '', 500));
           result.recipe_blocks.imported++;
         }
       }
@@ -628,8 +646,8 @@ export default async function backupRoutes(fastify) {
         }
 
         const existing = db.prepare(
-          'SELECT id FROM ingredient_aliases WHERE user_id = ? AND alias_name = ? COLLATE NOCASE'
-        ).get(userId, alias.alias_name);
+          `SELECT id FROM ingredient_aliases WHERE (${hhWhere.clause}) AND alias_name = ? COLLATE NOCASE`
+        ).get(...hhWhere.params, alias.alias_name);
 
         if (existing) {
           db.prepare('UPDATE ingredient_aliases SET canonical_name = ? WHERE id = ?').run(
@@ -638,8 +656,8 @@ export default async function backupRoutes(fastify) {
           result.ingredient_aliases.updated++;
         } else {
           db.prepare(
-            'INSERT INTO ingredient_aliases (user_id, canonical_name, alias_name) VALUES (?, ?, ?)'
-          ).run(userId, sanitize(alias.canonical_name, 200), sanitize(alias.alias_name, 200));
+            'INSERT INTO ingredient_aliases (user_id, household_id, canonical_name, alias_name) VALUES (?, ?, ?, ?)'
+          ).run(userId, householdId || null, sanitize(alias.canonical_name, 200), sanitize(alias.alias_name, 200));
           result.ingredient_aliases.imported++;
         }
       }
@@ -652,8 +670,8 @@ export default async function backupRoutes(fastify) {
         }
 
         const res = db.prepare(
-          'INSERT OR IGNORE INTO blocked_ingredients (user_id, ingredient_name) VALUES (?, ?)'
-        ).run(userId, sanitize(name, 200));
+          'INSERT OR IGNORE INTO blocked_ingredients (user_id, household_id, ingredient_name) VALUES (?, ?, ?)'
+        ).run(userId, householdId || null, sanitize(name, 200));
 
         if (res.changes > 0) {
           result.blocked_ingredients.imported++;

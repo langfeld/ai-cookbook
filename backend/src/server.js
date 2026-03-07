@@ -36,6 +36,9 @@ import collectionsRoutes from './routes/collections.js';
 import ingredientAliasRoutes from './routes/ingredient-aliases.js';
 import recipeBlockRoutes from './routes/recipe-blocks.js';
 import backupRoutes from './routes/backup.js';
+import householdRoutes from './routes/households.js';
+import sharedRecipesRoutes from './routes/shared-recipes.js';
+import householdEventsRoutes from './routes/household-events.js';
 // ingredient-conversions entfernt – KI-Aggregation ersetzt zutat-spezifische Umrechnungen
 
 // Upload-Verzeichnisse sicherstellen (inkl. Unterordner)
@@ -210,6 +213,33 @@ app.decorate('requireAdmin', async function (request, reply) {
   }
 });
 
+// Haushalt-Decorator: Löst den aktiven Haushalt des Users auf
+// Setzt request.householdId (oder null wenn kein Haushalt)
+import { getDefaultHousehold, isHouseholdMember } from './config/database.js';
+
+app.decorate('resolveHousehold', async function (request, reply) {
+  // Erst Auth prüfen
+  await app.authenticate(request, reply);
+  if (reply.sent) return;
+
+  // Haushalt aus Header oder Default
+  const headerHouseholdId = request.headers['x-household-id'];
+  if (headerHouseholdId) {
+    const hhId = parseInt(headerHouseholdId);
+    if (hhId && isHouseholdMember(request.user.id, hhId)) {
+      request.householdId = hhId;
+    } else {
+      // Header gesetzt aber kein Zugriff → ignorieren, auf Default fallen
+      request.householdId = null;
+    }
+  }
+
+  if (!request.householdId) {
+    const defaultHh = getDefaultHousehold(request.user.id);
+    request.householdId = defaultHh?.id || null;
+  }
+});
+
 // ============================================
 // Routen registrieren
 // ============================================
@@ -228,6 +258,9 @@ await app.register(collectionsRoutes, { prefix: '/api/collections' });
     await app.register(ingredientAliasRoutes, { prefix: '/api/ingredient-aliases' });
     await app.register(recipeBlockRoutes, { prefix: '/api/recipe-blocks' });
     await app.register(backupRoutes, { prefix: '/api/backup' });
+    await app.register(householdRoutes, { prefix: '/api/households' });
+    await app.register(sharedRecipesRoutes, { prefix: '/api/shared-recipes' });
+    await app.register(householdEventsRoutes, { prefix: '/api/household-events' });
     // ingredient-conversions Route entfernt
 
 // ============================================

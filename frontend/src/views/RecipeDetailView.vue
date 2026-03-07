@@ -103,6 +103,10 @@
                     <Smartphone class="w-4 h-4" />
                     {{ wakeLockActive ? '✓ Display bleibt an' : 'Wach halten' }}
                   </button>
+                  <button @click="handleShare(); showMoreMenu = false"
+                    class="flex items-center gap-2.5 hover:bg-stone-50 dark:hover:bg-stone-800 px-3 py-2 w-full text-stone-700 dark:text-stone-300 text-sm text-left transition-colors">
+                    <Share2 class="w-4 h-4" /> Teilen
+                  </button>
                   <router-link :to="'/recipes/new?edit=' + recipe.id" @click="showMoreMenu = false"
                     class="flex items-center gap-2.5 hover:bg-stone-50 dark:hover:bg-stone-800 px-3 py-2 w-full text-stone-700 dark:text-stone-300 text-sm transition-colors">
                     <Pencil class="w-4 h-4" /> Bearbeiten
@@ -123,6 +127,10 @@
                         :class="wakeLockActive ? 'text-primary-600 dark:text-primary-400' : 'text-stone-700 dark:text-stone-300'">
                         <Smartphone class="w-4 h-4" />
                         {{ wakeLockActive ? '✓ Display bleibt an' : 'Wach halten' }}
+                      </button>
+                      <button @click="handleShare(); showMoreMenu = false"
+                        class="flex items-center gap-2.5 hover:bg-stone-50 dark:hover:bg-stone-800 px-4 py-3 w-full text-stone-700 dark:text-stone-300 text-sm text-left transition-colors">
+                        <Share2 class="w-4 h-4" /> Teilen
                       </button>
                       <router-link :to="'/recipes/new?edit=' + recipe.id" @click="showMoreMenu = false"
                         class="flex items-center gap-2.5 hover:bg-stone-50 dark:hover:bg-stone-800 px-4 py-3 w-full text-stone-700 dark:text-stone-300 text-sm transition-colors">
@@ -548,7 +556,7 @@ import { useRecipesStore } from '@/stores/recipes.js';
 import { useMealPlanStore } from '@/stores/mealplan.js';
 import { usePantryStore } from '@/stores/pantry.js';
 import { useNotification } from '@/composables/useNotification.js';
-import { Star, Clock, Users, ChefHat, Pencil, Plus, Minus, Trash2, CalendarPlus, X, ChevronLeft, ChevronRight, Maximize, Warehouse, RotateCcw, Smartphone, EllipsisVertical, Sparkles, HelpCircle } from 'lucide-vue-next';
+import { Star, Clock, Users, ChefHat, Pencil, Plus, Minus, Trash2, CalendarPlus, X, ChevronLeft, ChevronRight, Maximize, Warehouse, RotateCcw, Smartphone, EllipsisVertical, Sparkles, HelpCircle, Share2, Link } from 'lucide-vue-next';
 import { useWakeLock } from '@/composables/useWakeLock.js';
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue';
 import AddToCollection from '@/components/collections/AddToCollection.vue';
@@ -998,6 +1006,32 @@ async function deleteRecipe() {
     // Fehler wird von useApi angezeigt
   } finally {
     deleting.value = false;
+  }
+}
+
+/** Rezept per Link teilen */
+async function handleShare() {
+  try {
+    const result = await apiRaw(`/recipes/${recipe.value.id}/share`, { method: 'POST' });
+    const shareUrl = `${window.location.origin}/shared/${result.share_token}`;
+
+    // Native Share API falls verfügbar (mobile)
+    if (navigator.share) {
+      await navigator.share({
+        title: recipe.value.title,
+        text: `Schau dir dieses Rezept an: ${recipe.value.title}`,
+        url: shareUrl,
+      });
+    } else {
+      // Fallback: In Zwischenablage kopieren
+      await navigator.clipboard.writeText(shareUrl);
+      showSuccess('Share-Link kopiert! 📋');
+    }
+  } catch (err) {
+    if (err.name !== 'AbortError') {
+      // AbortError = User hat Share-Dialog geschlossen
+      showSuccess('Teilen fehlgeschlagen');
+    }
   }
 }
 

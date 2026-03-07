@@ -410,6 +410,69 @@ export function initializeDatabase() {
     );
     CREATE INDEX IF NOT EXISTS idx_recipe_blocks_user ON recipe_blocks(user_id);
     CREATE INDEX IF NOT EXISTS idx_recipe_blocks_until ON recipe_blocks(user_id, blocked_until);
+
+    -- ============================================
+    -- Haushalte (Mehrbenutzerbetrieb)
+    -- ============================================
+    CREATE TABLE IF NOT EXISTS households (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,                     -- z.B. "Zuhause", "WG"
+      invite_code TEXT UNIQUE,                -- 8-Zeichen, alphanumerisch
+      invite_code_expires_at DATETIME,        -- Ablaufzeitpunkt des Invite-Codes
+      created_by INTEGER NOT NULL,            -- Ersteller (bleibt auch bei Leave erhalten)
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_households_invite ON households(invite_code) WHERE invite_code IS NOT NULL;
+
+    -- ============================================
+    -- Haushalt-Mitglieder
+    -- ============================================
+    CREATE TABLE IF NOT EXISTS household_members (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      household_id INTEGER NOT NULL,
+      user_id INTEGER NOT NULL,
+      is_default INTEGER DEFAULT 0,           -- Standard-Haushalt dieses Users
+      joined_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (household_id) REFERENCES households(id) ON DELETE CASCADE,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      UNIQUE(household_id, user_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_household_members_user ON household_members(user_id);
+    CREATE INDEX IF NOT EXISTS idx_household_members_household ON household_members(household_id);
+
+    -- ============================================
+    -- Haushalt-Aktivitäts-Feed
+    -- ============================================
+    CREATE TABLE IF NOT EXISTS household_activity (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      household_id INTEGER NOT NULL,
+      user_id INTEGER,                        -- NULL wenn User gelöscht
+      action TEXT NOT NULL,                   -- z.B. 'recipe:created', 'shopping:checked'
+      entity_type TEXT,                       -- z.B. 'recipe', 'shopping_item'
+      entity_id INTEGER,
+      details TEXT,                            -- JSON mit Zusatzinfos
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (household_id) REFERENCES households(id) ON DELETE CASCADE,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_household_activity_household ON household_activity(household_id, created_at DESC);
+
+    -- ============================================
+    -- Rezept-Share-Links (Link-basiertes Einzelteilen)
+    -- ============================================
+    CREATE TABLE IF NOT EXISTS recipe_shares (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      recipe_id INTEGER NOT NULL,
+      share_token TEXT NOT NULL UNIQUE,       -- UUID, nicht erratbar
+      created_by INTEGER NOT NULL,
+      expires_at DATETIME,                    -- NULL = kein Ablauf
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (recipe_id) REFERENCES recipes(id) ON DELETE CASCADE,
+      FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_recipe_shares_token ON recipe_shares(share_token);
   `);
 
   // ============================================
@@ -636,12 +699,91 @@ function migrateDatabase() {
     db.exec("ALTER TABLE recipes ADD COLUMN nutrition_details TEXT DEFAULT NULL");
     console.log('  ↳ Migration: recipes.nutrition_details hinzugefügt');
   }
+
+  // ============================================
+  // Household-Migrationen: household_id-Spalten hinzufügen
+  // ============================================
+
+  // recipes.household_id – NULL = privat, gesetzt = Haushalt-Rezept
+  if (!recipeCols.includes('household_id')) {
+    db.exec("ALTER TABLE recipes ADD COLUMN household_id INTEGER REFERENCES households(id) ON DELETE SET NULL");
+    db.exec("CREATE INDEX IF NOT EXISTS idx_recipes_household ON recipes(household_id)");
+    console.log('  ↳ Migration: recipes.household_id hinzugefügt');
+  }
+
+  // recipes.created_by_user_id – Ersteller (für Haushalt-Kontext, wer hat das Rezept erstellt)
+  if (!recipeCols.includes('created_by_user_id')) {
+    db.exec("ALTER TABLE recipes ADD COLUMN created_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL");
+    // Bestehende Rezepte: created_by_user_id = user_id
+    db.exec("UPDATE recipes SET created_by_user_id = user_id WHERE created_by_user_id IS NULL");
+    console.log('  ↳ Migration: recipes.created_by_user_id hinzugefügt');
+  }
+
+  // categories.household_id
+  const catCols = db.prepare("PRAGMA table_info(categories)").all().map(c => c.name);
+  if (!catCols.includes('household_id')) {
+    db.exec("ALTER TABLE categories ADD COLUMN household_id INTEGER REFERENCES households(id) ON DELETE SET NULL");
+    db.exec("CREATE INDEX IF NOT EXISTS idx_categories_household ON categories(household_id)");
+    console.log('  ↳ Migration: categories.household_id hinzugefügt');
+  }
+
+  // collections.household_id
+  const collCols = db.prepare("PRAGMA table_info(collections)").all().map(c => c.name);
+  if (!collCols.includes('household_id')) {
+    db.exec("ALTER TABLE collections ADD COLUMN household_id INTEGER REFERENCES households(id) ON DELETE SET NULL");
+    db.exec("CREATE INDEX IF NOT EXISTS idx_collections_household ON collections(household_id)");
+    console.log('  ↳ Migration: collections.household_id hinzugefügt');
+  }
+
+  // meal_plans.household_id
+  if (!mpCols.includes('household_id')) {
+    db.exec("ALTER TABLE meal_plans ADD COLUMN household_id INTEGER REFERENCES households(id) ON DELETE SET NULL");
+    db.exec("CREATE INDEX IF NOT EXISTS idx_meal_plans_household ON meal_plans(household_id)");
+    console.log('  ↳ Migration: meal_plans.household_id hinzugefügt');
+  }
+
+  // shopping_lists.household_id
+  const slCols = db.prepare("PRAGMA table_info(shopping_lists)").all().map(c => c.name);
+  if (!slCols.includes('household_id')) {
+    db.exec("ALTER TABLE shopping_lists ADD COLUMN household_id INTEGER REFERENCES households(id) ON DELETE SET NULL");
+    db.exec("CREATE INDEX IF NOT EXISTS idx_shopping_lists_household ON shopping_lists(household_id)");
+    console.log('  ↳ Migration: shopping_lists.household_id hinzugefügt');
+  }
+
+  // pantry.household_id
+  const pantryCols = db.prepare("PRAGMA table_info(pantry)").all().map(c => c.name);
+  if (!pantryCols.includes('household_id')) {
+    db.exec("ALTER TABLE pantry ADD COLUMN household_id INTEGER REFERENCES households(id) ON DELETE SET NULL");
+    db.exec("CREATE INDEX IF NOT EXISTS idx_pantry_household ON pantry(household_id)");
+    console.log('  ↳ Migration: pantry.household_id hinzugefügt');
+  }
+
+  // ingredient_aliases.household_id
+  const iaCols = db.prepare("PRAGMA table_info(ingredient_aliases)").all().map(c => c.name);
+  if (!iaCols.includes('household_id')) {
+    db.exec("ALTER TABLE ingredient_aliases ADD COLUMN household_id INTEGER REFERENCES households(id) ON DELETE SET NULL");
+    console.log('  ↳ Migration: ingredient_aliases.household_id hinzugefügt');
+  }
+
+  // blocked_ingredients.household_id
+  const biCols = db.prepare("PRAGMA table_info(blocked_ingredients)").all().map(c => c.name);
+  if (!biCols.includes('household_id')) {
+    db.exec("ALTER TABLE blocked_ingredients ADD COLUMN household_id INTEGER REFERENCES households(id) ON DELETE SET NULL");
+    console.log('  ↳ Migration: blocked_ingredients.household_id hinzugefügt');
+  }
+
+  // recipe_blocks.household_id
+  const rbCols = db.prepare("PRAGMA table_info(recipe_blocks)").all().map(c => c.name);
+  if (!rbCols.includes('household_id')) {
+    db.exec("ALTER TABLE recipe_blocks ADD COLUMN household_id INTEGER REFERENCES households(id) ON DELETE SET NULL");
+    console.log('  ↳ Migration: recipe_blocks.household_id hinzugefügt');
+  }
 }
 
 /**
  * Standard-Kategorien für neue Benutzer anlegen
  */
-export function createDefaultCategories(userId) {
+export function createDefaultCategories(userId, householdId = null) {
   const defaultCategories = [
     { name: 'Frühstück', icon: '🌅', color: '#f59e0b', sort_order: 1 },
     { name: 'Mittagessen', icon: '☀️', color: '#10b981', sort_order: 2 },
@@ -652,12 +794,71 @@ export function createDefaultCategories(userId) {
   ];
 
   const stmt = db.prepare(
-    'INSERT INTO categories (user_id, name, icon, color, sort_order) VALUES (?, ?, ?, ?, ?)'
+    'INSERT INTO categories (user_id, name, icon, color, sort_order, household_id) VALUES (?, ?, ?, ?, ?, ?)'
   );
 
   for (const cat of defaultCategories) {
-    stmt.run(userId, cat.name, cat.icon, cat.color, cat.sort_order);
+    stmt.run(userId, cat.name, cat.icon, cat.color, cat.sort_order, householdId);
   }
+}
+
+/**
+ * Haushalt-Hilfsfunktionen
+ * Werden von Routes und Middleware verwendet.
+ */
+
+/**
+ * Gibt den Standard-Haushalt eines Users zurück (oder null).
+ */
+export function getDefaultHousehold(userId) {
+  return db.prepare(`
+    SELECT h.* FROM households h
+    JOIN household_members hm ON h.id = hm.household_id
+    WHERE hm.user_id = ? AND hm.is_default = 1
+    LIMIT 1
+  `).get(userId) || null;
+}
+
+/**
+ * Prüft ob ein User Mitglied eines Haushalts ist.
+ */
+export function isHouseholdMember(userId, householdId) {
+  return !!db.prepare(
+    'SELECT 1 FROM household_members WHERE user_id = ? AND household_id = ?'
+  ).get(userId, householdId);
+}
+
+/**
+ * Gibt alle Haushalt-IDs zurück, in denen ein User Mitglied ist.
+ */
+export function getUserHouseholdIds(userId) {
+  return db.prepare(
+    'SELECT household_id FROM household_members WHERE user_id = ?'
+  ).all(userId).map(r => r.household_id);
+}
+
+/**
+ * Erzeugt die WHERE-Bedingung für Haushalt-aware Queries.
+ * Gibt { clause, params } zurück.
+ *
+ * Logik:
+ * - Wenn householdId gesetzt: (user_id = ? AND household_id IS NULL) OR household_id = ?
+ *   → Eigene private + Haushalt-Daten
+ * - Wenn kein Haushalt: user_id = ?
+ *   → Nur eigene Daten (Rückwärtskompatibel)
+ */
+export function householdWhereClause(userId, householdId, tableAlias = '') {
+  const prefix = tableAlias ? `${tableAlias}.` : '';
+  if (householdId) {
+    return {
+      clause: `(${prefix}user_id = ? AND ${prefix}household_id IS NULL) OR ${prefix}household_id = ?`,
+      params: [userId, householdId],
+    };
+  }
+  return {
+    clause: `${prefix}user_id = ?`,
+    params: [userId],
+  };
 }
 
 export default db;

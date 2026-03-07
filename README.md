@@ -14,7 +14,7 @@ Eine KI-gestützte Rezeptverwaltung mit intelligentem Wochenplaner, Kochmodus, E
 ---
 
 <p align="center">
-  <strong>KI-Rezeptimport</strong> · <strong>Nährwertschätzung</strong> · <strong>Wochenplaner</strong> · <strong>Einkaufsliste</strong> · <strong>REWE & Bring!</strong> · <strong>Vorratsschrank</strong> · <strong>Kochmodus</strong> · <strong>Offline-Modus</strong> · <strong>Backup & Export</strong>
+  <strong>KI-Rezeptimport</strong> · <strong>Nährwertschätzung</strong> · <strong>Wochenplaner</strong> · <strong>Einkaufsliste</strong> · <strong>REWE & Bring!</strong> · <strong>Vorratsschrank</strong> · <strong>Kochmodus</strong> · <strong>Offline-Modus</strong> · <strong>Haushalt-Sharing</strong> · <strong>Backup & Export</strong>
 </p>
 
 <p align="center">
@@ -46,6 +46,32 @@ docker compose up -d
 ```
 
 Erreichbar unter **http://localhost:8080** — der erste registrierte Account wird automatisch Admin.
+
+---
+
+## 🏠 Haushalt-Sharing (Multi-User)
+
+Zauberjournal unterstützt **gemeinsame Nutzung** von Rezepten, Wochenplänen, Einkaufslisten und Vorratsschrank innerhalb eines Haushalts.
+
+### Konzept
+
+- **Haushalt erstellen**: Unter `/household` kann ein Haushalt angelegt werden
+- **Einladen**: Per 8-stelligem Einladungscode (48h gültig) können andere Benutzer beitreten
+- **Geteilte Daten**: Alle Mitglieder sehen Rezepte, Wochenpläne, Einkaufslisten, Vorratsschrank und Kategorien des Haushalts
+- **Gleichberechtigt**: Alle Mitglieder haben volle Lese-/Schreibrechte
+- **Datenmigration**: Bestehende persönliche Daten können per Klick in den Haushalt verschoben werden
+- **Rezept-Link-Sharing**: Einzelne Rezepte können per Share-Link auch an Nicht-Mitglieder geteilt werden
+
+### Echtzeit-Sync
+
+Wenn ein Mitglied Änderungen vornimmt (Rezept erstellt, Einkaufsliste aktualisiert, etc.), werden alle anderen Haushaltsmitglieder in Echtzeit per **Server-Sent Events (SSE)** benachrichtigt.
+
+### Admin-Einstellungen
+
+| Setting | Standard | Beschreibung |
+|---------|----------|--------------|
+| `max_household_members` | 10 | Max. Mitglieder pro Haushalt |
+| `max_households_per_user` | 3 | Max. Haushalte pro Benutzer |
 
 ---
 

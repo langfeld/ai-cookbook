@@ -9,7 +9,7 @@
  * Vorratscheck der Einkaufsliste verwendet.
  */
 
-import db from '../config/database.js';
+import db, { householdWhereClause } from '../config/database.js';
 import { scaleIngredient, convertToBaseUnit, normalizeUnit, unitsCompatible } from '../utils/helpers.js';
 import { estimateConversion } from '../utils/ingredient-weights.js';
 
@@ -29,11 +29,12 @@ const MEAL_TYPE_LABELS = { fruehstueck: 'Frühstück', mittag: 'Mittagessen', ab
  * @param {number} mealPlanId - ID des Wochenplans
  * @returns {{ recipes: Array, unassigned: Array }}
  */
-export function calculatePantryAllocations(userId, mealPlanId) {
+export function calculatePantryAllocations(userId, mealPlanId, householdId) {
   // 1. Alle Pantry-Items laden
+  const pWhere = householdWhereClause(userId, householdId);
   const pantryItems = db.prepare(
-    'SELECT * FROM pantry WHERE user_id = ? AND (amount > 0 OR is_permanent = 1) ORDER BY category, ingredient_name'
-  ).all(userId);
+    `SELECT * FROM pantry WHERE (${pWhere.clause}) AND (amount > 0 OR is_permanent = 1) ORDER BY category, ingredient_name`
+  ).all(...pWhere.params);
 
   // 2. Ungekochte Einträge laden (mit Rezept-Infos)
   const entries = db.prepare(`
@@ -63,9 +64,10 @@ export function calculatePantryAllocations(userId, mealPlanId) {
   }
 
   // 4. Alias-Tabelle laden: alias_name → canonical_name
+  const aliasWhere = householdWhereClause(userId, householdId);
   const aliasRows = db.prepare(
-    'SELECT alias_name, canonical_name FROM ingredient_aliases WHERE user_id = ?'
-  ).all(userId);
+    `SELECT alias_name, canonical_name FROM ingredient_aliases WHERE ${aliasWhere.clause}`
+  ).all(...aliasWhere.params);
   const aliasMap = new Map();
   for (const row of aliasRows) {
     aliasMap.set(row.alias_name.toLowerCase(), row.canonical_name.toLowerCase());
@@ -77,9 +79,10 @@ export function calculatePantryAllocations(userId, mealPlanId) {
   }
 
   // 5. Gesperrte Zutaten laden
+  const blockedWhere = householdWhereClause(userId, householdId);
   const blockedRows = db.prepare(
-    'SELECT ingredient_name FROM blocked_ingredients WHERE user_id = ?'
-  ).all(userId);
+    `SELECT ingredient_name FROM blocked_ingredients WHERE ${blockedWhere.clause}`
+  ).all(...blockedWhere.params);
   const blockedSet = new Set(blockedRows.map(r => r.ingredient_name.toLowerCase()));
 
   /** Prüft ob eine Zutat (oder ihr Alias) gesperrt ist */

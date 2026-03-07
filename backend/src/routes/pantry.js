@@ -6,9 +6,10 @@
  * Überschüsse vom Einkauf werden hier automatisch eingetragen.
  */
 
-import db from '../config/database.js';
+import db, { householdWhereClause } from '../config/database.js';
 import { getWeekStart, scaleIngredient, convertToBaseUnit, normalizeUnit, unitsCompatible } from '../utils/helpers.js';
 import { calculatePantryAllocations } from '../services/pantry-allocation.js';
+import { broadcastToHousehold } from './household-events.js';
 
 /**
  * CSV- oder JSON-Import-Daten parsen
@@ -88,7 +89,7 @@ function parseCsvLine(line, delimiter = ';') {
 // (hier nur für eventuelle zukünftige Nutzung importierbar)
 
 export default async function pantryRoutes(fastify) {
-  fastify.addHook('onRequest', fastify.authenticate);
+  fastify.addHook('onRequest', fastify.resolveHousehold);
 
   /**
    * GET /api/pantry/recipe-view
@@ -108,31 +109,35 @@ export default async function pantryRoutes(fastify) {
     },
   }, async (request) => {
     const userId = request.user.id;
+    const { householdId } = request;
     const weekStart = request.query.weekStart || getWeekStart();
 
     // 1. Wochenplan laden
+    const mpWhere = householdWhereClause(userId, householdId);
     const plan = db.prepare(
-      'SELECT id FROM meal_plans WHERE user_id = ? AND week_start = ?'
-    ).get(userId, weekStart);
+      `SELECT id FROM meal_plans WHERE (${mpWhere.clause}) AND week_start = ?`
+    ).get(...mpWhere.params, weekStart);
 
     // 2. Alle Pantry-Items laden (für den Fall, dass kein Plan existiert)
+    const pWhere = householdWhereClause(userId, householdId);
     const pantryItems = db.prepare(
-      'SELECT * FROM pantry WHERE user_id = ? AND (amount > 0 OR is_permanent = 1) ORDER BY category, ingredient_name'
-    ).all(userId);
+      `SELECT * FROM pantry WHERE (${pWhere.clause}) AND (amount > 0 OR is_permanent = 1) ORDER BY category, ingredient_name`
+    ).all(...pWhere.params);
 
     // 3. Verfügbare Wochen mit Rezepten laden
+    const mpWhere2 = householdWhereClause(userId, householdId, 'mp');
     const availableWeeks = db.prepare(`
       SELECT mp.week_start,
              COUNT(mpe.id) as meal_count,
              mp.is_locked
       FROM meal_plans mp
       JOIN meal_plan_entries mpe ON mpe.meal_plan_id = mp.id
-      WHERE mp.user_id = ?
+      WHERE (${mpWhere2.clause})
       GROUP BY mp.id
       HAVING meal_count > 0
       ORDER BY mp.week_start DESC
       LIMIT 20
-    `).all(userId);
+    `).all(...mpWhere2.params);
 
     // Kein Plan → nur unassigned zurückgeben
     if (!plan) {
@@ -145,7 +150,7 @@ export default async function pantryRoutes(fastify) {
     }
 
     // Allokation über den shared Service berechnen
-    const { recipes, unassigned } = calculatePantryAllocations(userId, plan.id);
+    const { recipes, unassigned } = calculatePantryAllocations(userId, plan.id, householdId);
 
     return {
       recipes,
@@ -174,10 +179,12 @@ export default async function pantryRoutes(fastify) {
     },
   }, async (request) => {
     const userId = request.user.id;
+    const { householdId } = request;
     const { category, expiring } = request.query;
 
-    let query = 'SELECT * FROM pantry WHERE user_id = ? AND (amount > 0 OR is_permanent = 1)';
-    const params = [userId];
+    const hw = householdWhereClause(userId, householdId);
+    let query = `SELECT * FROM pantry WHERE (${hw.clause}) AND (amount > 0 OR is_permanent = 1)`;
+    const params = [...hw.params];
 
     if (category) {
       query += ' AND category = ?';
@@ -194,14 +201,16 @@ export default async function pantryRoutes(fastify) {
     const items = db.prepare(query).all(...params);
 
     // Kategorien für Filter
+    const hwCat = householdWhereClause(userId, householdId);
     const categories = db.prepare(
-      'SELECT DISTINCT category FROM pantry WHERE user_id = ? AND (amount > 0 OR is_permanent = 1) ORDER BY category'
-    ).all(userId);
+      `SELECT DISTINCT category FROM pantry WHERE (${hwCat.clause}) AND (amount > 0 OR is_permanent = 1) ORDER BY category`
+    ).all(...hwCat.params);
 
     // Bald ablaufende Items zählen
+    const hwExp = householdWhereClause(userId, householdId);
     const expiringCount = db.prepare(
-      `SELECT COUNT(*) as count FROM pantry WHERE user_id = ? AND (amount > 0 OR is_permanent = 1) AND expiry_date IS NOT NULL AND expiry_date <= date('now', '+7 days')`
-    ).get(userId);
+      `SELECT COUNT(*) as count FROM pantry WHERE (${hwExp.clause}) AND (amount > 0 OR is_permanent = 1) AND expiry_date IS NOT NULL AND expiry_date <= date('now', '+7 days')`
+    ).get(...hwExp.params);
 
     return {
       items,
@@ -235,25 +244,29 @@ export default async function pantryRoutes(fastify) {
     },
   }, async (request, reply) => {
     const userId = request.user.id;
+    const { householdId } = request;
     const { ingredient_name, amount, unit, category, expiry_date, notes, is_permanent } = request.body;
 
     // Prüfen ob Zutat schon existiert -> Menge addieren
+    const hwEx = householdWhereClause(userId, householdId);
     const existing = db.prepare(
-      'SELECT * FROM pantry WHERE user_id = ? AND LOWER(ingredient_name) = LOWER(?)'
-    ).get(userId, ingredient_name);
+      `SELECT * FROM pantry WHERE (${hwEx.clause}) AND LOWER(ingredient_name) = LOWER(?)`
+    ).get(...hwEx.params, ingredient_name);
 
     if (existing) {
       db.prepare(
         'UPDATE pantry SET amount = amount + ?, is_permanent = COALESCE(?, is_permanent), updated_at = CURRENT_TIMESTAMP WHERE id = ?'
       ).run(amount, is_permanent ?? null, existing.id);
 
+      broadcastToHousehold(householdId, 'pantry:updated', { id: existing.id }, userId);
       return { id: existing.id, message: 'Menge aktualisiert!' };
     }
 
     const result = db.prepare(
-      'INSERT INTO pantry (user_id, ingredient_name, amount, unit, category, expiry_date, notes, is_permanent) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
-    ).run(userId, ingredient_name, amount, unit, category || 'Sonstiges', expiry_date, notes, is_permanent || 0);
+      'INSERT INTO pantry (user_id, household_id, ingredient_name, amount, unit, category, expiry_date, notes, is_permanent) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+    ).run(userId, householdId || null, ingredient_name, amount, unit, category || 'Sonstiges', expiry_date, notes, is_permanent || 0);
 
+    broadcastToHousehold(householdId, 'pantry:created', { id: result.lastInsertRowid }, userId);
     return reply.status(201).send({
       id: result.lastInsertRowid,
       message: 'Vorrat hinzugefügt!',
@@ -278,10 +291,11 @@ export default async function pantryRoutes(fastify) {
         notes = COALESCE(?, notes),
         is_permanent = COALESCE(?, is_permanent),
         updated_at = CURRENT_TIMESTAMP
-      WHERE id = ? AND user_id = ?
-    `).run(amount, unit, category, expiry_date, notes, is_permanent ?? null, request.params.id, request.user.id);
+      WHERE id = ? AND (${householdWhereClause(request.user.id, request.householdId).clause})
+    `).run(amount, unit, category, expiry_date, notes, is_permanent ?? null, request.params.id, ...householdWhereClause(request.user.id, request.householdId).params);
 
     if (result.changes === 0) return reply.status(404).send({ error: 'Vorrat nicht gefunden' });
+    broadcastToHousehold(request.householdId, 'pantry:updated', { id: request.params.id }, request.user.id);
     return { message: 'Vorrat aktualisiert!' };
   });
 
@@ -292,11 +306,13 @@ export default async function pantryRoutes(fastify) {
   fastify.delete('/:id', {
     schema: { description: 'Vorrat löschen', tags: ['Vorratsschrank'], security: [{ bearerAuth: [] }] },
   }, async (request, reply) => {
+    const hwDel = householdWhereClause(request.user.id, request.householdId);
     const result = db.prepare(
-      'DELETE FROM pantry WHERE id = ? AND user_id = ?'
-    ).run(request.params.id, request.user.id);
+      `DELETE FROM pantry WHERE id = ? AND (${hwDel.clause})`
+    ).run(request.params.id, ...hwDel.params);
 
     if (result.changes === 0) return reply.status(404).send({ error: 'Vorrat nicht gefunden' });
+    broadcastToHousehold(request.householdId, 'pantry:deleted', { id: request.params.id }, request.user.id);
     return { message: 'Vorrat entfernt' };
   });
 
@@ -312,11 +328,13 @@ export default async function pantryRoutes(fastify) {
     },
   }, async (request, reply) => {
     const userId = request.user.id;
+    const { householdId } = request;
 
+    const hwExport = householdWhereClause(userId, householdId);
     const items = db.prepare(`
-      SELECT * FROM pantry WHERE user_id = ?
+      SELECT * FROM pantry WHERE (${hwExport.clause})
       ORDER BY category, ingredient_name
-    `).all(userId);
+    `).all(...hwExport.params);
 
     const exportData = {
       version: '1.0',
@@ -351,6 +369,7 @@ export default async function pantryRoutes(fastify) {
     },
   }, async (request, reply) => {
     const userId = request.user.id;
+    const { householdId } = request;
     let items;
 
     // JSON-Body oder Multipart akzeptieren
@@ -388,11 +407,12 @@ export default async function pantryRoutes(fastify) {
     let skipped = 0;
     const errors = [];
 
+    const hwImp = householdWhereClause(userId, householdId);
     const findExisting = db.prepare(
-      'SELECT * FROM pantry WHERE user_id = ? AND LOWER(ingredient_name) = LOWER(?)'
+      `SELECT * FROM pantry WHERE (${hwImp.clause}) AND LOWER(ingredient_name) = LOWER(?)`
     );
     const insertItem = db.prepare(
-      'INSERT INTO pantry (user_id, ingredient_name, amount, unit, category, expiry_date, notes, is_permanent) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+      'INSERT INTO pantry (user_id, household_id, ingredient_name, amount, unit, category, expiry_date, notes, is_permanent) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
     );
     const updateAmount = db.prepare(
       'UPDATE pantry SET amount = amount + ?, unit = COALESCE(?, unit), category = COALESCE(?, category), expiry_date = COALESCE(?, expiry_date), notes = COALESCE(?, notes), is_permanent = COALESCE(?, is_permanent), updated_at = CURRENT_TIMESTAMP WHERE id = ?'
@@ -413,12 +433,12 @@ export default async function pantryRoutes(fastify) {
           const notes = item.notes ? String(item.notes).trim().slice(0, 500) : null;
           const isPermanent = item.is_permanent ? 1 : 0;
 
-          const existing = findExisting.get(userId, name);
+          const existing = findExisting.get(...hwImp.params, name);
           if (existing) {
             updateAmount.run(amount, unit, category, expiry_date, notes, isPermanent || null, existing.id);
             updated++;
           } else {
-            insertItem.run(userId, name, amount, unit, category, expiry_date, notes, isPermanent);
+            insertItem.run(userId, householdId || null, name, amount, unit, category, expiry_date, notes, isPermanent);
             imported++;
           }
         } catch (err) {
@@ -459,12 +479,14 @@ export default async function pantryRoutes(fastify) {
   }, async (request) => {
     const { ids } = request.body;
     const userId = request.user.id;
+    const { householdId } = request;
 
-    // Nur Items des eigenen Benutzers löschen
+    // Nur Items des eigenen Benutzers/Haushalts löschen
+    const hwBatch = householdWhereClause(userId, householdId);
     const placeholders = ids.map(() => '?').join(',');
     const result = db.prepare(
-      `DELETE FROM pantry WHERE id IN (${placeholders}) AND user_id = ?`
-    ).run(...ids, userId);
+      `DELETE FROM pantry WHERE id IN (${placeholders}) AND (${hwBatch.clause})`
+    ).run(...ids, ...hwBatch.params);
 
     return {
       message: `${result.changes} Vorrat${result.changes !== 1 ? 'e' : ''} entfernt`,
@@ -491,9 +513,10 @@ export default async function pantryRoutes(fastify) {
     },
   }, async (request, reply) => {
     const { amount } = request.body;
+    const hwUse = householdWhereClause(request.user.id, request.householdId);
     const item = db.prepare(
-      'SELECT * FROM pantry WHERE id = ? AND user_id = ?'
-    ).get(request.params.id, request.user.id);
+      `SELECT * FROM pantry WHERE id = ? AND (${hwUse.clause})`
+    ).get(request.params.id, ...hwUse.params);
 
     if (!item) return reply.status(404).send({ error: 'Vorrat nicht gefunden' });
 
@@ -547,12 +570,14 @@ export default async function pantryRoutes(fastify) {
     },
   }, async (request) => {
     const userId = request.user.id;
+    const { householdId } = request;
     const { ingredients } = request.body;
 
     // Alias-Tabelle laden
+    const hwAlias = householdWhereClause(userId, householdId);
     const aliasRows = db.prepare(
-      'SELECT alias_name, canonical_name FROM ingredient_aliases WHERE user_id = ?'
-    ).all(userId);
+      `SELECT alias_name, canonical_name FROM ingredient_aliases WHERE (${hwAlias.clause})`
+    ).all(...hwAlias.params);
     const aliasMap = new Map();
     for (const row of aliasRows) {
       aliasMap.set(row.alias_name.toLowerCase(), row.canonical_name.toLowerCase());
@@ -562,10 +587,11 @@ export default async function pantryRoutes(fastify) {
       return aliasMap.get(name.toLowerCase()) || name.toLowerCase();
     }
 
-    // Alle Pantry-Items des Users laden
+    // Alle Pantry-Items des Users/Haushalts laden
+    const hwCheck = householdWhereClause(userId, householdId);
     const pantryItems = db.prepare(
-      'SELECT * FROM pantry WHERE user_id = ?'
-    ).all(userId);
+      `SELECT * FROM pantry WHERE (${hwCheck.clause})`
+    ).all(...hwCheck.params);
 
     // Pantry-Pool aufbauen (resolved name → item)
     const pantryPool = {};

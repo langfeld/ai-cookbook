@@ -6,10 +6,10 @@
  * ausgeschlossen werden (z.B. saisonale Zutaten nicht verfügbar).
  */
 
-import db from '../config/database.js';
+import db, { householdWhereClause } from '../config/database.js';
 
 export default async function recipeBlockRoutes(fastify) {
-  fastify.addHook('onRequest', fastify.authenticate);
+  fastify.addHook('onRequest', fastify.resolveHousehold);
 
   // ─────────────────────────────────────────────
   // GET / – Alle aktiven Sperren abrufen
@@ -30,9 +30,10 @@ export default async function recipeBlockRoutes(fastify) {
     const userId = request.user.id;
     const includeExpired = request.query.includeExpired === true || request.query.includeExpired === 'true';
 
+    const hhWhere = householdWhereClause(userId, request.householdId, 'rb');
     const whereClause = includeExpired
-      ? 'WHERE rb.user_id = ?'
-      : 'WHERE rb.user_id = ? AND rb.blocked_until >= date(\'now\')';
+      ? `WHERE ${hhWhere.clause}`
+      : `WHERE (${hhWhere.clause}) AND rb.blocked_until >= date('now')`;
 
     const blocks = db.prepare(`
       SELECT rb.*, r.title as recipe_title, r.image_url
@@ -40,7 +41,7 @@ export default async function recipeBlockRoutes(fastify) {
       JOIN recipes r ON rb.recipe_id = r.id
       ${whereClause}
       ORDER BY rb.blocked_until ASC
-    `).all(userId);
+    `).all(...hhWhere.params);
 
     return { blocks };
   });
@@ -68,7 +69,8 @@ export default async function recipeBlockRoutes(fastify) {
     const { recipe_id, weeks, reason } = request.body;
 
     // Rezept prüfen
-    const recipe = db.prepare('SELECT id, title FROM recipes WHERE id = ? AND user_id = ?').get(recipe_id, userId);
+    const hhRecipe = householdWhereClause(userId, request.householdId);
+    const recipe = db.prepare(`SELECT id, title FROM recipes WHERE id = ? AND (${hhRecipe.clause})`).get(recipe_id, ...hhRecipe.params);
     if (!recipe) {
       return reply.status(404).send({ error: 'Rezept nicht gefunden' });
     }
@@ -82,9 +84,10 @@ export default async function recipeBlockRoutes(fastify) {
     const blockedUntilStr = `${y}-${m}-${dd}`;
 
     // Upsert: Falls Sperre existiert, aktualisieren
+    const hhBlock = householdWhereClause(userId, request.householdId);
     const existing = db.prepare(
-      'SELECT id FROM recipe_blocks WHERE user_id = ? AND recipe_id = ?'
-    ).get(userId, recipe_id);
+      `SELECT id FROM recipe_blocks WHERE (${hhBlock.clause}) AND recipe_id = ?`
+    ).get(...hhBlock.params, recipe_id);
 
     if (existing) {
       db.prepare(
@@ -104,8 +107,8 @@ export default async function recipeBlockRoutes(fastify) {
     }
 
     const { lastInsertRowid } = db.prepare(
-      'INSERT INTO recipe_blocks (user_id, recipe_id, blocked_until, reason) VALUES (?, ?, ?, ?)'
-    ).run(userId, recipe_id, blockedUntilStr, reason || null);
+      'INSERT INTO recipe_blocks (user_id, household_id, recipe_id, blocked_until, reason) VALUES (?, ?, ?, ?, ?)'
+    ).run(userId, request.householdId || null, recipe_id, blockedUntilStr, reason || null);
 
     return {
       message: `„${recipe.title}" für ${weeks} Woche${weeks > 1 ? 'n' : ''} gesperrt.`,
@@ -137,9 +140,10 @@ export default async function recipeBlockRoutes(fastify) {
     const userId = request.user.id;
     const { id } = request.params;
 
+    const hhWhere = householdWhereClause(userId, request.householdId);
     const block = db.prepare(
-      'SELECT id FROM recipe_blocks WHERE id = ? AND user_id = ?'
-    ).get(id, userId);
+      `SELECT id FROM recipe_blocks WHERE id = ? AND (${hhWhere.clause})`
+    ).get(id, ...hhWhere.params);
 
     if (!block) {
       return reply.status(404).send({ error: 'Sperre nicht gefunden' });
@@ -168,9 +172,10 @@ export default async function recipeBlockRoutes(fastify) {
     const userId = request.user.id;
     const { recipeId } = request.params;
 
+    const hhWhere = householdWhereClause(userId, request.householdId);
     const result = db.prepare(
-      'DELETE FROM recipe_blocks WHERE user_id = ? AND recipe_id = ?'
-    ).run(userId, recipeId);
+      `DELETE FROM recipe_blocks WHERE (${hhWhere.clause}) AND recipe_id = ?`
+    ).run(...hhWhere.params, recipeId);
 
     if (result.changes === 0) {
       return reply.status(404).send({ error: 'Keine Sperre für dieses Rezept gefunden' });
@@ -191,14 +196,15 @@ export default async function recipeBlockRoutes(fastify) {
   }, async (request, reply) => {
     const userId = request.user.id;
 
+    const hhWhere = householdWhereClause(userId, request.householdId, 'rb');
     const blocks = db.prepare(`
       SELECT rb.*, r.title as recipe_title, u.username as owner
       FROM recipe_blocks rb
       JOIN recipes r ON rb.recipe_id = r.id
       JOIN users u ON rb.user_id = u.id
-      WHERE rb.user_id = ?
+      WHERE ${hhWhere.clause}
       ORDER BY rb.blocked_until ASC
-    `).all(userId);
+    `).all(...hhWhere.params);
 
     const exportData = {
       version: '1.0',
@@ -267,14 +273,16 @@ export default async function recipeBlockRoutes(fastify) {
     let updated = 0;
     let skipped = 0;
 
+    const hhRecipe = householdWhereClause(userId, request.householdId);
+    const hhBlock = householdWhereClause(userId, request.householdId);
     const findRecipe = db.prepare(
-      'SELECT id FROM recipes WHERE user_id = ? AND LOWER(title) = LOWER(?)'
+      `SELECT id FROM recipes WHERE (${hhRecipe.clause}) AND LOWER(title) = LOWER(?)`
     );
     const findExisting = db.prepare(
-      'SELECT id FROM recipe_blocks WHERE user_id = ? AND recipe_id = ?'
+      `SELECT id FROM recipe_blocks WHERE (${hhBlock.clause}) AND recipe_id = ?`
     );
     const insertBlock = db.prepare(
-      'INSERT INTO recipe_blocks (user_id, recipe_id, blocked_until, reason) VALUES (?, ?, ?, ?)'
+      'INSERT INTO recipe_blocks (user_id, household_id, recipe_id, blocked_until, reason) VALUES (?, ?, ?, ?, ?)'
     );
     const updateBlock = db.prepare(
       'UPDATE recipe_blocks SET blocked_until = ?, reason = ?, created_at = CURRENT_TIMESTAMP WHERE id = ?'
@@ -285,19 +293,19 @@ export default async function recipeBlockRoutes(fastify) {
         // Rezept per Titel oder ID finden
         let recipeId = block.recipe_id;
         if (block.recipe_title) {
-          const recipe = findRecipe.get(userId, block.recipe_title);
+          const recipe = findRecipe.get(...hhRecipe.params, block.recipe_title);
           if (recipe) recipeId = recipe.id;
         }
         if (!recipeId) { skipped++; continue; }
 
         if (!block.blocked_until || !/^\d{4}-\d{2}-\d{2}/.test(block.blocked_until)) { skipped++; continue; }
 
-        const existing = findExisting.get(userId, recipeId);
+        const existing = findExisting.get(...hhBlock.params, recipeId);
         if (existing) {
           updateBlock.run(String(block.blocked_until).slice(0, 30), block.reason ? String(block.reason).trim().slice(0, 500) : null, existing.id);
           updated++;
         } else {
-          insertBlock.run(userId, recipeId, String(block.blocked_until).slice(0, 30), block.reason ? String(block.reason).trim().slice(0, 500) : null);
+          insertBlock.run(userId, request.householdId || null, recipeId, String(block.blocked_until).slice(0, 30), block.reason ? String(block.reason).trim().slice(0, 500) : null);
           imported++;
         }
       }

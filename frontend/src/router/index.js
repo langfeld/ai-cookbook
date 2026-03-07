@@ -92,6 +92,18 @@ const routes = [
     component: lazyLoad(() => import('@/views/UserDataManagementView.vue')),
     meta: { requiresAuth: true, title: 'Meine Daten' },
   },
+  {
+    path: '/household',
+    name: 'household',
+    component: lazyLoad(() => import('@/views/HouseholdView.vue')),
+    meta: { requiresAuth: true, title: 'Haushalt' },
+  },
+  {
+    path: '/shared/:token',
+    name: 'shared-recipe',
+    component: lazyLoad(() => import('@/views/SharedRecipeView.vue')),
+    meta: { requiresAuth: false, title: 'Geteiltes Rezept' },
+  },
   // --- Admin-Routen ---
   {
     path: '/admin',

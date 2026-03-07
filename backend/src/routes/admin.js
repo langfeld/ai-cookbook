@@ -39,6 +39,9 @@ const ALLOWED_SETTINGS = new Set([
   'ollama_model',
   // REWE
   'rewe_enabled',
+  // Haushalte
+  'max_household_members',
+  'max_households_per_user',
 ]);
 
 export default async function adminRoutes(fastify) {
@@ -82,6 +85,25 @@ export default async function adminRoutes(fastify) {
     const recipeBlockCount = db.prepare('SELECT COUNT(*) as count FROM recipe_blocks').get().count;
     const blockedIngredientCount = db.prepare('SELECT COUNT(*) as count FROM blocked_ingredients').get().count;
     const collectionCount = db.prepare('SELECT COUNT(*) as count FROM collections').get().count;
+
+    // Haushalt-Statistiken
+    const householdCount = db.prepare('SELECT COUNT(*) as count FROM households').get().count;
+    const householdMemberCount = db.prepare('SELECT COUNT(*) as count FROM household_members').get().count;
+    const avgMembersPerHousehold = householdCount > 0
+      ? +(householdMemberCount / householdCount).toFixed(1)
+      : 0;
+
+    // Aktivste Haushalte (nach Aktivitäts-Log-Einträgen)
+    const mostActiveHouseholds = db.prepare(`
+      SELECT h.id, h.name,
+        (SELECT COUNT(*) FROM household_members WHERE household_id = h.id) as member_count,
+        COUNT(ha.id) as activity_count
+      FROM households h
+      LEFT JOIN household_activity ha ON h.id = ha.household_id
+      GROUP BY h.id
+      ORDER BY activity_count DESC
+      LIMIT 5
+    `).all();
 
     // Top 10 beliebteste Rezepte
     const popularRecipes = db.prepare(`
@@ -144,6 +166,10 @@ export default async function adminRoutes(fastify) {
       blocked_ingredients: blockedIngredientCount,
       recipe_blocks: recipeBlockCount,
       total_collections: collectionCount,
+      total_households: householdCount,
+      total_household_members: householdMemberCount,
+      avg_members_per_household: avgMembersPerHousehold,
+      most_active_households: mostActiveHouseholds,
       storage_size: storageSize,
       db_size: dbSize?.size || 0,
       popular_recipes: popularRecipes,
@@ -339,6 +365,78 @@ export default async function adminRoutes(fastify) {
     logAdminAction(request.user.id, 'Benutzer gelöscht', `${user.username} (ID ${id})`);
 
     return { message: `Benutzer "${user.username}" und alle Daten gelöscht.` };
+  });
+
+  // ============================================
+  // GET /api/admin/households - Alle Haushalte
+  // ============================================
+  fastify.get('/households', {
+    schema: {
+      description: 'Alle Haushalte mit Mitgliederzahlen auflisten',
+      tags: ['Admin'],
+      security: [{ bearerAuth: [] }],
+    },
+  }, async () => {
+    const households = db.prepare(`
+      SELECT h.id, h.name, h.created_by, h.invite_code, h.invite_code_expires_at,
+             h.created_at, h.updated_at,
+             u.username as created_by_username,
+             (SELECT COUNT(*) FROM household_members WHERE household_id = h.id) as member_count
+      FROM households h
+      LEFT JOIN users u ON h.created_by = u.id
+      ORDER BY h.created_at DESC
+    `).all();
+
+    // Mitglieder für jeden Haushalt laden
+    for (const hh of households) {
+      hh.members = db.prepare(`
+        SELECT u.id, u.username, u.display_name, hm.joined_at, hm.is_default
+        FROM household_members hm
+        JOIN users u ON hm.user_id = u.id
+        WHERE hm.household_id = ?
+        ORDER BY hm.joined_at ASC
+      `).all(hh.id);
+    }
+
+    return { households };
+  });
+
+  // ============================================
+  // DELETE /api/admin/households/:id - Haushalt force-löschen
+  // ============================================
+  fastify.delete('/households/:id', {
+    schema: {
+      description: 'Haushalt als Admin endgültig löschen (Daten werden privatisiert)',
+      tags: ['Admin'],
+      security: [{ bearerAuth: [] }],
+      params: {
+        type: 'object',
+        properties: { id: { type: 'integer' } },
+      },
+    },
+  }, async (request, reply) => {
+    const { id } = request.params;
+
+    const household = db.prepare('SELECT id, name FROM households WHERE id = ?').get(id);
+    if (!household) {
+      return reply.status(404).send({ error: 'Haushalt nicht gefunden.' });
+    }
+
+    db.transaction(() => {
+      // Alle Haushalt-Daten zurück zu privaten Daten machen (household_id = NULL)
+      db.prepare('UPDATE recipes SET household_id = NULL WHERE household_id = ?').run(id);
+      for (const table of ['categories', 'collections', 'meal_plans', 'shopping_lists',
+                           'pantry', 'ingredient_aliases', 'blocked_ingredients', 'recipe_blocks']) {
+        db.prepare(`UPDATE ${table} SET household_id = NULL WHERE household_id = ?`).run(id);
+      }
+
+      // Haushalt löschen (CASCADE löscht household_members + household_activity)
+      db.prepare('DELETE FROM households WHERE id = ?').run(id);
+    })();
+
+    logAdminAction(request.user.id, 'Haushalt gelöscht', `"${household.name}" (ID ${id})`);
+
+    return { message: `Haushalt "${household.name}" gelöscht. Daten wurden privatisiert.` };
   });
 
   // ============================================

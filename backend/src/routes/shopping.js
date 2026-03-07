@@ -6,13 +6,15 @@
  */
 
 import db from '../config/database.js';
+import { householdWhereClause } from '../config/database.js';
 import { generateShoppingList, saveShoppingList, processPurchase } from '../services/shopping-list.js';
 import { buildReweProductUrl, calculatePackagesNeeded, parsePackageSize } from '../services/rewe-api.js';
 import { convertToBaseUnit, getUnitType, normalizeUnit, unitsCompatible } from '../utils/helpers.js';
 import { calculatePantryAllocations } from '../services/pantry-allocation.js';
+import { broadcastToHousehold } from './household-events.js';
 
 export default async function shoppingRoutes(fastify) {
-  fastify.addHook('onRequest', fastify.authenticate);
+  fastify.addHook('onRequest', fastify.resolveHousehold);
 
   /**
    * POST /api/shopping/generate
@@ -39,24 +41,27 @@ export default async function shoppingRoutes(fastify) {
     },
   }, async (request, reply) => {
     const userId = request.user.id;
+    const householdId = request.householdId;
     const { mealPlanId, name, excludePastDays = true } = request.body;
 
     // Prüfen ob Plan existiert und dem User gehört
+    const mpWhere = householdWhereClause(userId, householdId);
     const plan = db.prepare(
-      'SELECT * FROM meal_plans WHERE id = ? AND user_id = ?'
-    ).get(mealPlanId, userId);
+      `SELECT * FROM meal_plans WHERE id = ? AND (${mpWhere.clause})`
+    ).get(mealPlanId, ...mpWhere.params);
 
     if (!plan) {
       return reply.status(404).send({ error: 'Wochenplan nicht gefunden' });
     }
 
     // Einkaufsliste generieren (mit Vorratsschrank-Abgleich + KI-Aggregation)
-    const shoppingData = await generateShoppingList(userId, mealPlanId, { excludePastDays });
+    const shoppingData = await generateShoppingList(userId, householdId, mealPlanId, { excludePastDays });
 
     // Manuelle Items aus der aktuellen aktiven Liste sichern (bevor sie deaktiviert wird)
+    const slWhere = householdWhereClause(userId, householdId);
     const oldList = db.prepare(
-      'SELECT id FROM shopping_lists WHERE user_id = ? AND is_active = 1 ORDER BY created_at DESC LIMIT 1'
-    ).get(userId);
+      `SELECT id FROM shopping_lists WHERE (${slWhere.clause}) AND is_active = 1 ORDER BY created_at DESC LIMIT 1`
+    ).get(...slWhere.params);
     let manualItems = [];
     if (oldList) {
       manualItems = db.prepare(
@@ -65,7 +70,7 @@ export default async function shoppingRoutes(fastify) {
     }
 
     // Speichern (deaktiviert alte Liste, erstellt neue)
-    const listId = saveShoppingList(userId, mealPlanId, shoppingData.items, name);
+    const listId = saveShoppingList(userId, householdId, mealPlanId, shoppingData.items, name);
 
     // Manuelle Items in die neue Liste übernehmen
     if (manualItems.length > 0) {
@@ -77,6 +82,7 @@ export default async function shoppingRoutes(fastify) {
       }
     }
 
+    broadcastToHousehold(householdId, 'shopping:generated', { list_id: listId }, userId);
     return {
       listId,
       ...shoppingData,
@@ -92,9 +98,10 @@ export default async function shoppingRoutes(fastify) {
   fastify.get('/list', {
     schema: { description: 'Aktive Einkaufsliste', tags: ['Einkaufsliste'], security: [{ bearerAuth: [] }] },
   }, async (request) => {
+    const hhWhere = householdWhereClause(request.user.id, request.householdId);
     const list = db.prepare(
-      'SELECT * FROM shopping_lists WHERE user_id = ? AND is_active = 1 ORDER BY created_at DESC LIMIT 1'
-    ).get(request.user.id);
+      `SELECT * FROM shopping_lists WHERE (${hhWhere.clause}) AND is_active = 1 ORDER BY created_at DESC LIMIT 1`
+    ).get(...hhWhere.params);
 
     if (!list) {
       return { list: null, items: [] };
@@ -160,15 +167,16 @@ export default async function shoppingRoutes(fastify) {
   fastify.get('/lists', {
     schema: { description: 'Alle Einkaufslisten', tags: ['Einkaufsliste'], security: [{ bearerAuth: [] }] },
   }, async (request) => {
+    const hhWhere = householdWhereClause(request.user.id, request.householdId, 'sl');
     const lists = db.prepare(`
       SELECT sl.*, COUNT(sli.id) as item_count,
         SUM(CASE WHEN sli.is_checked = 1 THEN 1 ELSE 0 END) as checked_count
       FROM shopping_lists sl
       LEFT JOIN shopping_list_items sli ON sl.id = sli.shopping_list_id
-      WHERE sl.user_id = ?
+      WHERE ${hhWhere.clause}
       GROUP BY sl.id
       ORDER BY sl.created_at DESC
-    `).all(request.user.id);
+    `).all(...hhWhere.params);
 
     return { lists };
   });
@@ -180,9 +188,10 @@ export default async function shoppingRoutes(fastify) {
   fastify.get('/lists/:id', {
     schema: { description: 'Einkaufsliste mit Items laden', tags: ['Einkaufsliste'], security: [{ bearerAuth: [] }] },
   }, async (request, reply) => {
+    const hhWhere = householdWhereClause(request.user.id, request.householdId);
     const list = db.prepare(
-      'SELECT * FROM shopping_lists WHERE id = ? AND user_id = ?'
-    ).get(request.params.id, request.user.id);
+      `SELECT * FROM shopping_lists WHERE id = ? AND (${hhWhere.clause})`
+    ).get(request.params.id, ...hhWhere.params);
 
     if (!list) {
       return reply.status(404).send({ error: 'Einkaufsliste nicht gefunden' });
@@ -247,19 +256,22 @@ export default async function shoppingRoutes(fastify) {
     schema: { description: 'Einkaufsliste reaktivieren', tags: ['Einkaufsliste'], security: [{ bearerAuth: [] }] },
   }, async (request, reply) => {
     const userId = request.user.id;
+    const householdId = request.householdId;
     const listId = Number(request.params.id);
 
     // Prüfen ob Liste existiert und dem User gehört
+    const hhWhere = householdWhereClause(userId, householdId);
     const list = db.prepare(
-      'SELECT * FROM shopping_lists WHERE id = ? AND user_id = ?'
-    ).get(listId, userId);
+      `SELECT * FROM shopping_lists WHERE id = ? AND (${hhWhere.clause})`
+    ).get(listId, ...hhWhere.params);
 
     if (!list) {
       return reply.status(404).send({ error: 'Einkaufsliste nicht gefunden' });
     }
 
     // Alle anderen Listen deaktivieren, diese aktivieren
-    db.prepare('UPDATE shopping_lists SET is_active = 0 WHERE user_id = ?').run(userId);
+    const deactWhere = householdWhereClause(userId, householdId);
+    db.prepare(`UPDATE shopping_lists SET is_active = 0 WHERE ${deactWhere.clause}`).run(...deactWhere.params);
     db.prepare('UPDATE shopping_lists SET is_active = 1 WHERE id = ?').run(listId);
 
     return { message: 'Einkaufsliste aktiviert', listId };
@@ -279,20 +291,23 @@ export default async function shoppingRoutes(fastify) {
     const body = request.body || {};
     const is_checked = typeof body.is_checked === 'number' ? body.is_checked : undefined;
 
+    const hhWhere = householdWhereClause(request.user.id, request.householdId);
     if (is_checked !== undefined) {
       // Idempotenter Modus: expliziter Zielwert (für Offline-Queue)
       db.prepare(`
         UPDATE shopping_list_items SET is_checked = ?
-        WHERE id = ? AND shopping_list_id IN (SELECT id FROM shopping_lists WHERE user_id = ?)
-      `).run(is_checked, request.params.id, request.user.id);
+        WHERE id = ? AND shopping_list_id IN (SELECT id FROM shopping_lists WHERE (${hhWhere.clause}))
+      `).run(is_checked, request.params.id, ...hhWhere.params);
     } else {
       // Legacy-Modus: Toggle (Rückwärtskompatibilität)
       db.prepare(`
         UPDATE shopping_list_items SET is_checked = NOT is_checked
-        WHERE id = ? AND shopping_list_id IN (SELECT id FROM shopping_lists WHERE user_id = ?)
-      `).run(request.params.id, request.user.id);
+        WHERE id = ? AND shopping_list_id IN (SELECT id FROM shopping_lists WHERE (${hhWhere.clause}))
+      `).run(request.params.id, ...hhWhere.params);
     }
 
+    const checkedItem = db.prepare('SELECT shopping_list_id FROM shopping_list_items WHERE id = ?').get(request.params.id);
+    broadcastToHousehold(request.householdId, 'shopping:updated', { list_id: checkedItem?.shopping_list_id }, request.user.id);
     return { message: 'Status aktualisiert' };
   });
 
@@ -317,17 +332,19 @@ export default async function shoppingRoutes(fastify) {
     },
   }, async (request, reply) => {
     const userId = request.user.id;
+    const householdId = request.householdId;
     const { ingredient_name, amount, unit } = request.body;
 
     // Aktive Liste finden oder neue erstellen
+    const hhWhere = householdWhereClause(userId, householdId);
     let list = db.prepare(
-      'SELECT * FROM shopping_lists WHERE user_id = ? AND is_active = 1 ORDER BY created_at DESC LIMIT 1'
-    ).get(userId);
+      `SELECT * FROM shopping_lists WHERE (${hhWhere.clause}) AND is_active = 1 ORDER BY created_at DESC LIMIT 1`
+    ).get(...hhWhere.params);
 
     if (!list) {
       const { lastInsertRowid } = db.prepare(
-        'INSERT INTO shopping_lists (user_id, name) VALUES (?, ?)'
-      ).run(userId, 'Einkaufsliste');
+        'INSERT INTO shopping_lists (user_id, name, household_id) VALUES (?, ?, ?)'
+      ).run(userId, 'Einkaufsliste', householdId || null);
       list = { id: lastInsertRowid };
     }
 
@@ -360,10 +377,11 @@ export default async function shoppingRoutes(fastify) {
       security: [{ bearerAuth: [] }],
     },
   }, async (request, reply) => {
+    const hhWhere = householdWhereClause(request.user.id, request.householdId);
     const result = db.prepare(`
       DELETE FROM shopping_list_items
-      WHERE id = ? AND shopping_list_id IN (SELECT id FROM shopping_lists WHERE user_id = ?)
-    `).run(request.params.id, request.user.id);
+      WHERE id = ? AND shopping_list_id IN (SELECT id FROM shopping_lists WHERE (${hhWhere.clause}))
+    `).run(request.params.id, ...hhWhere.params);
 
     if (result.changes === 0) {
       return reply.status(404).send({ error: 'Artikel nicht gefunden' });
@@ -397,11 +415,12 @@ export default async function shoppingRoutes(fastify) {
     const { productId, productName, price, packageSize, imageUrl } = request.body;
 
     // 1. Item in der Einkaufsliste aktualisieren (inkl. Menge/Einheit für Mengenberechnung)
+    const hhWhere = householdWhereClause(request.user.id, request.householdId, 'sl');
     const item = db.prepare(`
       SELECT sli.id, sli.ingredient_name, sli.amount, sli.unit FROM shopping_list_items sli
       JOIN shopping_lists sl ON sli.shopping_list_id = sl.id
-      WHERE sli.id = ? AND sl.user_id = ?
-    `).get(request.params.id, request.user.id);
+      WHERE sli.id = ? AND (${hhWhere.clause})
+    `).get(request.params.id, ...hhWhere.params);
 
     if (!item) {
       return reply.status(404).send({ error: 'Artikel nicht gefunden' });
@@ -465,11 +484,12 @@ export default async function shoppingRoutes(fastify) {
     },
   }, async (request, reply) => {
     const { quantity } = request.body;
+    const hhWhere = householdWhereClause(request.user.id, request.householdId);
     const result = db.prepare(`
       UPDATE shopping_list_items SET rewe_quantity = ?
       WHERE id = ? AND rewe_product_id IS NOT NULL
-        AND shopping_list_id IN (SELECT id FROM shopping_lists WHERE user_id = ?)
-    `).run(quantity, request.params.id, request.user.id);
+        AND shopping_list_id IN (SELECT id FROM shopping_lists WHERE (${hhWhere.clause}))
+    `).run(quantity, request.params.id, ...hhWhere.params);
 
     if (result.changes === 0) {
       return reply.status(404).send({ error: 'Artikel nicht gefunden oder kein REWE-Produkt zugewiesen' });
@@ -490,13 +510,15 @@ export default async function shoppingRoutes(fastify) {
     },
   }, async (request, reply) => {
     const userId = request.user.id;
+    const householdId = request.householdId;
 
     // Item laden und prüfen ob es dem User gehört
+    const hhWhere = householdWhereClause(userId, householdId, 'sl');
     const item = db.prepare(`
       SELECT sli.* FROM shopping_list_items sli
       JOIN shopping_lists sl ON sli.shopping_list_id = sl.id
-      WHERE sli.id = ? AND sl.user_id = ?
-    `).get(request.params.id, userId);
+      WHERE sli.id = ? AND (${hhWhere.clause})
+    `).get(request.params.id, ...hhWhere.params);
 
     if (!item) {
       return reply.status(404).send({ error: 'Artikel nicht gefunden' });
@@ -531,9 +553,10 @@ export default async function shoppingRoutes(fastify) {
     }
 
     // Prüfen ob Zutat schon im Vorratsschrank existiert
+    const pantryWhere = householdWhereClause(userId, householdId);
     const existing = db.prepare(
-      'SELECT * FROM pantry WHERE user_id = ? AND LOWER(ingredient_name) = LOWER(?)'
-    ).get(userId, ingredientName);
+      `SELECT * FROM pantry WHERE (${pantryWhere.clause}) AND LOWER(ingredient_name) = LOWER(?)`
+    ).get(...pantryWhere.params, ingredientName);
 
     let pantryId;
     if (existing) {
@@ -563,8 +586,8 @@ export default async function shoppingRoutes(fastify) {
       pantryId = existing.id;
     } else {
       const result = db.prepare(
-        "INSERT INTO pantry (user_id, ingredient_name, amount, unit, category) VALUES (?, ?, ?, ?, 'Sonstiges')"
-      ).run(userId, ingredientName, amount, unit);
+        "INSERT INTO pantry (user_id, ingredient_name, amount, unit, category, household_id) VALUES (?, ?, ?, ?, 'Sonstiges', ?)"
+      ).run(userId, ingredientName, amount, unit, householdId || null);
       pantryId = result.lastInsertRowid;
     }
 
@@ -612,11 +635,13 @@ export default async function shoppingRoutes(fastify) {
     },
   }, async (request) => {
     const userId = request.user.id;
+    const householdId = request.householdId;
     const listId = Number(request.params.listId);
     let { purchasedItems, includeAll = false } = request.body;
 
     // Ownership-Check: Liste muss dem User gehören
-    const listOwner = db.prepare('SELECT id FROM shopping_lists WHERE id = ? AND user_id = ?').get(listId, userId);
+    const hhWhere = householdWhereClause(userId, householdId);
+    const listOwner = db.prepare(`SELECT id FROM shopping_lists WHERE id = ? AND (${hhWhere.clause})`).get(listId, ...hhWhere.params);
     if (!listOwner) return { error: 'Liste nicht gefunden', pantryItemsAdded: 0 };
 
     // Wenn keine Items mitgeschickt wurden, Items aus der DB nehmen
@@ -629,23 +654,26 @@ export default async function shoppingRoutes(fastify) {
 
     // Gekaufte Items in Vorratsschrank übernehmen
     if (purchasedItems.length) {
-      processPurchase(userId, listId, purchasedItems);
+      processPurchase(userId, householdId, listId, purchasedItems);
     }
 
     // Liste als inaktiv markieren
+    const deactWhere = householdWhereClause(userId, householdId);
     db.prepare(
-      'UPDATE shopping_lists SET is_active = 0 WHERE id = ? AND user_id = ?'
-    ).run(listId, userId);
+      `UPDATE shopping_lists SET is_active = 0 WHERE id = ? AND (${deactWhere.clause})`
+    ).run(listId, ...deactWhere.params);
 
     // Zugehörigen Wochenplan automatisch fixieren
+    const slWhere2 = householdWhereClause(userId, householdId);
     const list = db.prepare(
-      'SELECT meal_plan_id FROM shopping_lists WHERE id = ? AND user_id = ?'
-    ).get(listId, userId);
+      `SELECT meal_plan_id FROM shopping_lists WHERE id = ? AND (${slWhere2.clause})`
+    ).get(listId, ...slWhere2.params);
     let mealPlanLocked = false;
     if (list?.meal_plan_id) {
+      const mpWhere = householdWhereClause(userId, householdId);
       db.prepare(
-        'UPDATE meal_plans SET is_locked = 1 WHERE id = ? AND user_id = ?'
-      ).run(list.meal_plan_id, userId);
+        `UPDATE meal_plans SET is_locked = 1 WHERE id = ? AND (${mpWhere.clause})`
+      ).run(list.meal_plan_id, ...mpWhere.params);
       mealPlanLocked = true;
       console.log('🔒 Wochenplan %d automatisch fixiert (Liste %d abgeschlossen)', list.meal_plan_id, listId);
     }
@@ -671,16 +699,17 @@ export default async function shoppingRoutes(fastify) {
     const userId = request.user.id;
 
     // Aktive Einkaufsliste finden
+    const hhWhere = householdWhereClause(userId, request.householdId);
     const list = db.prepare(
-      'SELECT * FROM shopping_lists WHERE user_id = ? AND is_active = 1 ORDER BY created_at DESC LIMIT 1'
-    ).get(userId);
+      `SELECT * FROM shopping_lists WHERE (${hhWhere.clause}) AND is_active = 1 ORDER BY created_at DESC LIMIT 1`
+    ).get(...hhWhere.params);
 
     if (!list || !list.meal_plan_id) {
       return { ingredients: [] };
     }
 
     // Allokation berechnen (shared Service)
-    const { recipes } = calculatePantryAllocations(userId, list.meal_plan_id);
+    const { recipes } = calculatePantryAllocations(userId, list.meal_plan_id, request.householdId);
 
     // Nach Zutat gruppieren (statt nach Rezept) – so muss man nur einmal
     // pro Zutat im Schrank nachschauen
@@ -798,12 +827,14 @@ export default async function shoppingRoutes(fastify) {
     },
   }, async (request, reply) => {
     const userId = request.user.id;
+    const householdId = request.householdId;
     const { ingredient_name, amount, unit, pantry_item_id } = request.body;
 
     // Aktive Liste finden
+    const hhWhere = householdWhereClause(userId, householdId);
     let list = db.prepare(
-      'SELECT * FROM shopping_lists WHERE user_id = ? AND is_active = 1 ORDER BY created_at DESC LIMIT 1'
-    ).get(userId);
+      `SELECT * FROM shopping_lists WHERE (${hhWhere.clause}) AND is_active = 1 ORDER BY created_at DESC LIMIT 1`
+    ).get(...hhWhere.params);
 
     if (!list) {
       return reply.status(404).send({ error: 'Keine aktive Einkaufsliste vorhanden' });
@@ -820,9 +851,10 @@ export default async function shoppingRoutes(fastify) {
       // 2. Vorrat anpassen (falls pantry_item_id angegeben und nicht permanent)
       let pantryRemaining = null;
       if (pantry_item_id) {
+        const pantryItemWhere = householdWhereClause(userId, householdId);
         const pantryItem = db.prepare(
-          'SELECT * FROM pantry WHERE id = ? AND user_id = ?'
-        ).get(pantry_item_id, userId);
+          `SELECT * FROM pantry WHERE id = ? AND (${pantryItemWhere.clause})`
+        ).get(pantry_item_id, ...pantryItemWhere.params);
 
         if (pantryItem && !pantryItem.is_permanent && amount > 0) {
           const newAmount = Math.max(0, pantryItem.amount - amount);
@@ -869,23 +901,24 @@ export default async function shoppingRoutes(fastify) {
     },
   }, async (request, reply) => {
     const userId = request.user.id;
+    const hhWhere = householdWhereClause(userId, request.householdId, 'sl');
 
     const lists = db.prepare(`
       SELECT sl.*, u.username as owner
       FROM shopping_lists sl
       JOIN users u ON sl.user_id = u.id
-      WHERE sl.user_id = ?
+      WHERE ${hhWhere.clause}
       ORDER BY sl.created_at DESC
-    `).all(userId);
+    `).all(...hhWhere.params);
 
     const items = db.prepare(`
       SELECT sli.*, r.title as recipe_title
       FROM shopping_list_items sli
       JOIN shopping_lists sl ON sli.shopping_list_id = sl.id
       LEFT JOIN recipes r ON sli.recipe_id = r.id
-      WHERE sl.user_id = ?
+      WHERE ${hhWhere.clause}
       ORDER BY sli.shopping_list_id, sli.ingredient_name
-    `).all(userId);
+    `).all(...hhWhere.params);
 
     const listsWithItems = lists.map(list => ({
       name: list.name,
@@ -965,7 +998,7 @@ export default async function shoppingRoutes(fastify) {
     let itemsImported = 0;
 
     const insertList = db.prepare(
-      'INSERT INTO shopping_lists (user_id, name, is_active) VALUES (?, ?, ?)'
+      'INSERT INTO shopping_lists (user_id, name, is_active, household_id) VALUES (?, ?, ?, ?)'
     );
     const insertItem = db.prepare(
       'INSERT INTO shopping_list_items (shopping_list_id, ingredient_name, amount, unit, is_checked) VALUES (?, ?, ?, ?, ?)'
@@ -974,7 +1007,7 @@ export default async function shoppingRoutes(fastify) {
     const transaction = db.transaction(() => {
       for (const list of importData.lists) {
         const name = String(list.name || `Import ${new Date().toLocaleDateString('de-DE')}`).trim().slice(0, 200);
-        const { lastInsertRowid } = insertList.run(userId, name, 0); // Importierte Listen immer inaktiv
+        const { lastInsertRowid } = insertList.run(userId, name, 0, request.householdId || null); // Importierte Listen immer inaktiv
         const listId = Number(lastInsertRowid);
         imported++;
 

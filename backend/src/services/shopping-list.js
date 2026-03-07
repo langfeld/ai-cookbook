@@ -10,7 +10,7 @@
  * - Nutzt KI für intelligente Zusammenfassung verschiedener Einheiten
  */
 
-import db from '../config/database.js';
+import db, { householdWhereClause } from '../config/database.js';
 import { normalizeUnit, scaleIngredient, convertToBaseUnit, unitsCompatible, comparePantryAmount } from '../utils/helpers.js';
 import { parsePackageSize } from './rewe-api.js';
 import { getAIProvider } from './ai/provider.js';
@@ -118,7 +118,7 @@ Regeln:
  * @param {number} mealPlanId - Wochenplan-ID
  * @returns {Promise<object>} - Einkaufsliste mit zusammengefassten Zutaten
  */
-export async function generateShoppingList(userId, mealPlanId, options = {}) {
+export async function generateShoppingList(userId, householdId, mealPlanId, options = {}) {
   const { excludePastDays = false } = options;
 
   // --- 1. Alle Rezepte und Portionen aus dem Wochenplan laden ---
@@ -158,18 +158,20 @@ export async function generateShoppingList(userId, mealPlanId, options = {}) {
   const rawItems = [];
 
   // Alias-Tabelle laden
+  const aliasWhere = householdWhereClause(userId, householdId);
   const aliasRows = db.prepare(
-    'SELECT alias_name, canonical_name FROM ingredient_aliases WHERE user_id = ?'
-  ).all(userId);
+    `SELECT alias_name, canonical_name FROM ingredient_aliases WHERE ${aliasWhere.clause}`
+  ).all(...aliasWhere.params);
   const aliasMap = new Map();
   for (const row of aliasRows) {
     aliasMap.set(row.alias_name.toLowerCase(), row.canonical_name);
   }
 
   // Geblockte Zutaten laden
+  const blockedWhere = householdWhereClause(userId, householdId);
   const blockedRows = db.prepare(
-    'SELECT ingredient_name FROM blocked_ingredients WHERE user_id = ?'
-  ).all(userId);
+    `SELECT ingredient_name FROM blocked_ingredients WHERE ${blockedWhere.clause}`
+  ).all(...blockedWhere.params);
   const blockedSet = new Set(blockedRows.map(r => r.ingredient_name.toLowerCase()));
 
   for (const entry of filteredEntries) {
@@ -205,9 +207,10 @@ export async function generateShoppingList(userId, mealPlanId, options = {}) {
   const aggregated = await aiAggregateItems(rawItems);
 
   // --- 3. Vorräte abziehen ---
+  const pantryWhere = householdWhereClause(userId, householdId);
   const pantryItems = db.prepare(
-    'SELECT * FROM pantry WHERE user_id = ? AND (amount > 0 OR is_permanent = 1)'
-  ).all(userId);
+    `SELECT * FROM pantry WHERE (${pantryWhere.clause}) AND (amount > 0 OR is_permanent = 1)`
+  ).all(...pantryWhere.params);
 
   const adjustedItems = [];
   const needsAIEstimate = []; // Items wo statische Tabelle nicht hilft
@@ -351,9 +354,9 @@ Nur Standardgewichte. Bei Unsicherheit lieber 0 angeben.`;
 /**
  * Speichert die Einkaufsliste in der Datenbank
  */
-export function saveShoppingList(userId, mealPlanId, items, name = 'Einkaufsliste') {
+export function saveShoppingList(userId, householdId, mealPlanId, items, name = 'Einkaufsliste') {
   const insertList = db.prepare(
-    'INSERT INTO shopping_lists (user_id, meal_plan_id, name) VALUES (?, ?, ?)'
+    'INSERT INTO shopping_lists (user_id, meal_plan_id, name, household_id) VALUES (?, ?, ?, ?)'
   );
   const insertItem = db.prepare(`
     INSERT INTO shopping_list_items
@@ -362,12 +365,13 @@ export function saveShoppingList(userId, mealPlanId, items, name = 'Einkaufslist
   `);
 
   // Alte aktive Listen deaktivieren
+  const deactWhere = householdWhereClause(userId, householdId);
   db.prepare(
-    'UPDATE shopping_lists SET is_active = 0 WHERE user_id = ? AND is_active = 1'
-  ).run(userId);
+    `UPDATE shopping_lists SET is_active = 0 WHERE (${deactWhere.clause}) AND is_active = 1`
+  ).run(...deactWhere.params);
 
   const transaction = db.transaction(() => {
-    const { lastInsertRowid: listId } = insertList.run(userId, mealPlanId, name);
+    const { lastInsertRowid: listId } = insertList.run(userId, mealPlanId, name, householdId || null);
 
     for (const item of items) {
       if (item.needsToBuy) {
@@ -390,26 +394,27 @@ export function saveShoppingList(userId, mealPlanId, items, name = 'Einkaufslist
  * Items werden in ihrer natürlichen Einheit in die Pantry übernommen.
  * Bei REWE-Produkten wird die tatsächlich gekaufte Menge verwendet.
  */
-export function processPurchase(userId, listId, purchasedItems) {
+export function processPurchase(userId, householdId, listId, purchasedItems) {
   const upsertPantry = db.prepare(`
-    INSERT INTO pantry (user_id, ingredient_name, amount, unit, category)
-    VALUES (?, ?, ?, ?, ?)
+    INSERT INTO pantry (user_id, ingredient_name, amount, unit, category, household_id)
+    VALUES (?, ?, ?, ?, ?, ?)
     ON CONFLICT(user_id, ingredient_name) DO UPDATE SET
       amount = pantry.amount + excluded.amount,
       updated_at = CURRENT_TIMESTAMP
   `);
 
   const replacePantry = db.prepare(`
-    INSERT INTO pantry (user_id, ingredient_name, amount, unit, category)
-    VALUES (?, ?, ?, ?, ?)
+    INSERT INTO pantry (user_id, ingredient_name, amount, unit, category, household_id)
+    VALUES (?, ?, ?, ?, ?, ?)
     ON CONFLICT(user_id, ingredient_name) DO UPDATE SET
       amount = excluded.amount,
       unit = excluded.unit,
       updated_at = CURRENT_TIMESTAMP
   `);
 
+  const pantryCheckWhere = householdWhereClause(userId, householdId);
   const getExistingPantry = db.prepare(
-    'SELECT amount, unit FROM pantry WHERE user_id = ? AND ingredient_name = ?'
+    `SELECT amount, unit FROM pantry WHERE (${pantryCheckWhere.clause}) AND ingredient_name = ?`
   );
 
   const transaction = db.transaction(() => {
@@ -430,18 +435,18 @@ export function processPurchase(userId, listId, purchasedItems) {
       if (amount > 0) {
         const ingredientName = item.ingredient_name || item.name;
         const category = item.category || 'Sonstiges';
-        const existing = getExistingPantry.get(userId, ingredientName);
+        const existing = getExistingPantry.get(...pantryCheckWhere.params, ingredientName);
 
         if (!existing) {
-          upsertPantry.run(userId, ingredientName, amount, unit, category);
+          upsertPantry.run(userId, ingredientName, amount, unit, category, householdId || null);
         } else {
           const existingUnit = normalizeUnit(existing.unit);
           if (existingUnit === unit || (!existingUnit && !unit)) {
             // Gleiche Einheit → addieren
-            upsertPantry.run(userId, ingredientName, amount, unit, category);
+            upsertPantry.run(userId, ingredientName, amount, unit, category, householdId || null);
           } else {
             // Unterschiedliche Einheiten → ersetzen mit neuerer Einheit
-            replacePantry.run(userId, ingredientName, amount, unit, category);
+            replacePantry.run(userId, ingredientName, amount, unit, category, householdId || null);
           }
         }
       }

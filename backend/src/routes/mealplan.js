@@ -7,11 +7,13 @@
  */
 
 import db from '../config/database.js';
+import { householdWhereClause } from '../config/database.js';
 import { generateWeekPlan, generateReasoning, saveMealPlan, getMealPlan, getSuggestions } from '../services/meal-planner.js';
 import { getWeekStart, scaleIngredient, convertToBaseUnit, normalizeUnit, unitsCompatible, comparePantryAmount } from '../utils/helpers.js';
+import { broadcastToHousehold } from './household-events.js';
 
 export default async function mealplanRoutes(fastify) {
-  fastify.addHook('onRequest', fastify.authenticate);
+  fastify.addHook('onRequest', fastify.resolveHousehold);
 
   // ─────────────────────────────────────────────
   // POST /generate – Wochenplan generieren
@@ -82,23 +84,25 @@ export default async function mealplanRoutes(fastify) {
   }, async (request, reply) => {
     try {
       const userId = request.user.id;
+      const householdId = request.householdId;
       const weekStart = request.body?.weekStart || getWeekStart();
-      const options = { ...request.body, weekStart };
+      const options = { ...request.body, weekStart, householdId };
 
       // Bestehenden Plan für diese Woche löschen
-      const existing = db.prepare('SELECT id FROM meal_plans WHERE user_id = ? AND week_start = ?').get(userId, weekStart);
+      const hhWhere = householdWhereClause(userId, householdId, 'mp');
+      const existing = db.prepare(`SELECT mp.id FROM meal_plans mp WHERE (${hhWhere.clause}) AND mp.week_start = ?`).get(...hhWhere.params, weekStart);
       if (existing) {
         db.prepare('DELETE FROM meal_plans WHERE id = ?').run(existing.id);
       }
 
       const planData = await generateWeekPlan(userId, options);
-      const planId = saveMealPlan(userId, weekStart, planData);
+      const planId = saveMealPlan(userId, weekStart, planData, householdId);
 
       // Wenn nicht alle Tage aktiv sind, Lock-relevante Info speichern
       // (Plan wurde bewusst nur für bestimmte Tage erstellt)
 
       // Gespeicherten Plan mit vollständigen Entries zurückgeben
-      const savedPlan = getMealPlan(userId, weekStart);
+      const savedPlan = getMealPlan(userId, weekStart, householdId);
 
       // KI-Reasoning async im Hintergrund starten (blockiert Antwort nicht)
       if (options.enableAiReasoning) {
@@ -110,6 +114,7 @@ export default async function mealplanRoutes(fastify) {
         });
       }
 
+      broadcastToHousehold(householdId, 'mealplan:generated', { week_start: weekStart }, userId);
       return {
         planId,
         plan: savedPlan,
@@ -136,9 +141,10 @@ export default async function mealplanRoutes(fastify) {
       },
     },
   }, async (request) => {
+    const hhWhere = householdWhereClause(request.user.id, request.householdId, 'mp');
     const plan = db.prepare(
-      'SELECT reasoning FROM meal_plans WHERE id = ? AND user_id = ?'
-    ).get(request.params.planId, request.user.id);
+      `SELECT mp.reasoning FROM meal_plans mp WHERE mp.id = ? AND (${hhWhere.clause})`
+    ).get(request.params.planId, ...hhWhere.params);
     if (!plan) return { reasoning: null, status: 'not_found' };
     if (!plan.reasoning) return { reasoning: null, status: 'pending' };
     return { reasoning: plan.reasoning, status: 'ready', reasoningSource: 'ai' };
@@ -161,7 +167,7 @@ export default async function mealplanRoutes(fastify) {
     },
   }, async (request) => {
     const weekStart = request.query.weekStart || getWeekStart();
-    const plan = getMealPlan(request.user.id, weekStart);
+    const plan = getMealPlan(request.user.id, weekStart, request.householdId);
     return { plan: plan || null };
   });
 
@@ -171,15 +177,16 @@ export default async function mealplanRoutes(fastify) {
   fastify.get('/history', {
     schema: { description: 'Wochenplan-Historie', tags: ['Wochenplan'], security: [{ bearerAuth: [] }] },
   }, async (request) => {
+    const hhWhere = householdWhereClause(request.user.id, request.householdId, 'mp');
     const plans = db.prepare(`
       SELECT mp.*, COUNT(mpe.id) as meal_count
       FROM meal_plans mp
       LEFT JOIN meal_plan_entries mpe ON mp.id = mpe.meal_plan_id
-      WHERE mp.user_id = ?
+      WHERE (${hhWhere.clause})
       GROUP BY mp.id
       ORDER BY mp.week_start DESC
       LIMIT 20
-    `).all(request.user.id);
+    `).all(...hhWhere.params);
     return { plans };
   });
 
@@ -189,15 +196,16 @@ export default async function mealplanRoutes(fastify) {
   fastify.get('/available-weeks', {
     schema: { description: 'Verfügbare Wochen mit Plänen und Rezept-Vorschau', tags: ['Wochenplan'], security: [{ bearerAuth: [] }] },
   }, async (request) => {
+    const hhWhere = householdWhereClause(request.user.id, request.householdId, 'mp');
     const plans = db.prepare(`
       SELECT mp.id, mp.week_start, mp.is_locked, COUNT(mpe.id) as meal_count
       FROM meal_plans mp
       LEFT JOIN meal_plan_entries mpe ON mp.id = mpe.meal_plan_id
-      WHERE mp.user_id = ?
+      WHERE (${hhWhere.clause})
       GROUP BY mp.id
       HAVING meal_count > 0
       ORDER BY mp.week_start DESC
-    `).all(request.user.id);
+    `).all(...hhWhere.params);
 
     // Alle Rezepte für diese Pläne in einem Query laden
     if (plans.length === 0) return { weeks: [] };
@@ -212,10 +220,11 @@ export default async function mealplanRoutes(fastify) {
     `).all(...planIds);
 
     // Prüfen welche Pläne bereits eine Einkaufsliste haben
+    const slWhere = householdWhereClause(request.user.id, request.householdId, 'sl');
     const listsForPlans = db.prepare(`
-      SELECT meal_plan_id FROM shopping_lists
-      WHERE user_id = ? AND meal_plan_id IN (${placeholders})
-    `).all(request.user.id, ...planIds);
+      SELECT meal_plan_id FROM shopping_lists sl
+      WHERE (${slWhere.clause}) AND meal_plan_id IN (${placeholders})
+    `).all(...slWhere.params, ...planIds);
     const planIdsWithList = new Set(listsForPlans.map(l => l.meal_plan_id));
 
     // Rezepte pro Plan gruppieren (dedupliziert)
@@ -265,23 +274,25 @@ export default async function mealplanRoutes(fastify) {
     const { planId } = request.params;
     const { targetWeekStart } = request.body;
     const userId = request.user.id;
+    const householdId = request.householdId;
+    const hhWhere = householdWhereClause(userId, householdId, 'mp');
 
     // Quellplan prüfen
-    const sourcePlan = db.prepare('SELECT id FROM meal_plans WHERE id = ? AND user_id = ?').get(planId, userId);
+    const sourcePlan = db.prepare(`SELECT mp.id FROM meal_plans mp WHERE mp.id = ? AND (${hhWhere.clause})`).get(planId, ...hhWhere.params);
     if (!sourcePlan) return reply.status(404).send({ error: 'Quellplan nicht gefunden' });
 
     // Quell-Einträge laden
     const sourceEntries = db.prepare('SELECT * FROM meal_plan_entries WHERE meal_plan_id = ?').all(sourcePlan.id);
 
     // Bestehenden Plan für die Zielwoche löschen (falls vorhanden)
-    const existing = db.prepare('SELECT id FROM meal_plans WHERE user_id = ? AND week_start = ?').get(userId, targetWeekStart);
+    const existing = db.prepare(`SELECT mp.id FROM meal_plans mp WHERE (${hhWhere.clause}) AND mp.week_start = ?`).get(...hhWhere.params, targetWeekStart);
     if (existing) {
       db.prepare('DELETE FROM meal_plans WHERE id = ?').run(existing.id);
     }
 
     // Neuen Plan erstellen und Einträge kopieren
     const transaction = db.transaction(() => {
-      const { lastInsertRowid } = db.prepare('INSERT INTO meal_plans (user_id, week_start) VALUES (?, ?)').run(userId, targetWeekStart);
+      const { lastInsertRowid } = db.prepare('INSERT INTO meal_plans (user_id, week_start, household_id) VALUES (?, ?, ?)').run(userId, targetWeekStart, householdId || null);
       const newPlanId = Number(lastInsertRowid);
 
       const insertEntry = db.prepare(
@@ -295,7 +306,7 @@ export default async function mealplanRoutes(fastify) {
     });
 
     const newPlanId = transaction();
-    const savedPlan = getMealPlan(userId, targetWeekStart);
+    const savedPlan = getMealPlan(userId, targetWeekStart, householdId);
 
     return {
       message: `Plan mit ${sourceEntries.length} Einträgen auf KW ${targetWeekStart} kopiert!`,
@@ -327,17 +338,20 @@ export default async function mealplanRoutes(fastify) {
   }, async (request, reply) => {
     const { recipe_id, day_of_week, meal_type, week_start, servings = 4 } = request.body;
     const userId = request.user.id;
+    const householdId = request.householdId;
+    const hhWhere = householdWhereClause(userId, householdId, 'r');
 
-    // Rezept prüfen (muss dem User gehören)
-    const recipe = db.prepare('SELECT id, title FROM recipes WHERE id = ? AND user_id = ?').get(recipe_id, userId);
+    // Rezept prüfen (muss dem User/Haushalt gehören)
+    const recipe = db.prepare(`SELECT r.id, r.title FROM recipes r WHERE r.id = ? AND (${hhWhere.clause})`).get(recipe_id, ...hhWhere.params);
     if (!recipe) return reply.status(404).send({ error: 'Rezept nicht gefunden' });
 
     // Plan für die Woche suchen oder erstellen
-    let plan = db.prepare('SELECT id FROM meal_plans WHERE user_id = ? AND week_start = ?').get(userId, week_start);
+    const mpWhere = householdWhereClause(userId, householdId, 'mp');
+    let plan = db.prepare(`SELECT mp.id FROM meal_plans mp WHERE (${mpWhere.clause}) AND mp.week_start = ?`).get(...mpWhere.params, week_start);
     if (!plan) {
       const { lastInsertRowid } = db.prepare(
-        'INSERT INTO meal_plans (user_id, week_start) VALUES (?, ?)'
-      ).run(userId, week_start);
+        'INSERT INTO meal_plans (user_id, week_start, household_id) VALUES (?, ?, ?)'
+      ).run(userId, week_start, householdId || null);
       plan = { id: Number(lastInsertRowid) };
     }
 
@@ -375,7 +389,8 @@ export default async function mealplanRoutes(fastify) {
       GROUP BY mpe.id
     `).get(entryId);
 
-    const fullPlan = getMealPlan(userId, week_start);
+    const fullPlan = getMealPlan(userId, week_start, householdId);
+    broadcastToHousehold(householdId, 'mealplan:updated', { week_start }, userId);
     return {
       message: replaced ? `„${recipe.title}" ersetzt das bisherige Rezept!` : `„${recipe.title}" zum Wochenplan hinzugefügt!`,
       replaced,
@@ -409,7 +424,7 @@ export default async function mealplanRoutes(fastify) {
     const excludeRecipeIds = request.query.excludeRecipeIds
       ? request.query.excludeRecipeIds.split(',').map(Number).filter(Boolean)
       : [];
-    const suggestions = getSuggestions(request.user.id, { dayIdx, mealType, excludeRecipeIds, planId, limit, search });
+    const suggestions = getSuggestions(request.user.id, { dayIdx, mealType, excludeRecipeIds, planId, limit, search, householdId: request.householdId });
     return { suggestions };
   });
 
@@ -436,12 +451,14 @@ export default async function mealplanRoutes(fastify) {
     const { recipe_id, day_of_week, meal_type, servings = 4 } = request.body;
     const { planId } = request.params;
     const userId = request.user.id;
+    const householdId = request.householdId;
+    const hhWhere = householdWhereClause(userId, householdId);
 
-    const plan = db.prepare('SELECT id FROM meal_plans WHERE id = ? AND user_id = ?').get(planId, userId);
+    const plan = db.prepare(`SELECT id FROM meal_plans WHERE id = ? AND (${hhWhere.clause})`).get(planId, ...hhWhere.params);
     if (!plan) return reply.status(404).send({ error: 'Plan nicht gefunden' });
 
     // Rezept-Ownership prüfen
-    const recipe = db.prepare('SELECT id FROM recipes WHERE id = ? AND user_id = ?').get(recipe_id, userId);
+    const recipe = db.prepare(`SELECT id FROM recipes WHERE id = ? AND (${hhWhere.clause})`).get(recipe_id, ...hhWhere.params);
     if (!recipe) return reply.status(404).send({ error: 'Rezept nicht gefunden' });
 
     // Prüfen ob Slot schon belegt ist
@@ -467,6 +484,7 @@ export default async function mealplanRoutes(fastify) {
       GROUP BY mpe.id
     `).get(lastInsertRowid);
 
+    broadcastToHousehold(householdId, 'mealplan:updated', {}, userId);
     return { message: 'Eintrag hinzugefügt!', entry };
   });
 
@@ -491,10 +509,11 @@ export default async function mealplanRoutes(fastify) {
   }, async (request, reply) => {
     const { recipe_id, servings, day_of_week, meal_type } = request.body;
     const userId = request.user.id;
+    const hhWhere = householdWhereClause(userId, request.householdId);
 
     // Rezept-Ownership prüfen, falls recipe_id geändert wird
     if (recipe_id) {
-      const recipe = db.prepare('SELECT id FROM recipes WHERE id = ? AND user_id = ?').get(recipe_id, userId);
+      const recipe = db.prepare(`SELECT id FROM recipes WHERE id = ? AND (${hhWhere.clause})`).get(recipe_id, ...hhWhere.params);
       if (!recipe) return reply.status(404).send({ error: 'Rezept nicht gefunden' });
     }
 
@@ -504,8 +523,8 @@ export default async function mealplanRoutes(fastify) {
           servings = COALESCE(?, servings),
           day_of_week = COALESCE(?, day_of_week),
           meal_type = COALESCE(?, meal_type)
-      WHERE id = ? AND meal_plan_id IN (SELECT id FROM meal_plans WHERE user_id = ?)
-    `).run(recipe_id, servings, day_of_week, meal_type, request.params.entryId, userId);
+      WHERE id = ? AND meal_plan_id IN (SELECT id FROM meal_plans WHERE (${hhWhere.clause}))
+    `).run(recipe_id, servings, day_of_week, meal_type, request.params.entryId, ...hhWhere.params);
 
     if (result.changes === 0) return reply.status(404).send({ error: 'Eintrag nicht gefunden' });
 
@@ -522,6 +541,7 @@ export default async function mealplanRoutes(fastify) {
       GROUP BY mpe.id
     `).get(request.params.entryId);
 
+    broadcastToHousehold(request.householdId, 'mealplan:updated', {}, userId);
     return { message: 'Eintrag aktualisiert!', entry };
   });
 
@@ -546,8 +566,9 @@ export default async function mealplanRoutes(fastify) {
     const { day_of_week, meal_type } = request.body;
     const { planId, entryId } = request.params;
     const userId = request.user.id;
+    const hhWhere = householdWhereClause(userId, request.householdId);
 
-    const plan = db.prepare('SELECT id FROM meal_plans WHERE id = ? AND user_id = ?').get(planId, userId);
+    const plan = db.prepare(`SELECT id FROM meal_plans WHERE id = ? AND (${hhWhere.clause})`).get(planId, ...hhWhere.params);
     if (!plan) return reply.status(404).send({ error: 'Plan nicht gefunden' });
 
     // Prüfen ob Zielslot bereits belegt → tauschen
@@ -567,7 +588,8 @@ export default async function mealplanRoutes(fastify) {
     if (moveResult.changes === 0) return reply.status(404).send({ error: 'Eintrag nicht gefunden' });
 
     const weekStart = db.prepare('SELECT week_start FROM meal_plans WHERE id = ?').get(planId).week_start;
-    const updatedPlan = getMealPlan(userId, weekStart);
+    const updatedPlan = getMealPlan(userId, weekStart, request.householdId);
+    broadcastToHousehold(request.householdId, 'mealplan:updated', { week_start: weekStart }, userId);
     return { message: 'Eintrag verschoben!', plan: updatedPlan };
   });
 
@@ -582,12 +604,13 @@ export default async function mealplanRoutes(fastify) {
     },
   }, async (request) => {
     const userId = request.user.id;
+    const hhWhere = householdWhereClause(userId, request.householdId, 'mp');
     const entry = db.prepare(`
       SELECT mpe.*, mp.week_start, r.servings as original_servings FROM meal_plan_entries mpe
       JOIN meal_plans mp ON mpe.meal_plan_id = mp.id
       JOIN recipes r ON mpe.recipe_id = r.id
-      WHERE mpe.id = ? AND mp.user_id = ?
-    `).get(request.params.entryId, userId);
+      WHERE mpe.id = ? AND (${hhWhere.clause})
+    `).get(request.params.entryId, ...hhWhere.params);
 
     if (!entry) return { error: 'Eintrag nicht gefunden' };
 
@@ -656,9 +679,10 @@ export default async function mealplanRoutes(fastify) {
       if (!scaledAmount || scaledAmount <= 0) continue;
 
       // Passenden Vorrat suchen
+      const pantryHhWhere = householdWhereClause(userId, request.householdId);
       const pantryItem = db.prepare(
-        'SELECT * FROM pantry WHERE user_id = ? AND LOWER(ingredient_name) = LOWER(?)'
-      ).get(userId, ing.name);
+        `SELECT * FROM pantry WHERE (${pantryHhWhere.clause}) AND LOWER(ingredient_name) = LOWER(?)`
+      ).get(...pantryHhWhere.params, ing.name);
 
       if (!pantryItem) continue; // Kein Vorrat vorhanden → nichts abziehen
       if (pantryItem.is_permanent) continue; // Dauerhafte Vorräte nicht verbrauchen
@@ -689,7 +713,7 @@ export default async function mealplanRoutes(fastify) {
 
     // Bei Tausch: kompletten Plan zurückgeben, damit Frontend Positionen aktualisieren kann
     if (swapped) {
-      const updatedPlan = getMealPlan(userId, entry.week_start);
+      const updatedPlan = getMealPlan(userId, entry.week_start, request.householdId);
       return {
         message: 'Als gekocht markiert und auf heute verschoben!',
         is_cooked: newState,
@@ -719,8 +743,9 @@ export default async function mealplanRoutes(fastify) {
   }, async (request, reply) => {
     const { planId } = request.params;
     const userId = request.user.id;
+    const hhWhere = householdWhereClause(userId, request.householdId);
 
-    const plan = db.prepare('SELECT id, is_locked FROM meal_plans WHERE id = ? AND user_id = ?').get(planId, userId);
+    const plan = db.prepare(`SELECT id, is_locked FROM meal_plans WHERE id = ? AND (${hhWhere.clause})`).get(planId, ...hhWhere.params);
     if (!plan) return reply.status(404).send({ error: 'Plan nicht gefunden' });
 
     const newState = plan.is_locked ? 0 : 1;
@@ -738,11 +763,13 @@ export default async function mealplanRoutes(fastify) {
   fastify.delete('/:planId/entry/:entryId', {
     schema: { description: 'Einzelnen Eintrag entfernen', tags: ['Wochenplan'], security: [{ bearerAuth: [] }] },
   }, async (request, reply) => {
+    const hhWhere = householdWhereClause(request.user.id, request.householdId);
     const result = db.prepare(`
       DELETE FROM meal_plan_entries
-      WHERE id = ? AND meal_plan_id IN (SELECT id FROM meal_plans WHERE id = ? AND user_id = ?)
-    `).run(request.params.entryId, request.params.planId, request.user.id);
+      WHERE id = ? AND meal_plan_id IN (SELECT id FROM meal_plans WHERE id = ? AND (${hhWhere.clause}))
+    `).run(request.params.entryId, request.params.planId, ...hhWhere.params);
     if (result.changes === 0) return reply.status(404).send({ error: 'Eintrag nicht gefunden' });
+    broadcastToHousehold(request.householdId, 'mealplan:updated', {}, request.user.id);
     return { message: 'Eintrag entfernt' };
   });
 
@@ -752,10 +779,12 @@ export default async function mealplanRoutes(fastify) {
   fastify.delete('/:id', {
     schema: { description: 'Wochenplan löschen', tags: ['Wochenplan'], security: [{ bearerAuth: [] }] },
   }, async (request, reply) => {
-    const plan = db.prepare('SELECT id, is_locked FROM meal_plans WHERE id = ? AND user_id = ?').get(request.params.id, request.user.id);
+    const hhWhere = householdWhereClause(request.user.id, request.householdId);
+    const plan = db.prepare(`SELECT id, is_locked FROM meal_plans WHERE id = ? AND (${hhWhere.clause})`).get(request.params.id, ...hhWhere.params);
     if (!plan) return reply.status(404).send({ error: 'Plan nicht gefunden' });
     if (plan.is_locked) return reply.status(409).send({ error: 'Fixierter Wochenplan kann nicht gelöscht werden. Bitte zuerst die Fixierung aufheben.' });
     db.prepare('DELETE FROM meal_plans WHERE id = ?').run(plan.id);
+    broadcastToHousehold(request.householdId, 'mealplan:updated', {}, request.user.id);
     return { message: 'Wochenplan gelöscht' };
   });
 
@@ -770,23 +799,24 @@ export default async function mealplanRoutes(fastify) {
     },
   }, async (request, reply) => {
     const userId = request.user.id;
+    const hhWhere = householdWhereClause(userId, request.householdId, 'mp');
 
     const plans = db.prepare(`
       SELECT mp.*, u.username as owner
       FROM meal_plans mp
       JOIN users u ON mp.user_id = u.id
-      WHERE mp.user_id = ?
+      WHERE (${hhWhere.clause})
       ORDER BY mp.week_start DESC
-    `).all(userId);
+    `).all(...hhWhere.params);
 
     const entries = db.prepare(`
       SELECT mpe.*, r.title as recipe_title
       FROM meal_plan_entries mpe
       JOIN meal_plans mp ON mpe.meal_plan_id = mp.id
       LEFT JOIN recipes r ON mpe.recipe_id = r.id
-      WHERE mp.user_id = ?
+      WHERE (${hhWhere.clause})
       ORDER BY mpe.meal_plan_id, mpe.day_of_week, mpe.meal_type
-    `).all(userId);
+    `).all(...hhWhere.params);
 
     // Entries den Plans zuordnen
     const plansWithEntries = plans.map(plan => ({
@@ -865,17 +895,20 @@ export default async function mealplanRoutes(fastify) {
     let skipped = 0;
     let entriesImported = 0;
 
+    const householdId = request.householdId;
+    const hhWhere = householdWhereClause(userId, householdId);
+
     const insertPlan = db.prepare(
-      'INSERT INTO meal_plans (user_id, week_start) VALUES (?, ?)'
+      'INSERT INTO meal_plans (user_id, week_start, household_id) VALUES (?, ?, ?)'
     );
     const insertEntry = db.prepare(
       'INSERT INTO meal_plan_entries (meal_plan_id, recipe_id, day_of_week, meal_type, servings, is_cooked) VALUES (?, ?, ?, ?, ?, ?)'
     );
     const findRecipe = db.prepare(
-      'SELECT id FROM recipes WHERE user_id = ? AND LOWER(title) = LOWER(?)'
+      `SELECT id FROM recipes WHERE (${hhWhere.clause}) AND LOWER(title) = LOWER(?)`
     );
     const existingPlan = db.prepare(
-      'SELECT id FROM meal_plans WHERE user_id = ? AND week_start = ?'
+      `SELECT id FROM meal_plans WHERE (${hhWhere.clause}) AND week_start = ?`
     );
 
     const transaction = db.transaction(() => {
@@ -883,10 +916,10 @@ export default async function mealplanRoutes(fastify) {
         if (!plan.week_start || !/^\d{4}-\d{2}-\d{2}$/.test(plan.week_start)) { skipped++; continue; }
 
         // Prüfen ob Plan für diese Woche bereits existiert
-        const existing = existingPlan.get(userId, plan.week_start);
+        const existing = existingPlan.get(...hhWhere.params, plan.week_start);
         if (existing) { skipped++; continue; }
 
-        const { lastInsertRowid } = insertPlan.run(userId, plan.week_start);
+        const { lastInsertRowid } = insertPlan.run(userId, plan.week_start, householdId || null);
         const planId = Number(lastInsertRowid);
         imported++;
 
@@ -897,7 +930,7 @@ export default async function mealplanRoutes(fastify) {
             // Rezept per Titel finden
             let recipeId = entry.recipe_id;
             if (entry.recipe_title && !recipeId) {
-              const recipe = findRecipe.get(userId, entry.recipe_title);
+              const recipe = findRecipe.get(...hhWhere.params, entry.recipe_title);
               if (recipe) recipeId = recipe.id;
             }
             if (!recipeId) continue;
