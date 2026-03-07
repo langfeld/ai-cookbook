@@ -165,7 +165,7 @@ export class KimiProvider extends BaseAIProvider {
         Authorization: `Bearer ${this.apiKey}`,
       },
       body: JSON.stringify(body),
-      signal: AbortSignal.timeout(180_000), // 3 Minuten Timeout für Vision
+      signal: AbortSignal.timeout(300_000), // 5 Minuten Timeout für Vision (Thinking braucht länger)
     });
 
     if (!response.ok) {
