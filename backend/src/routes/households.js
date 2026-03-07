@@ -558,6 +558,336 @@ export default async function householdRoutes(fastify) {
   });
 
   // ─────────────────────────────────────────────
+  // GET /:id/dashboard-feed – Aggregierter Aktivitäts-Feed
+  // ─────────────────────────────────────────────
+  fastify.get('/:id/dashboard-feed', {
+    schema: {
+      description: 'Aggregierter Feed aus Rezepten, Kochhistorie, Wochenplan und Einkäufen',
+      tags: ['Haushalte'],
+      security: [{ bearerAuth: [] }],
+      querystring: {
+        type: 'object',
+        properties: {
+          limit: { type: 'integer', minimum: 1, maximum: 50, default: 15 },
+        },
+      },
+    },
+  }, async (request, reply) => {
+    const householdId = parseInt(request.params.id);
+    const userId = request.user.id;
+
+    if (!isHouseholdMember(userId, householdId)) {
+      return reply.status(403).send({ error: 'Kein Zugriff auf diesen Haushalt.' });
+    }
+
+    const limit = request.query.limit || 15;
+    const events = [];
+
+    // 1. Kürzlich erstellte Rezepte
+    const newRecipes = db.prepare(`
+      SELECT r.id, r.title, r.created_at as ts, r.user_id, u.username, u.display_name
+      FROM recipes r
+      LEFT JOIN users u ON r.user_id = u.id
+      WHERE r.household_id = ?
+      ORDER BY r.created_at DESC LIMIT ?
+    `).all(householdId, limit);
+
+    for (const r of newRecipes) {
+      events.push({
+        type: 'recipe:created',
+        message: `hat „${r.title}" hinzugefügt`,
+        username: r.display_name || r.username,
+        user_id: r.user_id,
+        timestamp: r.ts,
+        icon: '📝',
+        link: `/recipes/${r.id}`,
+      });
+    }
+
+    // 2. Kürzlich gekochte Rezepte
+    const cooked = db.prepare(`
+      SELECT ch.cooked_at as ts, r.title, r.id as recipe_id, ch.user_id, u.username, u.display_name
+      FROM cooking_history ch
+      JOIN recipes r ON ch.recipe_id = r.id
+      LEFT JOIN users u ON ch.user_id = u.id
+      WHERE r.household_id = ?
+      ORDER BY ch.cooked_at DESC LIMIT ?
+    `).all(householdId, limit);
+
+    for (const c of cooked) {
+      events.push({
+        type: 'recipe:cooked',
+        message: `hat „${c.title}" gekocht`,
+        username: c.display_name || c.username,
+        user_id: c.user_id,
+        timestamp: c.ts,
+        icon: '👨‍🍳',
+        link: `/recipes/${c.recipe_id}`,
+      });
+    }
+
+    // 3. Wochenpläne erstellt
+    const plans = db.prepare(`
+      SELECT mp.id, mp.created_at as ts, mp.user_id, u.username, u.display_name,
+        (SELECT COUNT(*) FROM meal_plan_entries WHERE meal_plan_id = mp.id) as entry_count
+      FROM meal_plans mp
+      LEFT JOIN users u ON mp.user_id = u.id
+      WHERE mp.household_id = ?
+      ORDER BY mp.created_at DESC LIMIT ?
+    `).all(householdId, limit);
+
+    for (const p of plans) {
+      events.push({
+        type: 'mealplan:created',
+        message: `hat einen Wochenplan erstellt (${p.entry_count} Gerichte)`,
+        username: p.display_name || p.username,
+        user_id: p.user_id,
+        timestamp: p.ts,
+        icon: '📅',
+        link: '/mealplan',
+      });
+    }
+
+    // 4. Einkäufe abgeschlossen (is_active = 0 bedeutet abgeschlossen)
+    const completedLists = db.prepare(`
+      SELECT sl.id, sl.created_at as ts, sl.user_id, u.username, u.display_name,
+        (SELECT COUNT(*) FROM shopping_list_items WHERE shopping_list_id = sl.id) as item_count
+      FROM shopping_lists sl
+      LEFT JOIN users u ON sl.user_id = u.id
+      WHERE sl.household_id = ? AND sl.is_active = 0
+      ORDER BY sl.created_at DESC LIMIT ?
+    `).all(householdId, limit);
+
+    for (const s of completedLists) {
+      events.push({
+        type: 'shopping:completed',
+        message: `hat den Einkauf abgeschlossen (${s.item_count} Artikel)`,
+        username: s.display_name || s.username,
+        user_id: s.user_id,
+        timestamp: s.ts,
+        icon: '🛒',
+        link: '/shopping',
+      });
+    }
+
+    // 5. Haushalt-Events (Mitglieder beigetreten, verlassen etc.)
+    const householdEvents = db.prepare(`
+      SELECT ha.action, ha.details, ha.created_at as ts, ha.user_id, u.username, u.display_name
+      FROM household_activity ha
+      LEFT JOIN users u ON ha.user_id = u.id
+      WHERE ha.household_id = ?
+      ORDER BY ha.created_at DESC LIMIT ?
+    `).all(householdId, limit);
+
+    const actionLabels = {
+      'household:created': 'hat den Haushalt erstellt',
+      'member:joined': 'ist dem Haushalt beigetreten',
+      'member:left': 'hat den Haushalt verlassen',
+      'member:removed': 'wurde aus dem Haushalt entfernt',
+      'data:migrated': 'hat Daten in den Haushalt migriert',
+    };
+
+    for (const e of householdEvents) {
+      events.push({
+        type: e.action,
+        message: actionLabels[e.action] || e.action,
+        username: e.display_name || e.username,
+        user_id: e.user_id,
+        timestamp: e.ts,
+        icon: '🏠',
+        link: '/household',
+      });
+    }
+
+    // Nach Zeitstempel sortieren, neueste zuerst
+    events.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+
+    return {
+      events: events.slice(0, limit),
+    };
+  });
+
+  // ─────────────────────────────────────────────
+  // GET /:id/stats – Haushalt-Statistiken
+  // ─────────────────────────────────────────────
+  fastify.get('/:id/stats', {
+    schema: {
+      description: 'Statistiken des Haushalts',
+      tags: ['Haushalte'],
+      security: [{ bearerAuth: [] }],
+    },
+  }, async (request, reply) => {
+    const householdId = parseInt(request.params.id);
+    const userId = request.user.id;
+
+    if (!isHouseholdMember(userId, householdId)) {
+      return reply.status(403).send({ error: 'Kein Zugriff auf diesen Haushalt.' });
+    }
+
+    // Gemeinsam gekochte Rezepte (distinct)
+    const cookedCount = db.prepare(`
+      SELECT COUNT(DISTINCT ch.recipe_id) as count
+      FROM cooking_history ch
+      JOIN recipes r ON ch.recipe_id = r.id
+      WHERE r.household_id = ?
+    `).get(householdId).count;
+
+    // Gesamt-Koch-Akte
+    const totalCooks = db.prepare(`
+      SELECT COUNT(*) as count
+      FROM cooking_history ch
+      JOIN recipes r ON ch.recipe_id = r.id
+      WHERE r.household_id = ?
+    `).get(householdId).count;
+
+    // Lieblings-Rezepte (am häufigsten gekocht)
+    const topRecipes = db.prepare(`
+      SELECT r.id, r.title, r.image_url, COUNT(*) as cook_count
+      FROM cooking_history ch
+      JOIN recipes r ON ch.recipe_id = r.id
+      WHERE r.household_id = ?
+      GROUP BY r.id
+      ORDER BY cook_count DESC
+      LIMIT 5
+    `).all(householdId);
+
+    // Wochenplan-Streak (aufeinanderfolgende Wochen mit Plan)
+    const plans = db.prepare(`
+      SELECT week_start FROM meal_plans
+      WHERE household_id = ?
+      ORDER BY week_start DESC
+    `).all(householdId);
+
+    let streak = 0;
+    if (plans.length > 0) {
+      const now = new Date();
+      // Aktuelle Woche ist Montag
+      const currentMonday = new Date(now);
+      currentMonday.setDate(now.getDate() - ((now.getDay() + 6) % 7));
+      currentMonday.setHours(0, 0, 0, 0);
+
+      let checkDate = new Date(currentMonday);
+      for (const plan of plans) {
+        const planDate = new Date(plan.week_start);
+        planDate.setHours(0, 0, 0, 0);
+        const diffDays = Math.round((checkDate - planDate) / (24 * 60 * 60 * 1000));
+
+        if (diffDays >= 0 && diffDays <= 1) {
+          streak++;
+          checkDate.setDate(checkDate.getDate() - 7);
+        } else if (diffDays > 1) {
+          break;
+        }
+      }
+    }
+
+    // Koch-Aktivität pro Mitglied
+    const memberStats = db.prepare(`
+      SELECT u.id, u.username, u.display_name, COUNT(ch.id) as cook_count
+      FROM household_members hm
+      JOIN users u ON hm.user_id = u.id
+      LEFT JOIN cooking_history ch ON ch.user_id = u.id
+        AND ch.recipe_id IN (SELECT id FROM recipes WHERE household_id = ?)
+      WHERE hm.household_id = ?
+      GROUP BY u.id
+      ORDER BY cook_count DESC
+    `).all(householdId, householdId);
+
+    // Rezepte insgesamt
+    const recipeCount = db.prepare(
+      'SELECT COUNT(*) as count FROM recipes WHERE household_id = ?'
+    ).get(householdId).count;
+
+    // Erledigte Einkäufe (inaktive Listen = abgeschlossen)
+    const completedShops = db.prepare(
+      'SELECT COUNT(*) as count FROM shopping_lists WHERE household_id = ? AND is_active = 0'
+    ).get(householdId).count;
+
+    return {
+      stats: {
+        recipes: recipeCount,
+        cooked_unique: cookedCount,
+        cooked_total: totalCooks,
+        completed_shops: completedShops,
+        streak,
+        top_recipes: topRecipes,
+        member_stats: memberStats,
+      },
+    };
+  });
+
+  // ─────────────────────────────────────────────
+  // GET /:id/suggestions – Rezept-Vorschläge für den Wochenplan
+  // ─────────────────────────────────────────────
+  fastify.get('/:id/suggestions', {
+    schema: {
+      description: 'Rezept-Vorschläge für den Wochenplan basierend auf Haushalt-Daten',
+      tags: ['Haushalte'],
+      security: [{ bearerAuth: [] }],
+      querystring: {
+        type: 'object',
+        properties: {
+          limit: { type: 'integer', minimum: 1, maximum: 20, default: 6 },
+        },
+      },
+    },
+  }, async (request, reply) => {
+    const householdId = parseInt(request.params.id);
+    const userId = request.user.id;
+
+    if (!isHouseholdMember(userId, householdId)) {
+      return reply.status(403).send({ error: 'Kein Zugriff auf diesen Haushalt.' });
+    }
+
+    const limit = request.query.limit || 6;
+
+    // 1. Beliebte Rezepte im Haushalt (oft gekocht, aber nicht letzte 2 Wochen)
+    const popular = db.prepare(`
+      SELECT r.id, r.title, r.image_url, r.total_time, r.difficulty,
+        COUNT(ch.id) as cook_count,
+        MAX(ch.cooked_at) as last_cooked,
+        u.display_name as suggested_by, u.username as suggested_by_username
+      FROM recipes r
+      JOIN cooking_history ch ON ch.recipe_id = r.id
+      LEFT JOIN users u ON ch.user_id = u.id
+      WHERE r.household_id = ?
+        AND r.id NOT IN (
+          SELECT DISTINCT mpe.recipe_id FROM meal_plan_entries mpe
+          JOIN meal_plans mp ON mpe.meal_plan_id = mp.id
+          WHERE mp.household_id = ? AND mp.week_start >= date('now', '-14 days')
+        )
+      GROUP BY r.id
+      ORDER BY cook_count DESC, RANDOM()
+      LIMIT ?
+    `).all(householdId, householdId, limit);
+
+    // 2. Zufällige Rezepte die noch nie gekocht wurden (Entdeckungen)
+    const remaining = limit - popular.length;
+    let discoveries = [];
+    if (remaining > 0) {
+      discoveries = db.prepare(`
+        SELECT r.id, r.title, r.image_url, r.total_time, r.difficulty,
+          0 as cook_count, NULL as last_cooked,
+          u.display_name as suggested_by, u.username as suggested_by_username
+        FROM recipes r
+        LEFT JOIN users u ON r.user_id = u.id
+        WHERE r.household_id = ?
+          AND r.id NOT IN (SELECT recipe_id FROM cooking_history)
+          AND r.id NOT IN (${popular.map(() => '?').join(',') || 'NULL'})
+        ORDER BY RANDOM()
+        LIMIT ?
+      `).all(householdId, ...popular.map(p => p.id), remaining);
+    }
+
+    const suggestions = [
+      ...popular.map(r => ({ ...r, reason: `${r.cook_count}× gekocht – Haushalt-Favorit` })),
+      ...discoveries.map(r => ({ ...r, reason: 'Noch nie gekocht – Neues entdecken!' })),
+    ];
+
+    return { suggestions };
+  });
+
+  // ─────────────────────────────────────────────
   // POST /:id/migrate – Bestehende Daten in Haushalt verschieben
   // ─────────────────────────────────────────────
   fastify.post('/:id/migrate', {

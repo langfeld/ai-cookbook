@@ -90,3 +90,27 @@ async toggleItem(itemId, newState) {
 ## Idempotente Backend-Endpunkte
 
 Offline-fähige Endpunkte müssen **idempotent** sein — derselbe Call mit denselben Daten darf nicht zu inkonsistentem State führen. Statt Toggles (`!current`) einen **expliziten Zielwert** akzeptieren (`is_checked: 1`).
+
+## Haushalt-Awareness (resolveHousehold)
+
+Routen, die haushaltsbezogene Daten verarbeiten, verwenden den `resolveHousehold`-Decorator statt `authenticate`:
+
+1. Authentifiziert den Benutzer (JWT oder API-Key)
+2. Liest `X-Household-Id` aus dem Request-Header
+3. Validiert die Mitgliedschaft — bei ungültigem Haushalt: `403 Forbidden`
+4. Setzt `request.householdId` (oder `null` wenn kein Haushalt gewählt)
+
+Queries nutzen `householdWhereClause(userId, householdId)` — gibt eine `{ clause, params }`-Struktur zurück, die sowohl private als auch geteilte Daten erfasst.
+
+## X-Household-Id Header
+
+Der Frontend-API-Client (`useApi.js`) sendet automatisch den `X-Household-Id`-Header aus `localStorage`, wenn ein aktiver Haushalt gesetzt ist. Dadurch sind keine View-Änderungen nötig — die Datenfilterung erfolgt transparent im Backend.
+
+## SSE-Verbindungen
+
+Für Echtzeit-Updates im Haushalt wird `EventSource` verwendet. Da `EventSource` keine Custom-Header unterstützt, wird das JWT als Query-Parameter übergeben:
+
+```js
+const url = `/api/household-events/${householdId}?token=${jwt}`;
+const es = new EventSource(url);
+```

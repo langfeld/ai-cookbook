@@ -94,7 +94,17 @@ Im Admin-Bereich unter *Datenverwaltung*:
 | Vorratsschrank | ✅ (JSON) | ✅ (CSV/JSON) |
 | REWE-Präferenzen | ✅ (JSON) | ✅ |
 | Zutaten-Einstellungen | ✅ (JSON) | ✅ |
+| Haushalte | ✅ (JSON) | — |
 | SQLite-Datenbank | ✅ (Datei-Download) | — |
+
+## Haushalt-Export
+
+Auf der Haushalt-Seite kann der gesamte Datenbestand eines Haushalts als JSON exportiert werden:
+- Rezepte mit Zutaten, Schritten und Bildern
+- Kategorien, Sammlungen, Zutaten-Aliase
+- Wochenpläne und Einkaufslisten
+- Vorratsschrank-Einträge
+- Haushaltsinformationen und Mitgliederliste
 
 ## „Meine Daten"-Seite
 

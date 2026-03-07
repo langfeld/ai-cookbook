@@ -546,6 +546,58 @@
       @confirm="confirmMealPlanSwap"
       @cancel="pendingSwapData = null"
     />
+
+    <!-- Share-Modal mit QR-Code -->
+    <Teleport to="body">
+      <div v-if="showShareModal" class="z-50 fixed inset-0 flex justify-center items-center bg-black/50 p-4" @click.self="showShareModal = false">
+        <div class="bg-white dark:bg-stone-800 p-6 rounded-2xl w-full max-w-sm">
+          <h3 class="mb-1 font-display font-bold text-stone-800 dark:text-stone-100 text-lg">
+            Rezept teilen
+          </h3>
+          <p class="mb-4 text-stone-500 dark:text-stone-400 text-sm">
+            {{ recipe?.title }}
+          </p>
+
+          <!-- QR-Code -->
+          <div class="flex justify-center bg-white mb-4 p-3 rounded-xl">
+            <QrCode :value="shareUrl" :size="200" />
+          </div>
+
+          <!-- URL -->
+          <div class="flex gap-2 mb-4">
+            <input
+              :value="shareUrl"
+              readonly
+              class="flex-1 bg-stone-50 dark:bg-stone-900 px-3 py-2 border border-stone-200 dark:border-stone-700 rounded-lg outline-none font-mono text-xs truncate"
+              @click="$event.target.select()"
+            />
+            <button
+              @click="copyShareUrl"
+              class="bg-primary-600 hover:bg-primary-700 px-3 py-2 rounded-lg font-medium text-white text-sm whitespace-nowrap transition-colors"
+            >
+              {{ shareCopied ? '✓' : 'Kopieren' }}
+            </button>
+          </div>
+
+          <!-- Native Share (mobile) -->
+          <button
+            v-if="canNativeShare"
+            @click="nativeShare"
+            class="flex justify-center items-center gap-2 bg-primary-600 hover:bg-primary-700 mb-3 px-4 py-2.5 rounded-xl w-full font-medium text-white text-sm transition-colors"
+          >
+            <Share2 class="w-4 h-4" />
+            Über App teilen
+          </button>
+
+          <button
+            @click="showShareModal = false"
+            class="p-2 rounded-lg w-full text-stone-500 hover:text-stone-700 dark:hover:text-stone-300 text-sm transition-colors"
+          >
+            Schließen
+          </button>
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>
 
@@ -559,6 +611,7 @@ import { useNotification } from '@/composables/useNotification.js';
 import { Star, Clock, Users, ChefHat, Pencil, Plus, Minus, Trash2, CalendarPlus, X, ChevronLeft, ChevronRight, Maximize, Warehouse, RotateCcw, Smartphone, EllipsisVertical, Sparkles, HelpCircle, Share2, Link } from 'lucide-vue-next';
 import { useWakeLock } from '@/composables/useWakeLock.js';
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue';
+import QrCode from '@/components/ui/QrCode.vue';
 import AddToCollection from '@/components/collections/AddToCollection.vue';
 import CookingMode from '@/components/recipes/CookingMode.vue';
 import RecipeRevisionModal from '@/components/recipes/RecipeRevisionModal.vue';
@@ -571,7 +624,7 @@ const router = useRouter();
 const recipesStore = useRecipesStore();
 const mealPlanStore = useMealPlanStore();
 const pantryStore = usePantryStore();
-const { showSuccess } = useNotification();
+const { showSuccess, showError: showShareError } = useNotification();
 const { loadIcons, getEmoji } = useIngredientIcons();
 const { isActive: wakeLockActive, isSupported: wakeLockSupported, toggle: toggleWakeLock } = useWakeLock();
 
@@ -582,6 +635,10 @@ const showHistoryPopup = ref(false);
 const deleting = ref(false);
 const showMealPlanSwapDialog = ref(false);
 const showMoreMenu = ref(false);
+const showShareModal = ref(false);
+const shareUrl = ref('');
+const shareCopied = ref(false);
+const canNativeShare = typeof navigator !== 'undefined' && !!navigator.share;
 // Touch-Erkennung mit mehreren Heuristiken (Brave blockiert ggf. maxTouchPoints)
 const isTouchDevice = ref(
   'ontouchstart' in window ||
@@ -1012,26 +1069,39 @@ async function deleteRecipe() {
 /** Rezept per Link teilen */
 async function handleShare() {
   try {
-    const result = await apiRaw(`/recipes/${recipe.value.id}/share`, { method: 'POST' });
-    const shareUrl = `${window.location.origin}/shared/${result.share_token}`;
-
-    // Native Share API falls verfügbar (mobile)
-    if (navigator.share) {
-      await navigator.share({
-        title: recipe.value.title,
-        text: `Schau dir dieses Rezept an: ${recipe.value.title}`,
-        url: shareUrl,
-      });
-    } else {
-      // Fallback: In Zwischenablage kopieren
-      await navigator.clipboard.writeText(shareUrl);
-      showSuccess('Share-Link kopiert! 📋');
-    }
+    const result = await apiRaw(`/recipes/${recipe.value.id}/share`, {
+      method: 'POST',
+      body: {},
+    });
+    shareUrl.value = `${window.location.origin}/shared/${result.share_token}`;
+    showShareModal.value = true;
   } catch (err) {
     if (err.name !== 'AbortError') {
-      // AbortError = User hat Share-Dialog geschlossen
-      showSuccess('Teilen fehlgeschlagen');
+      showShareError('Teilen fehlgeschlagen');
     }
+  }
+}
+
+async function copyShareUrl() {
+  try {
+    await navigator.clipboard.writeText(shareUrl.value);
+    shareCopied.value = true;
+    showSuccess('Share-Link kopiert! 📋');
+    setTimeout(() => { shareCopied.value = false; }, 2000);
+  } catch {
+    showShareError('Kopieren fehlgeschlagen');
+  }
+}
+
+async function nativeShare() {
+  try {
+    await navigator.share({
+      title: recipe.value.title,
+      text: `Schau dir dieses Rezept an: ${recipe.value.title}`,
+      url: shareUrl.value,
+    });
+  } catch {
+    // User hat Dialog geschlossen
   }
 }
 

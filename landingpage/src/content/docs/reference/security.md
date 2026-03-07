@@ -47,3 +47,27 @@ Bring!-Passwörter werden **AES-256-GCM-verschlüsselt** in der SQLite-Datenbank
 ## Admin-Schutz
 
 `requireAdmin` nutzt das zentrale `authenticate`-Decorator (API-Key-kompatibel) statt direktem `jwtVerify`.
+
+## Haushalt-Zugriffskontrolle
+
+Alle Haushalt-bezogenen Endpunkte prüfen die Mitgliedschaft über `isHouseholdMember()`. Der `resolveHousehold`-Decorator:
+1. Authentifiziert den Benutzer (JWT oder API-Key)
+2. Liest den `X-Household-Id`-Header
+3. Validiert die Mitgliedschaft — bei ungültigem Haushalt gibt es `403 Forbidden`
+4. Setzt `request.householdId` für alle nachfolgenden Queries
+
+## SSE-Authentifizierung
+
+Da die native `EventSource`-API keine Custom-Header unterstützt, wird das JWT-Token als Query-Parameter (`?token=...`) akzeptiert. Das Token wird serverseitig manuell via `fastify.jwt.verify()` geprüft.
+
+## Einladungscodes
+
+- **8 Zeichen**, alphanumerisch, mittels `crypto.randomBytes()` generiert
+- **48 Stunden** gültig, danach nicht mehr verwendbar
+- **Einmalverwendung** — nach erfolgreichem Beitritt nicht erneut nutzbar
+
+## Share-Tokens
+
+- **32 Byte**, hex-encoded (`crypto.randomBytes(32)`)
+- **7 Tage** gültig (konfigurierbar per `expires_days`-Parameter)
+- Öffentlicher Zugriff zeigt nur Rezeptdaten — keine sensiblen Felder (User-ID, Haushalt-ID etc.)

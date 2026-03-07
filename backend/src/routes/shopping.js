@@ -13,6 +13,13 @@ import { convertToBaseUnit, getUnitType, normalizeUnit, unitsCompatible } from '
 import { calculatePantryAllocations } from '../services/pantry-allocation.js';
 import { broadcastToHousehold } from './household-events.js';
 
+// In-Memory Map: householdId → Map<userId, { username, display_name, started_at }>
+const activeShoppers = new Map();
+
+export function getActiveShoppers(householdId) {
+  return activeShoppers.get(householdId) || new Map();
+}
+
 export default async function shoppingRoutes(fastify) {
   fastify.addHook('onRequest', fastify.resolveHousehold);
 
@@ -1035,6 +1042,81 @@ export default async function shoppingRoutes(fastify) {
       message: `${imported} Listen importiert, ${itemsImported} Artikel.`,
       imported,
       items_imported: itemsImported,
+    };
+  });
+
+  // ─────────────────────────────────────────────
+  // POST /api/shopping/shopping-status
+  // Einkaufs-Status setzen (ich kaufe gerade ein)
+  // ─────────────────────────────────────────────
+  fastify.post('/shopping-status', {
+    schema: {
+      description: 'Einkaufs-Status setzen oder aufheben',
+      tags: ['Einkaufsliste'],
+      security: [{ bearerAuth: [] }],
+      body: {
+        type: 'object',
+        required: ['active'],
+        properties: {
+          active: { type: 'boolean' },
+        },
+      },
+    },
+  }, async (request) => {
+    const userId = request.user.id;
+    const householdId = request.householdId;
+    const { active } = request.body;
+    const user = db.prepare('SELECT username, display_name FROM users WHERE id = ?').get(userId);
+
+    if (!householdId) {
+      return { active: false, shoppers: [] };
+    }
+
+    if (!activeShoppers.has(householdId)) {
+      activeShoppers.set(householdId, new Map());
+    }
+
+    const shoppers = activeShoppers.get(householdId);
+
+    if (active) {
+      shoppers.set(userId, {
+        user_id: userId,
+        username: user?.username || 'Unbekannt',
+        display_name: user?.display_name || user?.username || 'Unbekannt',
+        started_at: new Date().toISOString(),
+      });
+    } else {
+      shoppers.delete(userId);
+    }
+
+    // Broadcast an alle Haushaltsmitglieder
+    const shopperList = Array.from(shoppers.values());
+    broadcastToHousehold(householdId, 'shopping:status', { shoppers: shopperList });
+
+    return {
+      active,
+      shoppers: shopperList,
+    };
+  });
+
+  // ─────────────────────────────────────────────
+  // GET /api/shopping/shopping-status
+  // Aktuelle Einkäufer abrufen
+  // ─────────────────────────────────────────────
+  fastify.get('/shopping-status', {
+    schema: {
+      description: 'Aktuelle Einkäufer im Haushalt',
+      tags: ['Einkaufsliste'],
+      security: [{ bearerAuth: [] }],
+    },
+  }, async (request) => {
+    const householdId = request.householdId;
+    if (!householdId) {
+      return { shoppers: [] };
+    }
+    const shoppers = activeShoppers.get(householdId);
+    return {
+      shoppers: shoppers ? Array.from(shoppers.values()) : [],
     };
   });
 }

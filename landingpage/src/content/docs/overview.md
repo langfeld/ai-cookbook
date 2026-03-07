@@ -15,6 +15,8 @@ description: Zauberjournal — KI-gestützte Rezeptverwaltung mit Wochenplaner, 
 - **Bring!-Anbindung** — Einkaufsliste per Klick an die Bring!-App senden
 - **Vorratsschrank** — Ablaufdaten, Teilmengen, automatischer Nachschub aus Einkäufen
 - **Offline-Modus** — Einkaufsliste und Wochenplan offline nutzbar, automatische Synchronisation bei Reconnect
+- **Haushalt-Sharing** — Gemeinsame Rezepte, Wochenpläne, Einkaufslisten und Vorräte mit Familie oder WG, Echtzeit-Synchronisation
+- **Rezept-Link-Sharing** — Einzelne Rezepte per Link teilen (auch ohne Account), Import per Klick
 - **Backup & Export** — Komplett-Backup aller Daten als JSON
 - **Self-Hosted** — Ein Container, ein Volume, NAS-ready (PUID/PGID)
 - **Mehrbenutzerfähig** — Admin-Bereich mit Rollen und Benutzerverwaltung

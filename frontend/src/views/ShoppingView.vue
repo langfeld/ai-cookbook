@@ -11,6 +11,15 @@
 -->
 <template>
   <div class="space-y-6 mx-auto max-w-7xl animate-fade-in">
+    <!-- Wer kauft ein? Banner -->
+    <div v-if="otherShoppers.length" class="flex items-center gap-3 px-4 py-3 border border-accent-200 dark:border-accent-800 rounded-xl animate-fade-in bg-accent-50 dark:bg-accent-900/20">
+      <ShoppingCart class="w-5 h-5 text-accent-600 dark:text-accent-400 shrink-0" />
+      <p class="text-sm text-accent-700 dark:text-accent-300">
+        <span class="font-medium">{{ otherShoppers.map(s => s.display_name || s.username).join(', ') }}</span>
+        {{ otherShoppers.length === 1 ? 'kauft gerade ein' : 'kaufen gerade ein' }}
+      </p>
+    </div>
+
     <!-- Header -->
     <div class="flex sm:flex-row flex-col justify-between items-start sm:items-center gap-4">
       <div>
@@ -20,6 +29,21 @@
         </p>
       </div>
       <div class="flex flex-wrap items-stretch gap-1.5">
+        <!-- Ich kaufe ein Toggle -->
+        <button
+          v-if="householdStore.isInHousehold"
+          @click="toggleShoppingStatus"
+          :class="[
+            'flex items-center gap-1.5 px-2.5 py-2 rounded-xl text-sm font-medium transition-colors border',
+            iAmShopping
+              ? 'bg-accent-100 dark:bg-accent-900/40 border-accent-300 dark:border-accent-700 text-accent-700 dark:text-accent-300'
+              : 'bg-stone-100 dark:bg-stone-800 border-stone-300 dark:border-stone-600 text-stone-500 dark:text-stone-400'
+          ]"
+          :title="iAmShopping ? 'Einkauf beenden' : 'Ich kaufe ein'"
+        >
+          <MapPin class="w-4 h-4" />
+          <span class="hidden sm:inline">{{ iAmShopping ? 'Kaufe ein...' : 'Ich kaufe ein' }}</span>
+        </button>
         <button
           @click="toggleRecipeLinks"
           :title="showRecipeLinks ? 'Rezept-Links ausblenden' : 'Rezept-Links einblenden'"
@@ -1976,6 +2000,9 @@ import { useNotification } from '@/composables/useNotification.js';
 import { useNetworkStatus } from '@/composables/useNetworkStatus.js';
 import { offlineQueue } from '@/services/offlineQueue.js';
 import { useApi } from '@/composables/useApi.js';
+import { useHouseholdStore } from '@/stores/household.js';
+import { useAuthStore } from '@/stores/auth.js';
+import { apiRaw } from '@/composables/useApi.js';
 import { ListPlus, Check, ShoppingBag, Plus, Minus, Package, BookOpen, BookX, ExternalLink, ShoppingCart, X, ArrowRightLeft, Search, Tag, Trash2, Star, Heart, Archive, Send, Link2, Unlink, ClipboardCopy, LogIn, LogOut, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Loader2, Terminal, Download, Settings, RefreshCw, Merge, ArrowRight, History, RotateCcw, Ban, MapPin, PenLine, Upload, AlertTriangle, Copy, Eye, EyeOff, CheckSquare, Square, ClipboardCheck, CalendarDays, Lock } from 'lucide-vue-next';
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue';
 import UnitInput from '@/components/ui/UnitInput.vue';
@@ -1986,7 +2013,39 @@ const aliasStore = useIngredientAliasStore();
 const { showSuccess, showError } = useNotification();
 const { isOnline } = useNetworkStatus();
 const api = useApi();
+const householdStore = useHouseholdStore();
+const authStore = useAuthStore();
 const reweLoading = ref(false);
+
+// "Wer kauft ein?" Status
+const shoppers = ref([]);
+const iAmShopping = ref(false);
+const otherShoppers = computed(() =>
+  shoppers.value.filter(s => s.user_id !== authStore.user?.id)
+);
+
+async function fetchShoppingStatus() {
+  if (!householdStore.isInHousehold) return;
+  try {
+    const data = await apiRaw('/shopping/shopping-status');
+    shoppers.value = data.shoppers || [];
+    iAmShopping.value = shoppers.value.some(s => s.user_id === authStore.user?.id);
+  } catch { /* silent */ }
+}
+
+async function toggleShoppingStatus() {
+  const newState = !iAmShopping.value;
+  iAmShopping.value = newState;
+  try {
+    const data = await apiRaw('/shopping/shopping-status', {
+      method: 'POST',
+      body: { active: newState },
+    });
+    shoppers.value = data.shoppers || [];
+  } catch { iAmShopping.value = !newState; }
+}
+
+let cleanupShoppingSse = null;
 
 // Einkaufslisten-Generierung Optionen
 const showGenOptions = ref(false);
@@ -2941,10 +3000,24 @@ onMounted(async () => {
   loadReweMarketSettings();
   // Click-Outside: Matching-Begründung schließen
   document.addEventListener('click', closeMatchReason);
+  // "Wer kauft ein?" laden
+  fetchShoppingStatus();
+  // SSE: Einkaufs-Status anderer Mitglieder
+  if (householdStore.isInHousehold) {
+    cleanupShoppingSse = householdStore.addEventListener('shopping:status', (data) => {
+      shoppers.value = data.shoppers || [];
+      iAmShopping.value = shoppers.value.some(s => s.user_id === authStore.user?.id);
+    });
+  }
 });
 
 onUnmounted(() => {
   document.removeEventListener('click', closeMatchReason);
+  cleanupShoppingSse?.();
+  // Bei Verlassen der Seite Einkaufs-Status beenden
+  if (iAmShopping.value && householdStore.isInHousehold) {
+    apiRaw('/shopping/shopping-status', { method: 'POST', body: { active: false } }).catch(() => {});
+  }
 });
 
 function closeMatchReason() {

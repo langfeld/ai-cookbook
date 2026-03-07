@@ -80,6 +80,17 @@ Protokoll, wann welches Rezept zuletzt gekocht wurde. Wird vom Wochenplaner-Algo
 
 Lieblingsrezepte markieren und in der Übersicht filtern.
 
+## Rezept-Sharing
+
+Einzelne Rezepte per Link teilen — unabhängig vom Haushalt:
+
+- **Share-Link generieren** — In der Rezeptansicht über das Teilen-Menü
+- **Kryptografisches Token** — 32-Byte-Token, hex-encoded
+- **7 Tage gültig** — Ablaufzeit beim Erstellen konfigurierbar
+- **Öffentliche Ansicht** — Empfänger sieht Rezept mit Zutaten und Kochschritten, ohne Login
+- **Import per Klick** — Eingeloggte Nutzer können eine Kopie in die eigene Sammlung importieren (inkl. Bild)
+- **Native Share API** — Auf Mobilgeräten wird die native Teilen-Funktion genutzt, Desktop: Zwischenablage
+
 ## Sammlungen
 
 Rezepte in frei erstellbare Sammlungen organisieren:

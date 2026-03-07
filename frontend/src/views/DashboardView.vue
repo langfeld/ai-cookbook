@@ -96,6 +96,38 @@
       </div>
     </div>
 
+    <!-- Haushalt-Aktivitäts-Feed -->
+    <div v-if="householdStore.isInHousehold" class="bg-white dark:bg-stone-900 p-6 border border-stone-200 dark:border-stone-800 rounded-xl">
+      <h3 class="flex items-center gap-2 mb-4 font-semibold text-stone-800 dark:text-stone-100 text-lg">
+        <Users class="w-5 h-5 text-primary-500" />
+        Haushalt-Aktivitäten
+      </h3>
+      <div v-if="feedLoading" class="py-6 text-stone-400 text-center">
+        <div class="inline-block border-2 border-primary-300 border-t-transparent rounded-full w-5 h-5 animate-spin" />
+      </div>
+      <div v-else-if="feedEvents.length" class="space-y-3 max-h-80 overflow-y-auto">
+        <router-link
+          v-for="(event, i) in feedEvents"
+          :key="i"
+          :to="event.link || '/'"
+          class="group flex items-start gap-3 hover:bg-stone-50 dark:hover:bg-stone-800/50 p-2 rounded-lg transition-colors"
+        >
+          <span class="mt-0.5 text-lg leading-none">{{ event.icon }}</span>
+          <div class="flex-1 min-w-0">
+            <p class="text-stone-700 dark:text-stone-300 text-sm">
+              <span class="font-medium text-stone-900 dark:text-stone-100">{{ event.username }}</span>
+              {{ event.message }}
+            </p>
+            <p class="text-stone-400 text-xs">{{ formatRelativeTime(event.timestamp) }}</p>
+          </div>
+        </router-link>
+      </div>
+      <div v-else class="py-6 text-stone-400 text-center">
+        <Users class="opacity-50 mx-auto mb-2 w-10 h-10" />
+        <p class="text-sm">Noch keine Aktivitäten im Haushalt.</p>
+      </div>
+    </div>
+
     <!-- Kürzlich gekochte Rezepte -->
     <div class="bg-white dark:bg-stone-900 p-6 border border-stone-200 dark:border-stone-800 rounded-xl">
       <h3 class="flex items-center gap-2 mb-4 font-semibold text-stone-800 dark:text-stone-100 text-lg">
@@ -134,15 +166,17 @@
 </template>
 
 <script setup>
-import { computed, onMounted } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import { useAuthStore } from '@/stores/auth.js';
 import { useRecipesStore } from '@/stores/recipes.js';
 import { useMealPlanStore } from '@/stores/mealplan.js';
 import { useShoppingStore } from '@/stores/shopping.js';
 import { usePantryStore } from '@/stores/pantry.js';
+import { useHouseholdStore } from '@/stores/household.js';
+import { apiRaw } from '@/composables/useApi.js';
 import {
   Calendar, Zap, History, BookOpen, Sparkles,
-  CalendarPlus, ShoppingCart, Star, Warehouse,
+  CalendarPlus, ShoppingCart, Star, Warehouse, Users,
 } from 'lucide-vue-next';
 import StatCard from '@/components/dashboard/StatCard.vue';
 
@@ -151,6 +185,35 @@ const recipesStore = useRecipesStore();
 const mealPlanStore = useMealPlanStore();
 const shoppingStore = useShoppingStore();
 const pantryStore = usePantryStore();
+const householdStore = useHouseholdStore();
+
+// Aktivitäts-Feed
+const feedEvents = ref([]);
+const feedLoading = ref(false);
+
+function formatRelativeTime(ts) {
+  if (!ts) return '';
+  const diff = Date.now() - new Date(ts).getTime();
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return 'Gerade eben';
+  if (mins < 60) return `vor ${mins} Min.`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `vor ${hours} Std.`;
+  const days = Math.floor(hours / 24);
+  if (days === 1) return 'Gestern';
+  if (days < 7) return `vor ${days} Tagen`;
+  return new Date(ts).toLocaleDateString('de-DE', { day: 'numeric', month: 'short' });
+}
+
+async function fetchDashboardFeed() {
+  if (!householdStore.isInHousehold) return;
+  feedLoading.value = true;
+  try {
+    const data = await apiRaw(`/households/${householdStore.activeHouseholdId}/dashboard-feed?limit=15`);
+    feedEvents.value = data.events || [];
+  } catch { /* silent */ }
+  feedLoading.value = false;
+}
 
 // Emojis für Mahlzeiten-Typen
 const mealTypeEmojis = {
@@ -194,6 +257,7 @@ onMounted(async () => {
     mealPlanStore.fetchCurrentPlan(),
     shoppingStore.fetchActiveList(),
     pantryStore.fetchItems(),
+    fetchDashboardFeed(),
   ]);
 });
 

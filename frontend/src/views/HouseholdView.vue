@@ -40,7 +40,7 @@
               type="text"
               placeholder="Einladungscode eingeben"
               maxlength="8"
-              class="flex-1 bg-stone-50 dark:bg-stone-900 px-4 py-3 border border-stone-200 dark:border-stone-700 rounded-xl text-sm outline-none focus:ring-2 focus:ring-primary-500"
+              class="flex-1 bg-stone-50 dark:bg-stone-900 px-4 py-3 border border-stone-200 dark:border-stone-700 rounded-xl outline-none focus:ring-2 focus:ring-primary-500 text-sm"
               @keyup.enter="handleJoin"
             />
             <button
@@ -68,7 +68,7 @@
               type="text"
               placeholder="Name des Haushalts (z.B. Familie Müller)"
               maxlength="100"
-              class="flex-1 bg-stone-50 dark:bg-stone-900 px-4 py-3 border border-stone-200 dark:border-stone-700 rounded-xl text-sm outline-none focus:ring-2 focus:ring-primary-500"
+              class="flex-1 bg-stone-50 dark:bg-stone-900 px-4 py-3 border border-stone-200 dark:border-stone-700 rounded-xl outline-none focus:ring-2 focus:ring-primary-500 text-sm"
               @keyup.enter="handleCreate"
             />
             <button
@@ -130,7 +130,7 @@
                 </button>
                 <button
                   @click="showSettingsModal = true"
-                  class="flex items-center gap-2 bg-white dark:bg-stone-800 hover:bg-stone-50 dark:hover:bg-stone-700 px-4 py-2.5 border border-stone-200 dark:border-stone-700 rounded-xl text-stone-600 dark:text-stone-300 text-sm transition-colors"
+                  class="flex items-center gap-2 bg-white hover:bg-stone-50 dark:bg-stone-800 dark:hover:bg-stone-700 px-4 py-2.5 border border-stone-200 dark:border-stone-700 rounded-xl text-stone-600 dark:text-stone-300 text-sm transition-colors"
                 >
                   <Settings class="w-4 h-4" />
                 </button>
@@ -147,8 +147,8 @@
             <div class="space-y-3">
               <div
                 v-for="member in details.members"
-                :key="member.user_id"
-                class="flex items-center gap-3 p-3 rounded-xl hover:bg-stone-50 dark:hover:bg-stone-700/50 transition-colors"
+                :key="member.id"
+                class="flex items-center gap-3 hover:bg-stone-50 dark:hover:bg-stone-700/50 p-3 rounded-xl transition-colors"
               >
                 <div class="flex justify-center items-center bg-primary-100 dark:bg-primary-900/40 rounded-full w-10 h-10 shrink-0">
                   <span class="font-semibold text-primary-600 dark:text-primary-400 text-sm">
@@ -160,7 +160,7 @@
                     <span class="font-medium text-stone-800 dark:text-stone-100 text-sm truncate">
                       {{ member.display_name || member.username }}
                     </span>
-                    <span v-if="member.role === 'creator'" class="bg-amber-100 dark:bg-amber-900/40 px-2 py-0.5 rounded-full text-amber-700 dark:text-amber-400 text-xs">
+                    <span v-if="member.id === details.created_by" class="bg-amber-100 dark:bg-amber-900/40 px-2 py-0.5 rounded-full text-amber-700 dark:text-amber-400 text-xs">
                       Ersteller
                     </span>
                   </div>
@@ -170,7 +170,7 @@
                 </div>
                 <!-- Entfernen-Button nur für Creator und nicht sich selbst -->
                 <button
-                  v-if="isCreator && member.user_id !== currentUserId"
+                  v-if="isCreator && member.id !== currentUserId"
                   @click="confirmRemoveMember(member)"
                   class="p-2 rounded-lg text-stone-400 hover:text-red-500 transition-colors"
                   title="Mitglied entfernen"
@@ -181,13 +181,90 @@
             </div>
           </div>
 
+          <!-- Haushalt-Statistiken -->
+          <div v-if="householdStats" class="bg-white dark:bg-stone-800 p-5 border border-stone-200 dark:border-stone-700 rounded-2xl">
+            <h3 class="flex items-center gap-2 mb-4 font-display font-semibold text-stone-800 dark:text-stone-100">
+              <BarChart3 class="w-5 h-5 text-primary-600" />
+              Statistiken
+            </h3>
+
+            <!-- Übersicht-Karten -->
+            <div class="gap-3 grid grid-cols-2 sm:grid-cols-4 mb-5">
+              <div class="bg-stone-50 dark:bg-stone-900/50 p-3 rounded-xl text-center">
+                <p class="font-bold text-primary-600 text-xl">{{ householdStats.recipes }}</p>
+                <p class="text-stone-500 text-xs">Rezepte</p>
+              </div>
+              <div class="bg-stone-50 dark:bg-stone-900/50 p-3 rounded-xl text-center">
+                <p class="font-bold text-amber-600 text-xl">{{ householdStats.cooked_total }}</p>
+                <p class="text-stone-500 text-xs">Mal gekocht</p>
+              </div>
+              <div class="bg-stone-50 dark:bg-stone-900/50 p-3 rounded-xl text-center">
+                <p class="font-bold text-xl text-accent-600">{{ householdStats.completed_shops }}</p>
+                <p class="text-stone-500 text-xs">Einkäufe</p>
+              </div>
+              <div class="bg-stone-50 dark:bg-stone-900/50 p-3 rounded-xl text-center">
+                <p class="font-bold text-indigo-600 text-xl">{{ householdStats.streak }}🔥</p>
+                <p class="text-stone-500 text-xs">Wochen-Streak</p>
+              </div>
+            </div>
+
+            <!-- Top-Rezepte -->
+            <div v-if="householdStats.top_recipes?.length" class="mb-4">
+              <h4 class="mb-2 font-medium text-stone-600 dark:text-stone-400 text-sm">🏆 Beliebte Rezepte</h4>
+              <div class="space-y-2">
+                <router-link
+                  v-for="(recipe, i) in householdStats.top_recipes"
+                  :key="recipe.id"
+                  :to="`/recipes/${recipe.id}`"
+                  class="flex items-center gap-3 hover:bg-stone-50 dark:hover:bg-stone-700/50 p-2 rounded-lg transition-colors"
+                >
+                  <span class="w-5 font-medium text-stone-400 text-sm">{{ i + 1 }}.</span>
+                  <div class="bg-stone-100 dark:bg-stone-700 rounded-lg w-8 h-8 overflow-hidden shrink-0">
+                    <img v-if="recipe.image_url" :src="recipe.image_url" :alt="recipe.title" class="w-full h-full object-cover" />
+                    <div v-else class="flex justify-center items-center w-full h-full text-xs">🍽️</div>
+                  </div>
+                  <span class="flex-1 text-stone-700 dark:text-stone-300 text-sm truncate">{{ recipe.title }}</span>
+                  <span class="text-stone-400 text-xs">{{ recipe.cook_count }}×</span>
+                </router-link>
+              </div>
+            </div>
+
+            <!-- Mitglieder-Stats -->
+            <div v-if="householdStats.member_stats?.length">
+              <h4 class="mb-2 font-medium text-stone-600 dark:text-stone-400 text-sm">👩‍🍳 Koch-Rangliste</h4>
+              <div class="space-y-2">
+                <div
+                  v-for="member in householdStats.member_stats"
+                  :key="member.id"
+                  class="flex items-center gap-3 p-2"
+                >
+                  <div class="flex justify-center items-center bg-primary-100 dark:bg-primary-900/40 rounded-full w-7 h-7 shrink-0">
+                    <span class="font-semibold text-primary-600 dark:text-primary-400 text-xs">
+                      {{ (member.username || '?').charAt(0).toUpperCase() }}
+                    </span>
+                  </div>
+                  <span class="flex-1 text-stone-700 dark:text-stone-300 text-sm">{{ member.display_name || member.username }}</span>
+                  <div class="flex items-center gap-2">
+                    <div class="bg-stone-100 dark:bg-stone-700 rounded-full w-24 h-2 overflow-hidden">
+                      <div
+                        class="bg-primary-500 rounded-full h-full transition-all"
+                        :style="{ width: `${maxCookCount > 0 ? (member.cook_count / maxCookCount) * 100 : 0}%` }"
+                      ></div>
+                    </div>
+                    <span class="w-10 text-stone-400 text-xs text-right">{{ member.cook_count }}×</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <!-- Aktivitäts-Feed -->
           <div class="bg-white dark:bg-stone-800 p-5 border border-stone-200 dark:border-stone-700 rounded-2xl">
             <h3 class="flex items-center gap-2 mb-4 font-display font-semibold text-stone-800 dark:text-stone-100">
               <Activity class="w-5 h-5 text-primary-600" />
               Letzte Aktivitäten
             </h3>
-            <div v-if="activities.length === 0" class="py-4 text-center text-stone-400 dark:text-stone-500 text-sm">
+            <div v-if="activities.length === 0" class="py-4 text-stone-400 dark:text-stone-500 text-sm text-center">
               Noch keine Aktivitäten
             </div>
             <div v-else class="space-y-2 max-h-64 overflow-y-auto">
@@ -239,7 +316,7 @@
               type="text"
               placeholder="Einladungscode"
               maxlength="8"
-              class="flex-1 bg-stone-50 dark:bg-stone-900 px-3 py-2 border border-stone-200 dark:border-stone-700 rounded-lg text-sm outline-none focus:ring-2 focus:ring-primary-500"
+              class="flex-1 bg-stone-50 dark:bg-stone-900 px-3 py-2 border border-stone-200 dark:border-stone-700 rounded-lg outline-none focus:ring-2 focus:ring-primary-500 text-sm"
               @keyup.enter="handleJoin"
             />
             <button
@@ -264,13 +341,22 @@
 
           <div v-if="inviteCode" class="space-y-4">
             <div class="bg-stone-50 dark:bg-stone-900 p-4 rounded-xl text-center">
-              <p class="font-mono font-bold text-2xl text-primary-600 tracking-wider select-all">
+              <p class="font-mono font-bold text-primary-600 text-2xl tracking-wider select-all">
                 {{ inviteCode }}
               </p>
               <p class="mt-2 text-stone-400 text-xs">
                 Gültig für {{ inviteExpiry }}
               </p>
             </div>
+
+            <!-- QR-Code -->
+            <div class="flex justify-center bg-white p-3 rounded-xl">
+              <QrCode :value="inviteQrUrl" :size="180" />
+            </div>
+            <p class="text-stone-400 dark:text-stone-500 text-xs text-center">
+              QR-Code scannen oder Code manuell eingeben
+            </p>
+
             <button
               @click="copyInviteCode"
               class="bg-primary-600 hover:bg-primary-700 px-4 py-2.5 rounded-xl w-full font-medium text-white text-sm transition-colors"
@@ -294,7 +380,7 @@
 
           <button
             @click="showInviteModal = false; inviteCode = null"
-            class="mt-3 p-2 rounded-lg w-full text-stone-500 text-sm hover:text-stone-700 transition-colors"
+            class="mt-3 p-2 rounded-lg w-full text-stone-500 hover:text-stone-700 text-sm transition-colors"
           >
             Schließen
           </button>
@@ -318,7 +404,7 @@
                 v-model="editName"
                 type="text"
                 maxlength="100"
-                class="bg-stone-50 dark:bg-stone-900 px-3 py-2 border border-stone-200 dark:border-stone-700 rounded-lg w-full text-sm outline-none focus:ring-2 focus:ring-primary-500"
+                class="bg-stone-50 dark:bg-stone-900 px-3 py-2 border border-stone-200 dark:border-stone-700 rounded-lg outline-none focus:ring-2 focus:ring-primary-500 w-full text-sm"
               />
             </div>
 
@@ -336,7 +422,7 @@
             <div class="space-y-3">
               <button
                 @click="handleLeave"
-                class="flex justify-center items-center gap-2 bg-red-50 dark:bg-red-900/20 hover:bg-red-100 dark:hover:bg-red-900/30 px-4 py-2.5 rounded-xl w-full text-red-600 dark:text-red-400 text-sm transition-colors"
+                class="flex justify-center items-center gap-2 bg-red-50 hover:bg-red-100 dark:bg-red-900/20 dark:hover:bg-red-900/30 px-4 py-2.5 rounded-xl w-full text-red-600 dark:text-red-400 text-sm transition-colors"
               >
                 <LogOut class="w-4 h-4" />
                 Haushalt verlassen
@@ -345,7 +431,7 @@
               <button
                 v-if="isCreator"
                 @click="handleDelete"
-                class="flex justify-center items-center gap-2 bg-red-50 dark:bg-red-900/20 hover:bg-red-100 dark:hover:bg-red-900/30 px-4 py-2.5 rounded-xl w-full text-red-600 dark:text-red-400 text-sm transition-colors"
+                class="flex justify-center items-center gap-2 bg-red-50 hover:bg-red-100 dark:bg-red-900/20 dark:hover:bg-red-900/30 px-4 py-2.5 rounded-xl w-full text-red-600 dark:text-red-400 text-sm transition-colors"
               >
                 <Trash2 class="w-4 h-4" />
                 Haushalt auflösen
@@ -355,7 +441,7 @@
 
           <button
             @click="showSettingsModal = false"
-            class="mt-3 p-2 rounded-lg w-full text-stone-500 text-sm hover:text-stone-700 transition-colors"
+            class="mt-3 p-2 rounded-lg w-full text-stone-500 hover:text-stone-700 text-sm transition-colors"
           >
             Schließen
           </button>
@@ -365,12 +451,13 @@
 
     <!-- Confirm Dialog -->
     <ConfirmDialog
-      v-if="confirmAction"
-      :title="confirmAction.title"
-      :message="confirmAction.message"
-      :confirmLabel="confirmAction.confirmLabel"
-      :danger="confirmAction.danger"
-      @confirm="confirmAction.onConfirm(); confirmAction = null"
+      :modelValue="!!confirmAction"
+      :title="confirmAction?.title"
+      :message="confirmAction?.message"
+      :confirmText="confirmAction?.confirmText"
+      :variant="confirmAction?.variant || 'danger'"
+      @confirm="confirmAction?.onConfirm(); confirmAction = null"
+      @update:modelValue="confirmAction = null"
       @cancel="confirmAction = null"
     />
   </div>
@@ -378,14 +465,18 @@
 
 <script setup>
 import { ref, computed, onMounted, watch } from 'vue';
+import { useRoute } from 'vue-router';
 import { useHouseholdStore } from '@/stores/household.js';
 import { useAuthStore } from '@/stores/auth.js';
 import { useNotification } from '@/composables/useNotification.js';
+import { apiRaw } from '@/composables/useApi.js';
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue';
-import { Home, Users, UserPlus, UserMinus, Plus, Settings, LogOut, Trash2, Activity, FolderSync } from 'lucide-vue-next';
+import QrCode from '@/components/ui/QrCode.vue';
+import { Home, Users, UserPlus, UserMinus, Plus, Settings, LogOut, Trash2, Activity, FolderSync, BarChart3 } from 'lucide-vue-next';
 
 const householdStore = useHouseholdStore();
 const authStore = useAuthStore();
+const route = useRoute();
 const { showSuccess, showError } = useNotification();
 
 const loading = ref(true);
@@ -404,9 +495,18 @@ const generatingInvite = ref(false);
 const copied = ref(false);
 const editName = ref('');
 const confirmAction = ref(null);
+const householdStats = ref(null);
 
 const currentUserId = computed(() => authStore.user?.id);
 const isCreator = computed(() => details.value?.created_by === currentUserId.value);
+const maxCookCount = computed(() => {
+  if (!householdStats.value?.member_stats?.length) return 0;
+  return Math.max(...householdStats.value.member_stats.map(m => m.cook_count));
+});
+const inviteQrUrl = computed(() => {
+  if (!inviteCode.value) return '';
+  return `${window.location.origin}/household?join=${inviteCode.value}`;
+});
 
 function formatDate(dateStr) {
   if (!dateStr) return '';
@@ -423,8 +523,14 @@ async function loadDetails() {
   try {
     details.value = await householdStore.fetchHouseholdDetails(householdStore.activeHouseholdId);
     editName.value = details.value.name;
-    const acts = await householdStore.fetchActivity(householdStore.activeHouseholdId);
-    activities.value = acts || [];
+    const data = await householdStore.fetchActivity(householdStore.activeHouseholdId);
+    activities.value = data?.activities || data || [];
+
+    // Haushalt-Statistiken laden
+    try {
+      const statsData = await apiRaw(`/households/${householdStore.activeHouseholdId}/stats`);
+      householdStats.value = statsData.stats || null;
+    } catch { householdStats.value = null; }
   } catch {
     // Fehler wird vom Store gehandelt
   }
@@ -469,7 +575,7 @@ async function generateInvite() {
   generatingInvite.value = true;
   try {
     const result = await householdStore.createInvite(householdStore.activeHouseholdId);
-    inviteCode.value = result.code;
+    inviteCode.value = result.invite_code;
     inviteExpiry.value = result.expires_at
       ? `${Math.round((new Date(result.expires_at) - new Date()) / 3600000)} Stunden`
       : 'unbegrenzt';
@@ -508,8 +614,8 @@ async function handleMigrate() {
   confirmAction.value = {
     title: 'Daten migrieren',
     message: 'Alle deine persönlichen Rezepte, Wochenpläne, Einkaufslisten und Vorräte werden in den gemeinsamen Haushalt verschoben. Diese Aktion kann nicht rückgängig gemacht werden.',
-    confirmLabel: 'Migrieren',
-    danger: false,
+    confirmText: 'Migrieren',
+    variant: 'warning',
     onConfirm: async () => {
       migrating.value = true;
       try {
@@ -528,11 +634,11 @@ function confirmRemoveMember(member) {
   confirmAction.value = {
     title: 'Mitglied entfernen',
     message: `Möchtest du "${member.display_name || member.username}" wirklich aus dem Haushalt entfernen?`,
-    confirmLabel: 'Entfernen',
-    danger: true,
+    confirmText: 'Entfernen',
+    variant: 'danger',
     onConfirm: async () => {
       try {
-        await householdStore.removeMember(householdStore.activeHouseholdId, member.user_id);
+        await householdStore.removeMember(householdStore.activeHouseholdId, member.id);
         showSuccess('Mitglied entfernt');
         await loadDetails();
       } catch (err) {
@@ -546,8 +652,8 @@ async function handleLeave() {
   confirmAction.value = {
     title: 'Haushalt verlassen',
     message: 'Möchtest du diesen Haushalt wirklich verlassen? Deine geteilten Daten bleiben im Haushalt erhalten.',
-    confirmLabel: 'Verlassen',
-    danger: true,
+    confirmText: 'Verlassen',
+    variant: 'danger',
     onConfirm: async () => {
       try {
         await householdStore.leaveHousehold(householdStore.activeHouseholdId);
@@ -565,8 +671,8 @@ async function handleDelete() {
   confirmAction.value = {
     title: 'Haushalt auflösen',
     message: 'Möchtest du diesen Haushalt wirklich auflösen? Alle geteilten Daten werden den einzelnen Benutzern zurückgegeben.',
-    confirmLabel: 'Auflösen',
-    danger: true,
+    confirmText: 'Auflösen',
+    variant: 'danger',
     onConfirm: async () => {
       try {
         await householdStore.deleteHousehold(householdStore.activeHouseholdId);
@@ -585,6 +691,13 @@ onMounted(async () => {
   await householdStore.fetchHouseholds();
   await loadDetails();
   loading.value = false;
+
+  // Auto-Join via QR-Code Link (?join=CODE)
+  const joinParam = route.query.join;
+  if (joinParam && typeof joinParam === 'string' && joinParam.length === 8) {
+    joinCode.value = joinParam;
+    await handleJoin();
+  }
 });
 
 // Bei Haushaltswechsel Details aktualisieren

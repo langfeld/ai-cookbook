@@ -29,6 +29,7 @@ description: Vollständige API-Referenz aller Endpunkte.
 | `POST` | `/:id/image` | Bild hochladen/ersetzen |
 | `POST` | `/:id/favorite` | Favorit togglen |
 | `POST` | `/:id/cooked` | Als gekocht markieren (mit Vorratsabzug) |
+| `POST` | `/:id/share` | Share-Link erstellen |
 | `GET` | `/:id/revision-check` | Prüft Wochenplan-Konflikte vor KI-Überarbeitung |
 | `POST` | `/:id/revise` | Rezept per KI überarbeiten (Rate-Limit: 5/15min) |
 | `GET` | `/export` | Eigene Rezepte als JSON exportieren |
@@ -143,6 +144,41 @@ description: Vollständige API-Referenz aller Endpunkte.
 | `GET` | `/export` | Aliase + Blockierungen exportieren |
 | `POST` | `/import` | Aliase + Blockierungen importieren |
 
+## Haushalte (`/api/households`)
+
+| Methode | Pfad | Beschreibung |
+|---------|------|-------------|
+| `GET` | `/` | Alle Haushalte des Benutzers |
+| `POST` | `/` | Neuen Haushalt erstellen |
+| `GET` | `/:id` | Haushalt-Details mit Mitgliedern |
+| `PUT` | `/:id` | Haushalt umbenennen |
+| `DELETE` | `/:id` | Haushalt auflösen (nur letztes Mitglied) |
+| `POST` | `/:id/invite` | Einladungscode generieren (48h gültig) |
+| `POST` | `/join` | Per Einladungscode beitreten |
+| `DELETE` | `/:id/leave` | Haushalt verlassen |
+| `DELETE` | `/:id/members/:userId` | Mitglied entfernen |
+| `PUT` | `/:id/default` | Als Standard-Haushalt setzen |
+| `GET` | `/:id/activity` | Aktivitätsprotokoll |
+| `POST` | `/:id/migrate` | Persönliche Daten in Haushalt migrieren |
+| `GET` | `/:id/export` | Haushalt-Daten als JSON exportieren |
+
+## Rezept-Sharing (`/api/recipes` + `/api/shared-recipes`)
+
+| Methode | Pfad | Beschreibung |
+|---------|------|-------------|
+| `POST` | `/api/recipes/:id/share` | Share-Link erstellen (7 Tage gültig) |
+| `GET` | `/api/recipes/:id/shares` | Aktive Share-Links eines Rezepts |
+| `DELETE` | `/api/recipes/share/:token` | Share-Link widerrufen |
+| `GET` | `/api/shared-recipes/:token` | Geteiltes Rezept ansehen (öffentlich, kein Login) |
+| `POST` | `/api/recipes/shared/:token/import` | Geteiltes Rezept importieren (Kopie erstellen) |
+
+## Haushalt-Events (`/api/household-events`)
+
+| Methode | Pfad | Beschreibung |
+|---------|------|-------------|
+| `GET` | `/:householdId` | SSE-Stream für Echtzeit-Updates |
+| `GET` | `/:householdId/online` | Online-Status der Haushaltsmitglieder |
+
 ## Admin (`/api/admin`) 🔒
 
 Alle Routen erfordern `role=admin`.
@@ -163,3 +199,5 @@ Alle Routen erfordern `role=admin`.
 | `POST` | `/import` | Rezepte importieren (max. 500) |
 | `GET` | `/export/pantry` | Vorräte exportieren |
 | `POST` | `/import/pantry` | Vorräte importieren |
+| `GET` | `/households` | Alle Haushalte auflisten |
+| `DELETE` | `/households/:id` | Haushalt löschen |

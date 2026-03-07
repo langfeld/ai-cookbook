@@ -24,6 +24,8 @@ description: Dashboard, Benutzerverwaltung, Systemeinstellungen und Datenverwalt
 - **KI-Anbieter** wählen (inkl. schnelles Modell für einfache Aufgaben)
 - **Upload-Größe** konfigurieren
 - **REWE-Integration** ein-/ausschalten
+- **Max. Haushaltsmitglieder** konfigurieren (Standard: 10)
+- **Max. Haushalte pro Benutzer** konfigurieren (Standard: 3)
 
 ## Zutaten-Icons
 
@@ -47,6 +49,12 @@ Zentrale Seite für alle Export/Import-Funktionen:
 | **REWE-Präferenzen** | JSON (pro Benutzer filterbar) | JSON |
 | **Zutaten-Einstellungen** | JSON (Aliase + Blockierungen) | JSON |
 | **Komplett-Backup** | SQLite-Datei | — |
+
+## Haushalt-Verwaltung
+
+- Alle Haushalte **anzeigen** (Name, Mitgliederzahl, Erstellt-Datum)
+- Haushalte **auflösen** (alle Mitgliedschaften und `household_id`-Referenzen werden aufgelöst)
+- **Statistiken** — Gesamtanzahl Haushalte und durchschnittliche Mitglieder im Dashboard
 
 ## Aktivitätslog
 

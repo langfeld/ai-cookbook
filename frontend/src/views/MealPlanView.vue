@@ -124,6 +124,34 @@
       </div>
     </div>
 
+    <!-- ═══════════════════ REZEPT-VORSCHLÄGE ═══════════════════ -->
+    <div v-if="householdStore.isInHousehold && suggestions.length && !currentPlan" class="bg-white dark:bg-stone-900 p-4 border border-stone-200 dark:border-stone-800 rounded-xl">
+      <div class="flex justify-between items-center mb-3">
+        <h3 class="flex items-center gap-2 font-semibold text-stone-800 dark:text-stone-100 text-sm">
+          <Flame class="w-4 h-4 text-amber-500" />
+          Vorschläge aus dem Haushalt
+        </h3>
+        <button @click="showSuggestions = !showSuggestions" class="text-stone-400 hover:text-stone-600 text-xs transition-colors">
+          {{ showSuggestions ? 'Ausblenden' : 'Anzeigen' }}
+        </button>
+      </div>
+      <div v-if="showSuggestions" class="gap-3 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6">
+        <router-link
+          v-for="s in suggestions"
+          :key="s.id"
+          :to="`/recipes/${s.id}`"
+          class="group"
+        >
+          <div class="bg-stone-100 dark:bg-stone-800 mb-1.5 rounded-lg aspect-video overflow-hidden">
+            <img v-if="s.image_url" :src="s.image_url" :alt="s.title" class="w-full h-full object-cover group-hover:scale-105 transition-transform" />
+            <div v-else class="flex justify-center items-center w-full h-full text-2xl">🍽️</div>
+          </div>
+          <p class="font-medium text-stone-700 dark:group-hover:text-primary-400 dark:text-stone-300 group-hover:text-primary-600 text-xs truncate transition-colors">{{ s.title }}</p>
+          <p class="text-[10px] text-stone-400 truncate">{{ s.reason }}</p>
+        </router-link>
+      </div>
+    </div>
+
     <!-- ═══════════════════ INHALT ═══════════════════ -->
 
     <!-- KI-/Algorithmus-Reasoning -->
@@ -1404,6 +1432,8 @@ import { useCollectionsStore } from '@/stores/collections.js';
 import { useRecipeBlocksStore } from '@/stores/recipe-blocks.js';
 import { useNotification } from '@/composables/useNotification.js';
 import { useNetworkStatus } from '@/composables/useNetworkStatus.js';
+import { useHouseholdStore } from '@/stores/household.js';
+import { apiRaw } from '@/composables/useApi.js';
 import { offlineQueue } from '@/services/offlineQueue.js';
 import LoadPlanDialog from '@/components/mealplan/LoadPlanDialog.vue';
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue';
@@ -1426,6 +1456,7 @@ const difficultyClasses = {
   schwer: 'bg-red-100 dark:bg-red-900/60 text-red-700 dark:text-red-300',
 };
 const blocksStore = useRecipeBlocksStore();
+const householdStore = useHouseholdStore();
 const { showSuccess } = useNotification();
 const { isOnline } = useNetworkStatus();
 
@@ -1457,6 +1488,18 @@ const genActiveDays = ref(savedPrefs.activeDays ?? [0, 1, 2, 3, 4, 5, 6]);
 const showSlotSettings = ref(false);
 const showPastDays = ref(false);
 const reasoningCollapsed = ref(true);
+
+// Rezept-Vorschläge aus dem Haushalt
+const suggestions = ref([]);
+const showSuggestions = ref(true);
+
+async function fetchSuggestions() {
+  if (!householdStore.isInHousehold) return;
+  try {
+    const data = await apiRaw(`/households/${householdStore.activeHouseholdId}/suggestions?limit=6`);
+    suggestions.value = data.suggestions || [];
+  } catch { /* silent */ }
+}
 
 // Kalorien-Optimierung
 const CALORIE_PRESETS = {
@@ -1982,6 +2025,7 @@ onMounted(async () => {
   store.fetchHistory();
   collectionsStore.fetchCollections();
   blocksStore.fetchBlocks();
+  fetchSuggestions();
 });
 </script>
 

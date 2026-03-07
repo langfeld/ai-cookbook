@@ -39,3 +39,12 @@ API-Keys werden im Klartext in der SQLite-DB gespeichert. Akzeptabel für Self-H
 - **Erster Besuch online** — Der Service Worker muss sich beim ersten Besuch installieren und alle Assets cachen. Ab dem zweiten Laden funktioniert die App vollständig offline
 - **Max 3 Retries** — Fehlgeschlagene Sync-Aktionen werden maximal 3× wiederholt, danach als `failed` markiert (erneuter Versuch über UI möglich)
 - **JWT-Ablauf** — Nach längerer Offline-Phase kann der Token ablaufen (Standard: 7 Tage). Die Queue wird dann pausiert und der Benutzer aufgefordert, sich erneut anzumelden — keine Daten gehen verloren
+
+## Haushalt-Sharing
+
+- **Keine Rollen** innerhalb eines Haushalts — alle Mitglieder haben gleiche Berechtigungen (kein „Nur Lesen")
+- **Max. 3 Haushalte** pro Benutzer und **max. 10 Mitglieder** pro Haushalt (konfigurierbar über Admin-Einstellungen)
+- **Keine automatische Migration** — beim Beitritt werden bestehende persönliche Daten nicht automatisch dem Haushalt zugeordnet (erfordert explizite Migration)
+- **SSE erfordert Token-URL** — `EventSource` unterstützt keine Custom-Header, deshalb wird das JWT als Query-Parameter übertragen
+- **REWE-Präferenzen bleiben privat** — Produktzuordnungen werden nicht im Haushalt geteilt
+- **Offline-SSE** — Echtzeit-Updates (SSE) funktionieren nur online. Offline-Änderungen werden erst nach Reconnect synchronisiert

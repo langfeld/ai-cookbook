@@ -35,7 +35,10 @@ zauberjournal/
 │       │   ├── ingredient-aliases.js # Aliase, Blockierungen, Export/Import
 │       │   ├── recipe-blocks.js # Rezept-Sperren CRUD
 │       │   ├── backup.js       # Komplett-Backup pro Benutzer
-│       │   └── admin.js        # Admin: Stats, Users, Settings, Logs, Export
+│       │   ├── admin.js        # Admin: Stats, Users, Settings, Logs, Export
+│       │   ├── households.js   # Haushalt CRUD, Einladungen, Migration
+│       │   ├── household-events.js # SSE-Stream für Echtzeit-Sync
+│       │   └── shared-recipes.js # Öffentliche Rezept-Links (kein Auth)
 │       ├── services/
 │       │   ├── ai/
 │       │   │   ├── base.js     # BaseAIProvider (Chat, JSON-Parse, Bild)
@@ -47,7 +50,8 @@ zauberjournal/
 │       │   ├── meal-planner.js # Wochenplan-Algorithmus
 │       │   ├── recipe-parser.js # Multi-Bild-Rezeptanalyse
 │       │   ├── rewe-api.js     # REWE API-Client
-│       │   └── shopping-list.js # Einkaufslisten-Service
+│       │   ├── shopping-list.js # Einkaufslisten-Service
+│       │   └── pantry-allocation.js # Vorratsabgleich für Einkaufsliste
 │       └── utils/
 │           ├── helpers.js      # normalizeUnit, Konvertierungen
 │           └── errors.js       # Fehlerbehandlung
@@ -79,8 +83,11 @@ zauberjournal/
 │       │   ├── ShoppingView.vue
 │       │   ├── PantryView.vue
 │       │   ├── UserDataManagementView.vue  # Meine Daten
+│       │   ├── HouseholdView.vue
+│       │   ├── SharedRecipeView.vue
 │       │   └── admin/          # Admin-Dashboard, Users, Settings, Icons, Data
 │       ├── stores/             # Pinia Stores (mit Offline-Persistenz)
+│       │   ├── household.js         # Haushalt-Store mit SSE-Management
 │       ├── services/
 │       │   ├── offlineQueue.js  # IndexedDB-basierte Action-Queue (idb-keyval)
 │       │   ├── syncManager.js   # Queue-Abarbeitung bei Netzwerkrückkehr

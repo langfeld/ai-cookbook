@@ -48,7 +48,8 @@ export const useHouseholdStore = defineStore('household', () => {
    */
   async function fetchHouseholds() {
     try {
-      households.value = await apiRaw('/households');
+      const data = await apiRaw('/households');
+      households.value = data.households || [];
 
       // Falls aktiver Haushalt nicht mehr in der Liste → zurücksetzen
       if (activeHouseholdId.value && !households.value.find(h => h.id === activeHouseholdId.value)) {
@@ -71,7 +72,8 @@ export const useHouseholdStore = defineStore('household', () => {
   async function fetchHouseholdDetails(id) {
     loading.value = true;
     try {
-      activeHousehold.value = await apiRaw(`/households/${id}`);
+      const data = await apiRaw(`/households/${id}`);
+      activeHousehold.value = data.household || data;
       return activeHousehold.value;
     } finally {
       loading.value = false;
@@ -89,7 +91,7 @@ export const useHouseholdStore = defineStore('household', () => {
         body: { name },
       });
       await fetchHouseholds();
-      setActiveHousehold(result.id);
+      setActiveHousehold(result.household?.id || result.id);
       return result;
     } finally {
       loading.value = false;
@@ -123,7 +125,7 @@ export const useHouseholdStore = defineStore('household', () => {
   async function createInvite(householdId, expiresInHours = 48) {
     return apiRaw(`/households/${householdId}/invite`, {
       method: 'POST',
-      body: { expires_in_hours: expiresInHours },
+      body: { expires_hours: expiresInHours },
     });
   }
 
@@ -133,7 +135,7 @@ export const useHouseholdStore = defineStore('household', () => {
   async function joinHousehold(code) {
     const result = await apiRaw('/households/join', {
       method: 'POST',
-      body: { code },
+      body: { invite_code: code },
     });
     await fetchHouseholds();
     setActiveHousehold(result.household_id);
@@ -258,7 +260,7 @@ export const useHouseholdStore = defineStore('household', () => {
       const events = [
         'recipe:created', 'recipe:updated', 'recipe:deleted',
         'mealplan:generated', 'mealplan:updated',
-        'shopping:generated', 'shopping:updated',
+        'shopping:generated', 'shopping:updated', 'shopping:status',
         'pantry:created', 'pantry:updated', 'pantry:deleted',
       ];
 
