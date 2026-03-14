@@ -49,10 +49,10 @@ export const useShoppingStore = defineStore('shopping', () => {
   );
 
   /** Einkaufsliste aus Wochenplan generieren */
-  async function generateList(mealPlanId, { name, excludePastDays = true } = {}) {
+  async function generateList(mealPlanId, { name, excludePastDays = true, mode = 'replace' } = {}) {
     loading.value = true;
     try {
-      const data = await api.post('/shopping/generate', { mealPlanId, name, excludePastDays });
+      const data = await api.post('/shopping/generate', { mealPlanId, name, excludePastDays, mode });
       await fetchActiveList();
       // Vorratscheck zurücksetzen (wird beim nächsten Aufklappen neu geladen)
       pantryCheck.value = null;

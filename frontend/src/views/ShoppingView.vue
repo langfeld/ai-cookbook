@@ -1793,6 +1793,45 @@
       </Transition>
     </Teleport>
 
+    <!-- Dialog: Bestehende Einkaufsliste vorhanden -->
+    <Teleport to="body">
+      <Transition name="fade">
+        <div v-if="showListExistsDialog" class="z-50 fixed inset-0 flex justify-center items-end sm:items-center bg-black/50 p-4" @click.self="showListExistsDialog = false; pendingGeneratePlanId = null">
+          <div class="bg-white dark:bg-stone-900 shadow-2xl rounded-2xl w-full max-w-md overflow-hidden">
+            <!-- Header -->
+            <div class="flex justify-between items-center px-5 py-4 border-stone-200 dark:border-stone-700 border-b">
+              <h2 class="flex items-center gap-2 font-display font-bold text-stone-800 dark:text-stone-100 text-lg">
+                <AlertTriangle class="w-5 h-5 text-amber-500" />
+                Einkaufsliste vorhanden
+              </h2>
+              <button @click="showListExistsDialog = false; pendingGeneratePlanId = null" class="hover:bg-stone-100 dark:hover:bg-stone-800 p-1.5 rounded-lg text-stone-400 transition-colors">
+                <X class="w-5 h-5" />
+              </button>
+            </div>
+            <div class="p-5">
+              <p class="text-stone-600 dark:text-stone-300 text-sm">
+                Es befinden sich bereits <span class="font-semibold">{{ shoppingStore.items.length }} Artikel</span> auf deiner Einkaufsliste.
+                Sollen die neuen Artikel hinzugefügt oder die Liste ersetzt werden?
+              </p>
+            </div>
+            <div class="flex sm:flex-row flex-col justify-end gap-2 px-5 py-4 border-stone-200 dark:border-stone-700 border-t">
+              <button @click="showListExistsDialog = false; pendingGeneratePlanId = null" class="hover:bg-stone-100 dark:hover:bg-stone-800 px-4 py-2.5 rounded-xl font-medium text-stone-500 dark:text-stone-400 text-sm transition-colors">
+                Abbrechen
+              </button>
+              <button @click="onListExistsReplace" class="flex justify-center items-center gap-2 bg-stone-600 hover:bg-stone-700 px-4 py-2.5 rounded-xl font-medium text-white text-sm transition-colors">
+                <RefreshCw class="w-4 h-4" />
+                Liste ersetzen
+              </button>
+              <button @click="onListExistsAppend" class="flex justify-center items-center gap-2 bg-primary-600 hover:bg-primary-700 px-4 py-2.5 rounded-xl font-medium text-white text-sm transition-colors">
+                <Plus class="w-4 h-4" />
+                Hinzufügen
+              </button>
+            </div>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
+
     <!-- Merge-Dialog -->
     <Teleport to="body">
       <Transition name="fade">
@@ -2056,6 +2095,10 @@ const genIncludePastDays = ref(false); // Standardmäßig: vergangene Tage NICHT
 const selectedWeekStart = ref(null); // Ausgewählte Woche (week_start als YYYY-MM-DD)
 const availableWeeksLoading = ref(false);
 const unlockedWeeks = computed(() => mealPlanStore.availableWeeks.filter(w => !w.is_locked));
+
+// Dialog: Bestehende Liste vorhanden
+const showListExistsDialog = ref(false);
+const pendingGeneratePlanId = ref(null);
 
 
 // ISO-Kalenderwoche berechnen
@@ -2664,24 +2707,57 @@ async function generateList() {
       await mealPlanStore.fetchAvailableWeeks();
       const retryWeek = mealPlanStore.availableWeeks.find(w => w.week_start === selectedWeekStart.value);
       if (retryWeek?.id) {
-        return doGenerateList(retryWeek.id);
+        return checkExistingListAndGenerate(retryWeek.id);
       }
     } catch { /* wird von useApi angezeigt */ }
     showError('Kein Wochenplan für diese Woche vorhanden. Erstelle zuerst einen Plan im Wochenplaner.');
     return;
   }
 
-  await doGenerateList(planId);
+  await checkExistingListAndGenerate(planId);
 }
 
-async function doGenerateList(planId) {
+/** Prüft ob bereits eine aktive Liste mit Artikeln existiert und zeigt ggf. Dialog */
+async function checkExistingListAndGenerate(planId) {
+  const hasItems = shoppingStore.items.length > 0;
+  if (hasItems) {
+    // Dialog anzeigen: Hinzufügen oder Ersetzen?
+    pendingGeneratePlanId.value = planId;
+    showListExistsDialog.value = true;
+  } else {
+    await doGenerateList(planId, 'replace');
+  }
+}
+
+/** Benutzer hat im Dialog "Hinzufügen" gewählt */
+async function onListExistsAppend() {
+  showListExistsDialog.value = false;
+  if (pendingGeneratePlanId.value) {
+    await doGenerateList(pendingGeneratePlanId.value, 'append');
+  }
+  pendingGeneratePlanId.value = null;
+}
+
+/** Benutzer hat im Dialog "Ersetzen" gewählt */
+async function onListExistsReplace() {
+  showListExistsDialog.value = false;
+  if (pendingGeneratePlanId.value) {
+    await doGenerateList(pendingGeneratePlanId.value, 'replace');
+  }
+  pendingGeneratePlanId.value = null;
+}
+
+async function doGenerateList(planId, mode = 'replace') {
   try {
     const data = await shoppingStore.generateList(planId, {
       excludePastDays: !genIncludePastDays.value,
+      mode,
     });
-    const msg = data.skippedDays
-      ? `Einkaufsliste erstellt! 📝 (${data.skippedDays} vergangene Tage übersprungen)`
-      : 'Einkaufsliste erstellt! 📝';
+    const msg = mode === 'append'
+      ? 'Artikel zur Einkaufsliste hinzugefügt! 📝'
+      : data.skippedDays
+        ? `Einkaufsliste erstellt! 📝 (${data.skippedDays} vergangene Tage übersprungen)`
+        : 'Einkaufsliste erstellt! 📝';
     showSuccess(msg);
     // Verfügbare Wochen aktualisieren (EINGEKAUFT-Badge)
     mealPlanStore.fetchAvailableWeeks();

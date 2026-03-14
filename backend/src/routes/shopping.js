@@ -43,13 +43,19 @@ export default async function shoppingRoutes(fastify) {
             default: true,
             description: 'Vergangene Tage der Woche von der Einkaufsliste ausschließen',
           },
+          mode: {
+            type: 'string',
+            enum: ['replace', 'append'],
+            default: 'replace',
+            description: 'replace = neue Liste erstellen (Standard), append = Artikel zur bestehenden Liste hinzufügen',
+          },
         },
       },
     },
   }, async (request, reply) => {
     const userId = request.user.id;
     const householdId = request.householdId;
-    const { mealPlanId, name, excludePastDays = true } = request.body;
+    const { mealPlanId, name, excludePastDays = true, mode = 'replace' } = request.body;
 
     // Prüfen ob Plan existiert und dem User gehört
     const mpWhere = householdWhereClause(userId, householdId);
@@ -64,28 +70,84 @@ export default async function shoppingRoutes(fastify) {
     // Einkaufsliste generieren (mit Vorratsschrank-Abgleich + KI-Aggregation)
     const shoppingData = await generateShoppingList(userId, householdId, mealPlanId, { excludePastDays });
 
-    // Manuelle Items aus der aktuellen aktiven Liste sichern (bevor sie deaktiviert wird)
+    // Aktive Liste ermitteln
     const slWhere = householdWhereClause(userId, householdId);
     const oldList = db.prepare(
       `SELECT id FROM shopping_lists WHERE (${slWhere.clause}) AND is_active = 1 ORDER BY created_at DESC LIMIT 1`
     ).get(...slWhere.params);
-    let manualItems = [];
-    if (oldList) {
-      manualItems = db.prepare(
-        "SELECT ingredient_name, amount, unit, is_checked, source FROM shopping_list_items WHERE shopping_list_id = ? AND (recipe_ids IS NULL OR recipe_ids = '[]')"
-      ).all(oldList.id);
-    }
 
-    // Speichern (deaktiviert alte Liste, erstellt neue)
-    const listId = saveShoppingList(userId, householdId, mealPlanId, shoppingData.items, name);
+    let listId;
 
-    // Manuelle Items in die neue Liste übernehmen
-    if (manualItems.length > 0) {
-      const insertManual = db.prepare(
-        "INSERT INTO shopping_list_items (shopping_list_id, ingredient_name, amount, unit, is_checked, recipe_ids, source) VALUES (?, ?, ?, ?, ?, '[]', ?)"
+    if (mode === 'append' && oldList) {
+      // --- APPEND-Modus: Neue Artikel zur bestehenden Liste hinzufügen ---
+      listId = oldList.id;
+
+      // Bestehende Items der aktiven Liste laden
+      const existingItems = db.prepare(
+        'SELECT id, ingredient_name, amount, unit, recipe_ids FROM shopping_list_items WHERE shopping_list_id = ?'
+      ).all(listId);
+
+      const updateItem = db.prepare(
+        'UPDATE shopping_list_items SET amount = ?, recipe_ids = ? WHERE id = ?'
       );
-      for (const item of manualItems) {
-        insertManual.run(listId, item.ingredient_name, item.amount, item.unit, item.is_checked, item.source || 'manual');
+      const insertItem = db.prepare(`
+        INSERT INTO shopping_list_items
+        (shopping_list_id, ingredient_name, amount, unit, recipe_id, pantry_deducted, recipe_ids, pantry_note)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+
+      const appendTransaction = db.transaction(() => {
+        for (const newItem of shoppingData.items) {
+          if (!newItem.needsToBuy) continue;
+
+          // Prüfen ob gleiche Zutat+Einheit bereits existiert
+          const existing = existingItems.find(
+            e => e.ingredient_name.toLowerCase() === newItem.name.toLowerCase()
+              && (e.unit || '').toLowerCase() === (newItem.unit || '').toLowerCase()
+          );
+
+          if (existing) {
+            // Mengen addieren und Recipe-IDs zusammenführen
+            const newAmount = (existing.amount || 0) + (newItem.amount || 0);
+            let existingRecipeIds = [];
+            try { existingRecipeIds = JSON.parse(existing.recipe_ids || '[]'); } catch { /* leer */ }
+            const mergedRecipeIds = [...new Set([...existingRecipeIds, ...(newItem.recipeIds || [])])];
+            updateItem.run(newAmount, JSON.stringify(mergedRecipeIds), existing.id);
+          } else {
+            // Neues Item hinzufügen
+            insertItem.run(
+              listId, newItem.name, newItem.amount, newItem.unit, null,
+              newItem.pantryDeducted, JSON.stringify(newItem.recipeIds || []),
+              newItem.pantryNote || null
+            );
+          }
+        }
+      });
+      appendTransaction();
+
+      // meal_plan_id der Liste aktualisieren (auf den neuesten Plan)
+      db.prepare('UPDATE shopping_lists SET meal_plan_id = ? WHERE id = ?').run(mealPlanId, listId);
+
+    } else {
+      // --- REPLACE-Modus (Standard): Neue Liste erstellen ---
+      let manualItems = [];
+      if (oldList) {
+        manualItems = db.prepare(
+          "SELECT ingredient_name, amount, unit, is_checked, source FROM shopping_list_items WHERE shopping_list_id = ? AND (recipe_ids IS NULL OR recipe_ids = '[]')"
+        ).all(oldList.id);
+      }
+
+      // Speichern (deaktiviert alte Liste, erstellt neue)
+      listId = saveShoppingList(userId, householdId, mealPlanId, shoppingData.items, name);
+
+      // Manuelle Items in die neue Liste übernehmen
+      if (manualItems.length > 0) {
+        const insertManual = db.prepare(
+          "INSERT INTO shopping_list_items (shopping_list_id, ingredient_name, amount, unit, is_checked, recipe_ids, source) VALUES (?, ?, ?, ?, ?, '[]', ?)"
+        );
+        for (const item of manualItems) {
+          insertManual.run(listId, item.ingredient_name, item.amount, item.unit, item.is_checked, item.source || 'manual');
+        }
       }
     }
 
@@ -93,8 +155,8 @@ export default async function shoppingRoutes(fastify) {
     return {
       listId,
       ...shoppingData,
-      manualItemsKept: manualItems.length,
-      message: 'Einkaufsliste generiert!',
+      mode,
+      message: mode === 'append' ? 'Artikel zur Einkaufsliste hinzugefügt!' : 'Einkaufsliste generiert!',
     };
   });
 
