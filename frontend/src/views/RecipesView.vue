@@ -276,7 +276,8 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, nextTick } from 'vue';
+import { onBeforeRouteLeave } from 'vue-router';
 import { useRecipesStore } from '@/stores/recipes.js';
 import { useAuthStore } from '@/stores/auth.js';
 import { useCollectionsStore } from '@/stores/collections.js';
@@ -395,9 +396,33 @@ async function executeBatchDelete() {
   }
 }
 
-onMounted(() => {
+// Scroll-Position speichern wenn man zu einem Rezept navigiert
+onBeforeRouteLeave((to) => {
+  if (to.path.match(/^\/recipes\/\d+$/)) {
+    const main = document.querySelector('main');
+    if (main) {
+      sessionStorage.setItem('recipesScrollPosition', String(main.scrollTop));
+    }
+  } else {
+    // Bei Navigation woandershin: gespeicherte Position verwerfen
+    sessionStorage.removeItem('recipesScrollPosition');
+  }
+});
+
+onMounted(async () => {
   recipesStore.fetchRecipes();
   recipesStore.fetchCategories();
   collectionsStore.fetchCollections();
+
+  // Scroll-Position wiederherstellen (z.B. nach Browser-Zurück von Rezept-Detail)
+  const savedPosition = sessionStorage.getItem('recipesScrollPosition');
+  if (savedPosition) {
+    sessionStorage.removeItem('recipesScrollPosition');
+    await nextTick();
+    const main = document.querySelector('main');
+    if (main) {
+      main.scrollTo({ top: parseInt(savedPosition, 10) });
+    }
+  }
 });
 </script>

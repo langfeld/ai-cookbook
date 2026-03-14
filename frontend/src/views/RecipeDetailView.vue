@@ -640,7 +640,7 @@
 
 <script setup>
 import { ref, reactive, computed, onMounted, watch } from 'vue';
-import { useRoute, useRouter } from 'vue-router';
+import { useRoute, useRouter, onBeforeRouteLeave } from 'vue-router';
 import { useRecipesStore } from '@/stores/recipes.js';
 import { useMealPlanStore } from '@/stores/mealplan.js';
 import { usePantryStore } from '@/stores/pantry.js';
@@ -657,6 +657,14 @@ import RecipeRevisionModal from '@/components/recipes/RecipeRevisionModal.vue';
 import { useIngredientIcons } from '@/composables/useIngredientIcons.js';
 import { apiRaw } from '@/composables/useApi.js';
 import { formatAmount } from '@/utils/formatAmount.js';
+
+// Gespeicherte Scroll-Position der Rezeptliste löschen,
+// wenn man von hier NICHT zurück zur Rezeptliste navigiert
+onBeforeRouteLeave((to) => {
+  if (to.path !== '/recipes') {
+    sessionStorage.removeItem('recipesScrollPosition');
+  }
+});
 
 const route = useRoute();
 const router = useRouter();
