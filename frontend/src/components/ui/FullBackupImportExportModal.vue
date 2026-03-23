@@ -84,7 +84,7 @@
           <div v-if="activeTab === 'import'" class="space-y-4">
             <p class="text-stone-500 dark:text-stone-400 text-sm">
               Daten aus einer Komplett-Backup-Datei importieren.
-              Bestehende Daten werden <strong class="text-stone-700 dark:text-stone-200">nicht</strong> gelöscht — Duplikate werden übersprungen oder aktualisiert.
+              Bestehende Daten werden standardmäßig <strong class="text-stone-700 dark:text-stone-200">nicht</strong> verändert — Duplikate werden übersprungen.
             </p>
 
             <!-- Sicherheitshinweis -->
@@ -117,9 +117,41 @@
                 </p>
                 <p class="mt-0.5 text-blue-600 dark:text-blue-400 text-xs">
                   Daten werden automatisch per Username den bestehenden Benutzern zugeordnet.
-                  Benutzer die nicht existieren werden übersprungen.
+                  Benutzer die nicht existieren werden {{ createMissingUsers ? 'automatisch angelegt' : 'übersprungen' }}.
                 </p>
               </div>
+            </div>
+
+            <!-- Import-Optionen -->
+            <div v-if="isAdmin && isMultiUserBackup" class="space-y-3">
+              <!-- Fehlende Benutzer anlegen -->
+              <label class="flex items-start gap-2 cursor-pointer">
+                <input type="checkbox" v-model="createMissingUsers" class="mt-0.5 rounded" />
+                <div>
+                  <span class="font-medium text-stone-700 dark:text-stone-300 text-sm">Fehlende Benutzer automatisch anlegen</span>
+                  <p class="text-stone-400 dark:text-stone-500 text-xs">Benutzer aus dem Backup, die hier nicht existieren, werden mit einem temporären Passwort erstellt.</p>
+                </div>
+              </label>
+
+              <!-- Bestehende Daten überschreiben -->
+              <label class="flex items-start gap-2 cursor-pointer">
+                <input type="checkbox" v-model="overwriteExisting" class="mt-0.5 border-red-300 rounded focus:ring-red-500 text-red-600" />
+                <div>
+                  <span class="font-medium text-red-600 dark:text-red-400 text-sm">⚠️ Bestehende Daten überschreiben</span>
+                  <p class="text-stone-400 dark:text-stone-500 text-xs">Rezepte, Wochenpläne, Vorräte etc. werden mit den Backup-Daten ersetzt statt übersprungen. Für Server-Migration geeignet.</p>
+                </div>
+              </label>
+            </div>
+
+            <!-- Einzel-User: Überschreiben-Option -->
+            <div v-if="!isMultiUserBackup && selectedFile" class="space-y-3">
+              <label class="flex items-start gap-2 cursor-pointer">
+                <input type="checkbox" v-model="overwriteExisting" class="mt-0.5 border-red-300 rounded focus:ring-red-500 text-red-600" />
+                <div>
+                  <span class="font-medium text-red-600 dark:text-red-400 text-sm">⚠️ Bestehende Daten überschreiben</span>
+                  <p class="text-stone-400 dark:text-stone-500 text-xs">Duplikate werden mit den Backup-Daten ersetzt statt übersprungen.</p>
+                </div>
+              </label>
             </div>
 
             <!-- Datei-Upload -->
@@ -176,11 +208,18 @@
             <div v-if="importResult" class="bg-green-50 dark:bg-green-900/20 p-4 rounded-lg text-sm">
               <p class="mb-2 font-medium text-green-700 dark:text-green-300">{{ importResult.message }}</p>
 
+              <!-- Neu angelegte Benutzer -->
+              <div v-if="importResult.users_created && importResult.users_created.length" class="bg-blue-50 dark:bg-blue-900/20 mb-2 p-2 rounded text-blue-700 dark:text-blue-300 text-xs">
+                <p class="font-medium">👥 {{ importResult.users_created.length }} Benutzer neu angelegt:</p>
+                <p>{{ importResult.users_created.join(', ') }}</p>
+                <p v-if="importResult.temp_password" class="mt-1 font-medium">🔑 Temporäres Passwort: <code class="bg-blue-100 dark:bg-blue-800 px-1 rounded">{{ importResult.temp_password }}</code></p>
+              </div>
+
               <!-- Multi-User: Pro-Benutzer-Zusammenfassung -->
               <div v-if="importResult.per_user && importResult.per_user.length" class="space-y-1 mb-2 text-green-600 dark:text-green-400 text-xs">
                 <p v-for="u in importResult.per_user" :key="u.username">
                   <span class="font-medium">👤 {{ u.username }}:</span>
-                  {{ u.imported }} importiert, {{ u.skipped }} übersprungen
+                  {{ u.imported }} importiert<template v-if="u.updated">, {{ u.updated }} aktualisiert</template>, {{ u.skipped }} übersprungen
                 </p>
               </div>
 
@@ -245,6 +284,8 @@ const importError = ref(null);
 const selectedUserId = ref(null);
 const importUserId = ref(null);
 const isMultiUserBackup = ref(false);
+const createMissingUsers = ref(false);
+const overwriteExisting = ref(false);
 
 const detailLabels = {
   recipes: '📦 Rezepte',
@@ -376,6 +417,8 @@ function clearFile() {
   importResult.value = null;
   importError.value = null;
   isMultiUserBackup.value = false;
+  createMissingUsers.value = false;
+  overwriteExisting.value = false;
 }
 
 async function handleImport() {
@@ -391,6 +434,12 @@ async function handleImport() {
     formData.append('file', selectedFile.value);
     if (props.isAdmin && !isMultiUserBackup.value && importUserId.value) {
       formData.append('user_id', importUserId.value);
+    }
+    if (createMissingUsers.value) {
+      formData.append('create_users', 'true');
+    }
+    if (overwriteExisting.value) {
+      formData.append('overwrite', 'true');
     }
 
     const url = props.isAdmin ? '/admin/backup/import-json' : '/backup/import';

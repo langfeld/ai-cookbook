@@ -85,17 +85,45 @@ Aliase und blockierte Zutaten als JSON exportieren und importieren — über die
 
 ## Komplett-Backup (Admin)
 
-Im Admin-Bereich unter *Datenverwaltung*:
+Im Admin-Bereich unter *Datenverwaltung* → **💾 Komplett-Backup**:
+
+### Einzel-Exporte
 
 | Datentyp | Export | Import |
 |---|---|---|
-| Benutzer | ✅ (JSON, ohne Passwörter) | ✅ (temporäres Passwort) |
-| Rezepte | ✅ (JSON, mit Bildern) | ✅ (Benutzer zuweisbar) |
+| Benutzer | ✅ (JSON, ohne Passwörter) | ✅ (Zufallspasswort) |
+| Rezepte | ✅ (JSON, inkl. Nährwerte & Bilder) | ✅ (Benutzer zuweisbar) |
 | Vorratsschrank | ✅ (JSON) | ✅ (CSV/JSON) |
 | REWE-Präferenzen | ✅ (JSON) | ✅ |
 | Zutaten-Einstellungen | ✅ (JSON) | ✅ |
 | Haushalte | ✅ (JSON) | — |
 | SQLite-Datenbank | ✅ (Datei-Download) | — |
+
+### JSON-Komplett-Backup (Export & Import)
+
+Der **JSON-Komplett-Backup** exportiert und importiert alle Benutzerdaten in einer einzigen Datei:
+
+- **Export**: Alle Benutzer inkl. Rezepte (mit Nährwerten, Haushalt-Zuordnung), Sammlungen, Vorräte, Wochenpläne, Einkaufslisten, Rezept-Sperren und Zutaten-Einstellungen. Haushalte mit Mitgliedern werden separat mitexportiert.
+- **Import**: Multi-User-Backups werden automatisch per Username zugeordnet.
+
+#### Import-Optionen
+
+| Option | Beschreibung |
+|---|---|
+| **Fehlende Benutzer anlegen** | Benutzer aus dem Backup, die lokal nicht existieren, werden automatisch mit einem **sicheren Zufallspasswort** erstellt. Das Passwort wird einmalig in der Ergebnis-Anzeige angezeigt. |
+| **Bestehende Daten überschreiben** | Duplikate (gleicher Rezepttitel, gleicher Wochenplan etc.) werden mit den Backup-Daten **ersetzt** statt übersprungen. Ideal für Server-Migration. |
+
+:::caution[Sicherheitshinweis]
+Das Überschreiben-Feature ist destruktiv — bestehende Daten werden unwiderruflich ersetzt. Bei automatisch angelegten Benutzern sollte über die Admin-Oberfläche zeitnah ein neues Passwort vergeben werden.
+:::
+
+#### Exportierte Rezeptfelder
+
+Der Export enthält alle Rezeptfelder inkl.:
+- Nährwerte (`calories`, `protein`, `carbs`, `fat`, `nutrition_note`, `nutrition_details`)
+- Haushalt-Zuordnung (`household_id`)
+- Zeitstempel (`created_at`, `updated_at`)
+- Bilder als Base64 (optional)
 
 ## Haushalt-Export
 

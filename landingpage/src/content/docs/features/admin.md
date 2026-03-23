@@ -41,14 +41,29 @@ Verwaiste Upload-Dateien automatisch erkennen und entfernen.
 
 Zentrale Seite für alle Export/Import-Funktionen:
 
+### Einzel-Exporte/-Importe
+
 | Datentyp | Export | Import |
 |---|---|---|
-| **Benutzer** | JSON (ohne Passwörter) | JSON (temporäres Passwort) |
-| **Rezepte** | JSON (nach Benutzer filterbar, mit Bildern) | JSON (Benutzer zuweisbar, max. 500) |
+| **Benutzer** | JSON (ohne Passwörter) | JSON (Zufallspasswort) |
+| **Rezepte** | JSON (nach Benutzer filterbar, inkl. Nährwerte & Bilder) | JSON (Benutzer zuweisbar, max. 500) |
 | **Vorratsschrank** | JSON (nach Benutzer filterbar) | JSON/CSV (Zielbenutzer wählbar) |
 | **REWE-Präferenzen** | JSON (pro Benutzer filterbar) | JSON |
 | **Zutaten-Einstellungen** | JSON (Aliase + Blockierungen) | JSON |
-| **Komplett-Backup** | SQLite-Datei | — |
+| **SQLite-Datenbank** | Datei-Download | — |
+
+### JSON-Komplett-Backup
+
+Exportiert und importiert **alle Benutzerdaten** in einer einzigen JSON-Datei — ideal für Server-Migration.
+
+| Feature | Beschreibung |
+|---|---|
+| **Multi-User-Export** | Alle Benutzer inkl. Rezepte, Nährwerte, Sammlungen, Vorräte, Wochenpläne, Einkaufslisten, Sperren, Aliase |
+| **Haushalte** | Haushalte mit Mitgliedern werden mitexportiert |
+| **Auto-Zuordnung** | Import ordnet Daten automatisch per Username zu |
+| **Fehlende Benutzer anlegen** | Optional: fehlende User werden mit sicherem Zufallspasswort erstellt |
+| **Überschreiben-Modus** | Optional: bestehende Daten mit Backup-Daten ersetzen (für Migration) |
+| **Bilder** | Optional als Base64 einbettbar |
 
 ## Haushalt-Verwaltung
 

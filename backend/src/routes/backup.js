@@ -104,6 +104,14 @@ export default async function backupRoutes(fastify) {
         times_cooked: recipe.times_cooked,
         last_cooked_at: recipe.last_cooked_at,
         created_at: recipe.created_at,
+        updated_at: recipe.updated_at,
+        household_id: recipe.household_id || null,
+        calories: recipe.calories,
+        protein: recipe.protein,
+        carbs: recipe.carbs,
+        fat: recipe.fat,
+        nutrition_note: recipe.nutrition_note,
+        nutrition_details: recipe.nutrition_details,
         categories,
         ingredients,
         steps,
@@ -367,8 +375,8 @@ export default async function backupRoutes(fastify) {
         const VALID_DIFFICULTIES = new Set(['easy','medium','hard','einfach','mittel','schwer']);
 
         const recipeResult = db.prepare(`
-          INSERT INTO recipes (user_id, title, description, servings, prep_time, cook_time, total_time, difficulty, source_url, is_favorite, notes, ai_generated, times_cooked, last_cooked_at, household_id, created_by_user_id)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          INSERT INTO recipes (user_id, title, description, servings, prep_time, cook_time, total_time, difficulty, source_url, is_favorite, notes, ai_generated, times_cooked, last_cooked_at, household_id, created_by_user_id, calories, protein, carbs, fat, nutrition_note, nutrition_details)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `).run(
           userId,
           title,
@@ -386,6 +394,12 @@ export default async function backupRoutes(fastify) {
           recipe.last_cooked_at || null,
           householdId || null,
           userId,
+          parseFloat(recipe.calories) || null,
+          parseFloat(recipe.protein) || null,
+          parseFloat(recipe.carbs) || null,
+          parseFloat(recipe.fat) || null,
+          sanitize(recipe.nutrition_note || '', 1000),
+          typeof recipe.nutrition_details === 'string' ? sanitize(recipe.nutrition_details, 10000) : (recipe.nutrition_details ? JSON.stringify(recipe.nutrition_details) : null),
         );
 
         const newRecipeId = recipeResult.lastInsertRowid;

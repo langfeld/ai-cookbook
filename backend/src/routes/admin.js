@@ -9,6 +9,7 @@
  * - Systemeinstellungen
  */
 
+import { randomBytes } from 'crypto';
 import bcrypt from 'bcryptjs';
 import db from '../config/database.js';
 import { readdirSync, statSync, unlinkSync, readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
@@ -17,6 +18,16 @@ import sharp from 'sharp';
 import { config } from '../config/env.js';
 import { safePath, generateId, sanitize, validateDate } from '../utils/helpers.js';
 import { resetProvider } from '../services/ai/provider.js';
+
+/**
+ * Generiert ein sicheres Zufallspasswort (16 Zeichen, alphanumerisch + Sonderzeichen).
+ * Wird für automatisch angelegte Benutzer beim Import verwendet.
+ */
+function generateRandomPassword(length = 16) {
+  const chars = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%&*';
+  const bytes = randomBytes(length);
+  return Array.from(bytes, b => chars[b % chars.length]).join('');
+}
 
 // Erlaubte Einstellungs-Keys (verhindert Injection beliebiger Keys)
 const ALLOWED_SETTINGS = new Set([
@@ -1346,7 +1357,7 @@ export default async function adminRoutes(fastify) {
     let imported = 0;
     let skipped = 0;
     const errors = [];
-    const tempPassword = 'Changeme123!';
+    const tempPassword = generateRandomPassword();
     const hashedTempPw = bcrypt.hashSync(tempPassword, 10);
 
     const insertUser = db.prepare(`
@@ -2317,12 +2328,37 @@ export default async function adminRoutes(fastify) {
       ? db.prepare('SELECT id, username, display_name, email, role, is_active, created_at FROM users WHERE id = ?').all(filterUserId)
       : db.prepare('SELECT id, username, display_name, email, role, is_active, created_at FROM users').all();
 
+    // Haushalte exportieren (inkl. Mitglieder-Zuordnungen)
+    const households = db.prepare(`
+      SELECT h.id, h.name, h.created_at, h.created_by_user_id,
+             u.username as created_by_username
+      FROM households h
+      LEFT JOIN users u ON h.created_by_user_id = u.id
+      ORDER BY h.id
+    `).all();
+    const exportedHouseholds = households.map(h => {
+      const members = db.prepare(`
+        SELECT u.username, hm.role, hm.is_default, hm.joined_at
+        FROM household_members hm
+        JOIN users u ON hm.user_id = u.id
+        WHERE hm.household_id = ?
+      `).all(h.id);
+      return {
+        name: h.name,
+        created_at: h.created_at,
+        created_by_username: h.created_by_username,
+        members,
+      };
+    });
+
     const exportData = {
       version: '1.0',
       exported_at: new Date().toISOString(),
       source: 'Zauberjournal',
       type: 'admin_full_backup',
       user_count: users.length,
+      household_count: exportedHouseholds.length,
+      households: exportedHouseholds,
       users: [],
     };
 
@@ -2349,7 +2385,10 @@ export default async function adminRoutes(fastify) {
           prep_time: recipe.prep_time, cook_time: recipe.cook_time, total_time: recipe.total_time,
           difficulty: recipe.difficulty, source_url: recipe.source_url, is_favorite: recipe.is_favorite,
           notes: recipe.notes, ai_generated: recipe.ai_generated, times_cooked: recipe.times_cooked,
-          last_cooked_at: recipe.last_cooked_at, created_at: recipe.created_at,
+          last_cooked_at: recipe.last_cooked_at, created_at: recipe.created_at, updated_at: recipe.updated_at,
+          household_id: recipe.household_id || null,
+          calories: recipe.calories, protein: recipe.protein, carbs: recipe.carbs, fat: recipe.fat,
+          nutrition_note: recipe.nutrition_note, nutrition_details: recipe.nutrition_details,
           categories, ingredients, steps,
         };
         if (includeImages && recipe.image_url) {
@@ -2444,7 +2483,9 @@ export default async function adminRoutes(fastify) {
   });
 
   // ── Hilfsfunktion: Importiert Backup-Daten für einen einzelnen User ──
-  async function importBackupDataForUser(userId, data) {
+  // options.overwrite = true → bestehende Daten überschreiben statt überspringen
+  async function importBackupDataForUser(userId, data, options = {}) {
+    const overwrite = options.overwrite === true;
     const LIMITS = { recipes: 500, collections: 200, pantry: 2000, mealPlans: 200, shoppingLists: 500, recipeBlocks: 500, ingredientAliases: 5000, blockedIngredients: 5000, maxCategoriesPerRecipe: 20, maxIngredientsPerRecipe: 200, maxStepsPerRecipe: 100 };
 
     function _sanitize(val, maxLen = 10000) {
@@ -2464,10 +2505,10 @@ export default async function adminRoutes(fastify) {
     const blockedIngredients = Array.isArray(data.blocked_ingredients) ? data.blocked_ingredients.slice(0, LIMITS.blockedIngredients) : [];
 
     const result = {
-      recipes: { imported: 0, skipped: 0 },
+      recipes: { imported: 0, updated: 0, skipped: 0 },
       collections: { imported: 0, updated: 0, skipped: 0, recipes_linked: 0 },
       pantry: { imported: 0, updated: 0, skipped: 0 },
-      meal_plans: { imported: 0, skipped: 0, entries_imported: 0 },
+      meal_plans: { imported: 0, updated: 0, skipped: 0, entries_imported: 0 },
       shopping_lists: { imported: 0, items_imported: 0 },
       recipe_blocks: { imported: 0, updated: 0, skipped: 0 },
       ingredient_aliases: { imported: 0, updated: 0, skipped: 0 },
@@ -2487,6 +2528,31 @@ export default async function adminRoutes(fastify) {
       return res.lastInsertRowid;
     }
 
+    // Hilfsfunktion: Rezept-Kinderdaten (Zutaten, Schritte, Kategorien) einfügen
+    function insertRecipeChildren(recipeId, recipe) {
+      if (Array.isArray(recipe.categories)) {
+        for (const cat of recipe.categories.slice(0, LIMITS.maxCategoriesPerRecipe)) {
+          if (!cat.name) continue;
+          db.prepare('INSERT OR IGNORE INTO recipe_categories (recipe_id, category_id) VALUES (?, ?)').run(recipeId, getOrCreateCategory(cat));
+        }
+      }
+      if (Array.isArray(recipe.ingredients)) {
+        for (const ing of recipe.ingredients.slice(0, LIMITS.maxIngredientsPerRecipe)) {
+          if (!ing.name) continue;
+          db.prepare('INSERT INTO ingredients (recipe_id, name, amount, unit, group_name, sort_order, is_optional, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(recipeId, _sanitize(ing.name, 200), parseFloat(ing.amount) || null, _sanitize(ing.unit || '', 50), _sanitize(ing.group_name || '', 100), parseInt(ing.sort_order) || 0, ing.is_optional ? 1 : 0, _sanitize(ing.notes || '', 500));
+        }
+      }
+      if (Array.isArray(recipe.steps)) {
+        for (const step of recipe.steps.slice(0, LIMITS.maxStepsPerRecipe)) {
+          if (!step.instruction) continue;
+          db.prepare('INSERT INTO cooking_steps (recipe_id, step_number, title, instruction, duration_minutes) VALUES (?, ?, ?, ?, ?)').run(recipeId, parseInt(step.step_number) || 0, _sanitize(step.title || '', 200), _sanitize(step.instruction, 5000), parseInt(step.duration_minutes) || null);
+        }
+      }
+      if (recipe.image_base64 && recipe.image_mime && typeof recipe.image_base64 === 'string' && recipe.image_base64.length < 14 * 1024 * 1024) {
+        pendingImages.push({ recipeId, base64: recipe.image_base64 });
+      }
+    }
+
     const importedRecipeMap = new Map();
     const existingRecipes = db.prepare('SELECT id, title FROM recipes WHERE user_id = ?').all(userId);
     for (const r of existingRecipes) importedRecipeMap.set(r.title.toLowerCase(), r.id);
@@ -2496,37 +2562,52 @@ export default async function adminRoutes(fastify) {
       for (const recipe of recipes) {
         if (!recipe.title || typeof recipe.title !== 'string') { result.recipes.skipped++; continue; }
         const title = _sanitize(recipe.title, 200);
+        const description = _sanitize(recipe.description || '', 5000);
+        const servings = Math.min(Math.max(1, parseInt(recipe.servings) || 4), 100);
+        const prepTime = Math.min(parseInt(recipe.prep_time) || 0, 10080);
+        const cookTime = Math.min(parseInt(recipe.cook_time) || 0, 10080);
+        const totalTime = Math.min(parseInt(recipe.total_time) || 0, 10080);
+        const difficulty = VALID_DIFFICULTIES.has(recipe.difficulty) ? recipe.difficulty : 'mittel';
+        const sourceUrl = _sanitize(recipe.source_url || '', 2000);
+        const notes = _sanitize(recipe.notes || '', 5000);
+        const calories = parseFloat(recipe.calories) || null;
+        const protein = parseFloat(recipe.protein) || null;
+        const carbs = parseFloat(recipe.carbs) || null;
+        const fat = parseFloat(recipe.fat) || null;
+        const nutritionNote = _sanitize(recipe.nutrition_note || '', 1000);
+        const nutritionDetails = typeof recipe.nutrition_details === 'string' ? _sanitize(recipe.nutrition_details, 10000) : (recipe.nutrition_details ? JSON.stringify(recipe.nutrition_details) : null);
+        const createdAt = (recipe.created_at && /^\d{4}-\d{2}-\d{2}/.test(recipe.created_at)) ? String(recipe.created_at).slice(0, 30) : null;
+        const updatedAt = (recipe.updated_at && /^\d{4}-\d{2}-\d{2}/.test(recipe.updated_at)) ? String(recipe.updated_at).slice(0, 30) : null;
+
         const existing = db.prepare('SELECT id FROM recipes WHERE user_id = ? AND LOWER(title) = LOWER(?)').get(userId, title);
-        if (existing) { importedRecipeMap.set(title.toLowerCase(), existing.id); result.recipes.skipped++; continue; }
 
-        const res = db.prepare(`INSERT INTO recipes (user_id, title, description, servings, prep_time, cook_time, total_time, difficulty, source_url, is_favorite, notes, ai_generated, times_cooked, last_cooked_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-          .run(userId, title, _sanitize(recipe.description || '', 5000), Math.min(Math.max(1, parseInt(recipe.servings) || 4), 100), Math.min(parseInt(recipe.prep_time) || 0, 10080), Math.min(parseInt(recipe.cook_time) || 0, 10080), Math.min(parseInt(recipe.total_time) || 0, 10080), VALID_DIFFICULTIES.has(recipe.difficulty) ? recipe.difficulty : 'mittel', _sanitize(recipe.source_url || '', 2000), recipe.is_favorite ? 1 : 0, _sanitize(recipe.notes || '', 5000), recipe.ai_generated ? 1 : 0, Math.min(parseInt(recipe.times_cooked) || 0, 99999), recipe.last_cooked_at || null);
-        const newId = res.lastInsertRowid;
-        importedRecipeMap.set(title.toLowerCase(), newId);
-
-        if (Array.isArray(recipe.categories)) {
-          for (const cat of recipe.categories.slice(0, LIMITS.maxCategoriesPerRecipe)) {
-            if (!cat.name) continue;
-            db.prepare('INSERT OR IGNORE INTO recipe_categories (recipe_id, category_id) VALUES (?, ?)').run(newId, getOrCreateCategory(cat));
-          }
+        if (existing && overwrite) {
+          // Überschreiben: Rezept-Felder aktualisieren, Kinder löschen + neu einfügen
+          db.prepare(`UPDATE recipes SET description = ?, servings = ?, prep_time = ?, cook_time = ?, total_time = ?, difficulty = ?, source_url = ?, is_favorite = ?, notes = ?, ai_generated = ?, times_cooked = ?, last_cooked_at = ?, calories = ?, protein = ?, carbs = ?, fat = ?, nutrition_note = ?, nutrition_details = ?, updated_at = COALESCE(?, CURRENT_TIMESTAMP) WHERE id = ?`)
+            .run(description, servings, prepTime, cookTime, totalTime, difficulty, sourceUrl, recipe.is_favorite ? 1 : 0, notes, recipe.ai_generated ? 1 : 0, Math.min(parseInt(recipe.times_cooked) || 0, 99999), recipe.last_cooked_at || null, calories, protein, carbs, fat, nutritionNote, nutritionDetails, updatedAt, existing.id);
+          // Kinder löschen
+          db.prepare('DELETE FROM ingredients WHERE recipe_id = ?').run(existing.id);
+          db.prepare('DELETE FROM cooking_steps WHERE recipe_id = ?').run(existing.id);
+          db.prepare('DELETE FROM recipe_categories WHERE recipe_id = ?').run(existing.id);
+          insertRecipeChildren(existing.id, recipe);
+          importedRecipeMap.set(title.toLowerCase(), existing.id);
+          result.recipes.updated++;
+        } else if (existing) {
+          // Nicht überschreiben → überspringen
+          importedRecipeMap.set(title.toLowerCase(), existing.id);
+          result.recipes.skipped++;
+        } else {
+          // Neu einfügen
+          const res = db.prepare(`INSERT INTO recipes (user_id, title, description, servings, prep_time, cook_time, total_time, difficulty, source_url, is_favorite, notes, ai_generated, times_cooked, last_cooked_at, calories, protein, carbs, fat, nutrition_note, nutrition_details, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP), COALESCE(?, CURRENT_TIMESTAMP))`)
+            .run(userId, title, description, servings, prepTime, cookTime, totalTime, difficulty, sourceUrl, recipe.is_favorite ? 1 : 0, notes, recipe.ai_generated ? 1 : 0, Math.min(parseInt(recipe.times_cooked) || 0, 99999), recipe.last_cooked_at || null, calories, protein, carbs, fat, nutritionNote, nutritionDetails, createdAt, updatedAt);
+          const newId = res.lastInsertRowid;
+          insertRecipeChildren(newId, recipe);
+          importedRecipeMap.set(title.toLowerCase(), newId);
+          result.recipes.imported++;
         }
-        if (Array.isArray(recipe.ingredients)) {
-          for (const ing of recipe.ingredients.slice(0, LIMITS.maxIngredientsPerRecipe)) {
-            if (!ing.name) continue;
-            db.prepare('INSERT INTO ingredients (recipe_id, name, amount, unit, group_name, sort_order, is_optional, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(newId, _sanitize(ing.name, 200), parseFloat(ing.amount) || null, _sanitize(ing.unit || '', 50), _sanitize(ing.group_name || '', 100), parseInt(ing.sort_order) || 0, ing.is_optional ? 1 : 0, _sanitize(ing.notes || '', 500));
-          }
-        }
-        if (Array.isArray(recipe.steps)) {
-          for (const step of recipe.steps.slice(0, LIMITS.maxStepsPerRecipe)) {
-            if (!step.instruction) continue;
-            db.prepare('INSERT INTO cooking_steps (recipe_id, step_number, title, instruction, duration_minutes) VALUES (?, ?, ?, ?, ?)').run(newId, parseInt(step.step_number) || 0, _sanitize(step.title || '', 200), _sanitize(step.instruction, 5000), parseInt(step.duration_minutes) || null);
-          }
-        }
-        if (recipe.image_base64 && recipe.image_mime && typeof recipe.image_base64 === 'string' && recipe.image_base64.length < 14 * 1024 * 1024) pendingImages.push({ recipeId: newId, base64: recipe.image_base64 });
-        result.recipes.imported++;
       }
 
-      // 2. Sammlungen
+      // 2. Sammlungen (bereits update-fähig, bei overwrite auch Rezept-Zuordnungen ersetzen)
       for (const col of collections) {
         if (!col.name || typeof col.name !== 'string') { result.collections.skipped++; continue; }
         const name = _sanitize(col.name, 100);
@@ -2535,8 +2616,19 @@ export default async function adminRoutes(fastify) {
         const sortOrder = typeof col.sort_order === 'number' ? col.sort_order : 0;
         const existing = db.prepare('SELECT id FROM collections WHERE user_id = ? AND name = ? COLLATE NOCASE').get(userId, name);
         let colId;
-        if (existing) { db.prepare('UPDATE collections SET icon = ?, color = ?, sort_order = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(icon, color, sortOrder, existing.id); colId = existing.id; result.collections.updated++; }
-        else { const r = db.prepare('INSERT INTO collections (user_id, name, icon, color, sort_order) VALUES (?, ?, ?, ?, ?)').run(userId, name, icon, color, sortOrder); colId = r.lastInsertRowid; result.collections.imported++; }
+        if (existing) {
+          db.prepare('UPDATE collections SET icon = ?, color = ?, sort_order = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').run(icon, color, sortOrder, existing.id);
+          colId = existing.id;
+          if (overwrite) {
+            // Bei Überschreiben: alte Zuordnungen entfernen
+            db.prepare('DELETE FROM recipe_collections WHERE collection_id = ?').run(colId);
+          }
+          result.collections.updated++;
+        } else {
+          const r = db.prepare('INSERT INTO collections (user_id, name, icon, color, sort_order) VALUES (?, ?, ?, ?, ?)').run(userId, name, icon, color, sortOrder);
+          colId = r.lastInsertRowid;
+          result.collections.imported++;
+        }
         if (Array.isArray(col.recipe_titles)) {
           for (const t of col.recipe_titles) { if (typeof t !== 'string') continue; const rid = importedRecipeMap.get(t.toLowerCase()); if (rid) { const r2 = db.prepare('INSERT OR IGNORE INTO recipe_collections (recipe_id, collection_id) VALUES (?, ?)').run(rid, colId); if (r2.changes > 0) result.collections.recipes_linked++; } }
         }
@@ -2549,8 +2641,20 @@ export default async function adminRoutes(fastify) {
         const ex = db.prepare('SELECT id FROM pantry WHERE user_id = ? AND LOWER(ingredient_name) = LOWER(?)').get(userId, name);
         const amount = Math.min(Math.max(parseFloat(item.amount) || 1, 0), 99999);
         const expiryDate = (item.expiry_date && /^\d{4}-\d{2}-\d{2}$/.test(item.expiry_date)) ? item.expiry_date : null;
-        if (ex) { db.prepare('UPDATE pantry SET amount = amount + ? WHERE id = ?').run(amount, ex.id); result.pantry.updated++; }
-        else { db.prepare('INSERT INTO pantry (user_id, ingredient_name, amount, unit, category, expiry_date, notes, is_permanent) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(userId, name, amount, _sanitize(item.unit || 'Stk', 50), _sanitize(item.category || 'Sonstiges', 100), expiryDate, _sanitize(item.notes || '', 500), item.is_permanent ? 1 : 0); result.pantry.imported++; }
+        if (ex) {
+          if (overwrite) {
+            // Überschreiben: Werte komplett ersetzen
+            db.prepare('UPDATE pantry SET amount = ?, unit = ?, category = ?, expiry_date = ?, notes = ?, is_permanent = ? WHERE id = ?')
+              .run(amount, _sanitize(item.unit || 'Stk', 50), _sanitize(item.category || 'Sonstiges', 100), expiryDate, _sanitize(item.notes || '', 500), item.is_permanent ? 1 : 0, ex.id);
+          } else {
+            // Standard: Menge addieren
+            db.prepare('UPDATE pantry SET amount = amount + ? WHERE id = ?').run(amount, ex.id);
+          }
+          result.pantry.updated++;
+        } else {
+          db.prepare('INSERT INTO pantry (user_id, ingredient_name, amount, unit, category, expiry_date, notes, is_permanent) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(userId, name, amount, _sanitize(item.unit || 'Stk', 50), _sanitize(item.category || 'Sonstiges', 100), expiryDate, _sanitize(item.notes || '', 500), item.is_permanent ? 1 : 0);
+          result.pantry.imported++;
+        }
       }
 
       // 4. Wochenpläne
@@ -2558,9 +2662,22 @@ export default async function adminRoutes(fastify) {
       for (const plan of mealPlans) {
         if (!plan.week_start || !/^\d{4}-\d{2}-\d{2}$/.test(plan.week_start)) { result.meal_plans.skipped++; continue; }
         const ex = db.prepare('SELECT id FROM meal_plans WHERE user_id = ? AND week_start = ?').get(userId, plan.week_start);
-        if (ex) { result.meal_plans.skipped++; continue; }
-        const pr = db.prepare('INSERT INTO meal_plans (user_id, week_start) VALUES (?, ?)').run(userId, plan.week_start);
-        result.meal_plans.imported++;
+
+        let planId;
+        if (ex && overwrite) {
+          // Überschreiben: alte Einträge löschen, Plan behalten
+          db.prepare('DELETE FROM meal_plan_entries WHERE meal_plan_id = ?').run(ex.id);
+          planId = ex.id;
+          result.meal_plans.updated++;
+        } else if (ex) {
+          result.meal_plans.skipped++;
+          continue;
+        } else {
+          const pr = db.prepare('INSERT INTO meal_plans (user_id, week_start) VALUES (?, ?)').run(userId, plan.week_start);
+          planId = pr.lastInsertRowid;
+          result.meal_plans.imported++;
+        }
+
         if (Array.isArray(plan.entries)) {
           for (const e of plan.entries.slice(0, 50)) {
             let rid = null;
@@ -2570,7 +2687,7 @@ export default async function adminRoutes(fastify) {
             const dayOfWeek = Math.min(Math.max(parseInt(e.day_of_week) || 0, 0), 6);
             const mealType = validMealTypes.has(e.meal_type) ? e.meal_type : 'mittag';
             const servings = Math.min(Math.max(parseInt(e.servings) || 2, 1), 100);
-            db.prepare('INSERT INTO meal_plan_entries (meal_plan_id, recipe_id, day_of_week, meal_type, servings, is_cooked) VALUES (?, ?, ?, ?, ?, ?)').run(pr.lastInsertRowid, rid, dayOfWeek, mealType, servings, e.is_cooked ? 1 : 0);
+            db.prepare('INSERT INTO meal_plan_entries (meal_plan_id, recipe_id, day_of_week, meal_type, servings, is_cooked) VALUES (?, ?, ?, ?, ?, ?)').run(planId, rid, dayOfWeek, mealType, servings, e.is_cooked ? 1 : 0);
             result.meal_plans.entries_imported++;
           }
         }
@@ -2578,6 +2695,14 @@ export default async function adminRoutes(fastify) {
 
       // 5. Einkaufslisten
       for (const list of shoppingLists) {
+        // Bei Überschreiben: bestehende gleichnamige Liste löschen
+        if (overwrite && list.name) {
+          const exList = db.prepare('SELECT id FROM shopping_lists WHERE user_id = ? AND name = ? COLLATE NOCASE').get(userId, _sanitize(list.name, 200));
+          if (exList) {
+            db.prepare('DELETE FROM shopping_list_items WHERE shopping_list_id = ?').run(exList.id);
+            db.prepare('DELETE FROM shopping_lists WHERE id = ?').run(exList.id);
+          }
+        }
         const lr = db.prepare('INSERT INTO shopping_lists (user_id, name, is_active) VALUES (?, ?, 0)').run(userId, _sanitize(list.name || 'Import', 200));
         result.shopping_lists.imported++;
         if (Array.isArray(list.items)) {
@@ -2643,16 +2768,22 @@ export default async function adminRoutes(fastify) {
    * Kompletter JSON-Import — bei admin_full_backup werden alle Benutzer
    * automatisch per Username zugeordnet. Bei full_backup (Einzel-User)
    * muss ein Ziel-Benutzer angegeben werden.
+   *
+   * Optionale Felder (Formular):
+   *   create_users = "true" → fehlende Benutzer automatisch anlegen
+   *   overwrite    = "true" → bestehende Daten überschreiben statt überspringen
    */
   fastify.post('/backup/import-json', {
     schema: {
-      description: 'Kompletter JSON-Import (Admin) – Multi-User oder Einzel-User',
+      description: 'Kompletter JSON-Import (Admin) – Multi-User oder Einzel-User, optional mit Überschreiben und User-Anlage',
       tags: ['Admin'],
       security: [{ bearerAuth: [] }],
     },
   }, async (request, reply) => {
     let importData;
     let targetUserId;
+    let createUsers = false;
+    let overwrite = false;
 
     if (request.isMultipart()) {
       const parts = {};
@@ -2667,14 +2798,20 @@ export default async function adminRoutes(fastify) {
       if (!parts.file) return reply.status(400).send({ error: 'Keine Datei hochgeladen.' });
       try { importData = JSON.parse(parts.file); } catch { return reply.status(400).send({ error: 'Ungültiges JSON.' }); }
       targetUserId = parts.user_id ? parseInt(parts.user_id) : null;
+      createUsers = parts.create_users === 'true' || parts.create_users === true;
+      overwrite = parts.overwrite === 'true' || parts.overwrite === true;
     } else {
       importData = request.body;
       targetUserId = importData?.user_id || null;
+      createUsers = importData?.create_users === true;
+      overwrite = importData?.overwrite === true;
     }
 
     if (!importData || importData.source !== 'Zauberjournal') {
       return reply.status(400).send({ error: 'Ungültige Quelle — nur Zauberjournal-Backups.' });
     }
+
+    const importOptions = { overwrite };
 
     // ── admin_full_backup: Alle Benutzer automatisch per Username zuordnen ──
     if (importData.type === 'admin_full_backup') {
@@ -2688,12 +2825,59 @@ export default async function adminRoutes(fastify) {
 
       const perUserResults = [];
       const unmatchedUsers = [];
+      const createdUsers = [];
+      const tempPassword = generateRandomPassword();
+      let hashedTempPw = null;
 
       for (const entry of importData.users) {
         const backupUsername = entry.user?.username;
         if (!backupUsername) { unmatchedUsers.push('(kein Username)'); continue; }
 
-        const matchedUserId = usernameToId.get(backupUsername.toLowerCase());
+        let matchedUserId = usernameToId.get(backupUsername.toLowerCase());
+
+        // Fehlenden User automatisch anlegen
+        if (!matchedUserId && createUsers && entry.user) {
+          try {
+            // Passwort-Hash nur einmal erzeugen
+            if (!hashedTempPw) hashedTempPw = bcrypt.hashSync(tempPassword, 10);
+
+            const u = entry.user;
+            const username = String(u.username || '').trim().slice(0, 50);
+            const email = String(u.email || `${username}@import.local`).trim().slice(0, 255);
+            const displayName = String(u.display_name || username).trim().slice(0, 100);
+            const role = (u.role === 'admin') ? 'admin' : 'user';
+            const isActive = u.is_active !== undefined ? (u.is_active ? 1 : 0) : 1;
+            const createdAt = (u.created_at && /^\d{4}-\d{2}-\d{2}/.test(u.created_at)) ? String(u.created_at).slice(0, 30) : null;
+
+            // Prüfe ob Username gültig ist
+            if (!/^[a-zA-Z0-9_-]+$/.test(username)) {
+              unmatchedUsers.push(`${backupUsername} (ungültiger Username)`);
+              continue;
+            }
+            // Prüfe ob E-Mail schon belegt
+            const emailExists = db.prepare('SELECT id FROM users WHERE LOWER(email) = LOWER(?)').get(email);
+            if (emailExists) {
+              // Fallback-Email generieren
+              const fallbackEmail = `${username}-${Date.now()}@import.local`;
+              db.prepare('INSERT INTO users (username, email, display_name, role, is_active, password_hash, created_at) VALUES (?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP))')
+                .run(username, fallbackEmail, displayName, role, isActive, hashedTempPw, createdAt);
+            } else {
+              db.prepare('INSERT INTO users (username, email, display_name, role, is_active, password_hash, created_at) VALUES (?, ?, ?, ?, ?, ?, COALESCE(?, CURRENT_TIMESTAMP))')
+                .run(username, email, displayName, role, isActive, hashedTempPw, createdAt);
+            }
+
+            const newUser = db.prepare('SELECT id FROM users WHERE LOWER(username) = LOWER(?)').get(username);
+            if (newUser) {
+              matchedUserId = newUser.id;
+              usernameToId.set(username.toLowerCase(), newUser.id);
+              createdUsers.push(username);
+            }
+          } catch (err) {
+            unmatchedUsers.push(`${backupUsername} (Anlage fehlgeschlagen: ${err.message})`);
+            continue;
+          }
+        }
+
         if (!matchedUserId) {
           unmatchedUsers.push(backupUsername);
           continue;
@@ -2704,20 +2888,21 @@ export default async function adminRoutes(fastify) {
           continue;
         }
 
-        const userResult = await importBackupDataForUser(matchedUserId, entry.data);
+        const userResult = await importBackupDataForUser(matchedUserId, entry.data, importOptions);
         const totalImported = Object.values(userResult).reduce((sum, r) => sum + (r.imported || 0), 0);
+        const totalUpdated = Object.values(userResult).reduce((sum, r) => sum + (r.updated || 0), 0);
         const totalSkipped = Object.values(userResult).reduce((sum, r) => sum + (r.skipped || 0), 0);
-        perUserResults.push({ username: backupUsername, imported: totalImported, skipped: totalSkipped, details: userResult });
+        perUserResults.push({ username: backupUsername, imported: totalImported, updated: totalUpdated, skipped: totalSkipped, details: userResult });
       }
 
-      logAdminAction(request.user.id, 'JSON-Komplett-Import', `Multi-User-Import: ${perUserResults.length} Benutzer`);
+      logAdminAction(request.user.id, 'JSON-Komplett-Import', `Multi-User-Import: ${perUserResults.length} Benutzer${overwrite ? ' (Überschreiben)' : ''}${createdUsers.length ? `, ${createdUsers.length} User angelegt` : ''}`);
 
       // Gesamt-Zusammenfassung
       const totalDetails = {
-        recipes: { imported: 0, skipped: 0 },
+        recipes: { imported: 0, updated: 0, skipped: 0 },
         collections: { imported: 0, updated: 0, skipped: 0, recipes_linked: 0 },
         pantry: { imported: 0, updated: 0, skipped: 0 },
-        meal_plans: { imported: 0, skipped: 0, entries_imported: 0 },
+        meal_plans: { imported: 0, updated: 0, skipped: 0, entries_imported: 0 },
         shopping_lists: { imported: 0, items_imported: 0 },
         recipe_blocks: { imported: 0, updated: 0, skipped: 0 },
         ingredient_aliases: { imported: 0, updated: 0, skipped: 0 },
@@ -2732,13 +2917,17 @@ export default async function adminRoutes(fastify) {
       }
 
       const totalImported = Object.values(totalDetails).reduce((sum, r) => sum + (r.imported || 0), 0);
+      const totalUpdated = Object.values(totalDetails).reduce((sum, r) => sum + (r.updated || 0), 0);
       const totalSkipped = Object.values(totalDetails).reduce((sum, r) => sum + (r.skipped || 0), 0);
 
       return {
-        message: `Multi-User-Import abgeschlossen: ${perUserResults.length} Benutzer importiert, ${unmatchedUsers.length} nicht zugeordnet. ${totalImported} Einträge importiert, ${totalSkipped} übersprungen.`,
+        message: `Multi-User-Import abgeschlossen: ${perUserResults.length} Benutzer verarbeitet, ${unmatchedUsers.length} nicht zugeordnet. ${totalImported} neu, ${totalUpdated} aktualisiert, ${totalSkipped} übersprungen.`,
         users_imported: perUserResults.length,
+        users_created: createdUsers,
         users_unmatched: unmatchedUsers,
-        per_user: perUserResults.map(r => ({ username: r.username, imported: r.imported, skipped: r.skipped })),
+        temp_password: createdUsers.length > 0 ? tempPassword : undefined,
+        overwrite_mode: overwrite,
+        per_user: perUserResults.map(r => ({ username: r.username, imported: r.imported, updated: r.updated, skipped: r.skipped })),
         details: totalDetails,
       };
     }
@@ -2753,15 +2942,17 @@ export default async function adminRoutes(fastify) {
         return reply.status(400).send({ error: 'Keine gültigen Daten im Backup.' });
       }
 
-      const result = await importBackupDataForUser(targetUserId, importData.data);
-      logAdminAction(request.user.id, 'JSON-Komplett-Import', `Einzel-Import für ${targetUser.username}`);
+      const result = await importBackupDataForUser(targetUserId, importData.data, importOptions);
+      logAdminAction(request.user.id, 'JSON-Komplett-Import', `Einzel-Import für ${targetUser.username}${overwrite ? ' (Überschreiben)' : ''}`);
 
       const totalImported = Object.values(result).reduce((sum, r) => sum + (r.imported || 0), 0);
+      const totalUpdated = Object.values(result).reduce((sum, r) => sum + (r.updated || 0), 0);
       const totalSkipped = Object.values(result).reduce((sum, r) => sum + (r.skipped || 0), 0);
 
       return {
-        message: `Backup-Import für "${targetUser.username}" abgeschlossen: ${totalImported} importiert, ${totalSkipped} übersprungen.`,
+        message: `Backup-Import für "${targetUser.username}" abgeschlossen: ${totalImported} neu, ${totalUpdated} aktualisiert, ${totalSkipped} übersprungen.`,
         target_user: targetUser.username,
+        overwrite_mode: overwrite,
         details: result,
       };
     }
