@@ -133,7 +133,7 @@
  * - Prüft Auth-Status beim Start
  * - Verwaltet Sidebar und Theme
  */
-import { ref, computed, onMounted, watch } from 'vue';
+import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue';
 import { RouterView, useRouter } from 'vue-router';
 import { useAuthStore } from '@/stores/auth.js';
 import { useHouseholdStore } from '@/stores/household.js';
@@ -175,13 +175,22 @@ function toggleSidebar() {
   }
 }
 
+// SSE sauber schließen bevor die Seite entladen wird (verhindert Firefox-Konsolenfehler)
+const handleBeforeUnload = () => householdStore.disconnectSSE();
+
 // Auth-Status beim App-Start prüfen + Household laden
 onMounted(async () => {
+  window.addEventListener('beforeunload', handleBeforeUnload);
   await authStore.checkAuth();
   if (authStore.isLoggedIn) {
     await householdStore.fetchHouseholds();
     householdStore.connectSSE();
   }
+});
+
+onBeforeUnmount(() => {
+  window.removeEventListener('beforeunload', handleBeforeUnload);
+  householdStore.disconnectSSE();
 });
 
 // Bei Logout Household-Store zurücksetzen
