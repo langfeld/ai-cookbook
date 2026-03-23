@@ -2443,77 +2443,11 @@ export default async function adminRoutes(fastify) {
     return exportData;
   });
 
-  /**
-   * POST /api/admin/backup/import-json
-   * Kompletter JSON-Import für einen Ziel-Benutzer
-   */
-  fastify.post('/backup/import-json', {
-    schema: {
-      description: 'Kompletter JSON-Import für einen Benutzer (Admin)',
-      tags: ['Admin'],
-      security: [{ bearerAuth: [] }],
-    },
-  }, async (request, reply) => {
-    let importData;
-    let targetUserId;
-
-    if (request.isMultipart()) {
-      const parts = {};
-      for await (const part of request.parts()) {
-        if (part.file) {
-          const buffer = await part.toBuffer();
-          parts.file = buffer.toString('utf-8').replace(/^\uFEFF/, '').trim();
-        } else {
-          parts[part.fieldname] = part.value;
-        }
-      }
-      if (!parts.file) return reply.status(400).send({ error: 'Keine Datei hochgeladen.' });
-      try { importData = JSON.parse(parts.file); } catch { return reply.status(400).send({ error: 'Ungültiges JSON.' }); }
-      targetUserId = parseInt(parts.user_id);
-    } else {
-      importData = request.body;
-      targetUserId = importData?.user_id;
-    }
-
-    if (!targetUserId) return reply.status(400).send({ error: 'user_id ist erforderlich.' });
-    const targetUser = db.prepare('SELECT id, username FROM users WHERE id = ?').get(targetUserId);
-    if (!targetUser) return reply.status(404).send({ error: 'Benutzer nicht gefunden.' });
-
-    if (!importData || importData.source !== 'Zauberjournal') {
-      return reply.status(400).send({ error: 'Ungültige Quelle — nur Zauberjournal-Backups.' });
-    }
-
-    // Unterstütze sowohl full_backup als auch admin_full_backup
-    let data;
-    if (importData.type === 'full_backup') {
-      data = importData.data;
-    } else if (importData.type === 'admin_full_backup') {
-      // Erste User-Sektion verwenden (oder passenden User finden)
-      if (Array.isArray(importData.users) && importData.users.length > 0) {
-        data = importData.users[0].data;
-      }
-    }
-    if (!data || typeof data !== 'object') {
-      return reply.status(400).send({ error: 'Keine gültigen Daten im Backup.' });
-    }
-
-    // Delegiere an die Backup-Import-Logik (gleiche Logik wie User-Backup)
-    // Wir re-implementieren hier nicht alles, sondern leiten auf /api/backup/import um
-    // indem wir die Daten in das erwartete Format bringen
-    const backupPayload = {
-      version: importData.version || '1.0',
-      exported_at: importData.exported_at,
-      source: 'Zauberjournal',
-      type: 'full_backup',
-      data,
-    };
-
-    // Wegen dem Ziel-User simulieren wir den Import direkt hier
-    // mit der gleichen Logik wie backup.js aber für den targetUserId
-    const userId = targetUserId;
+  // ── Hilfsfunktion: Importiert Backup-Daten für einen einzelnen User ──
+  async function importBackupDataForUser(userId, data) {
     const LIMITS = { recipes: 500, collections: 200, pantry: 2000, mealPlans: 200, shoppingLists: 500, recipeBlocks: 500, ingredientAliases: 5000, blockedIngredients: 5000, maxCategoriesPerRecipe: 20, maxIngredientsPerRecipe: 200, maxStepsPerRecipe: 100 };
 
-    function sanitize(val, maxLen = 10000) {
+    function _sanitize(val, maxLen = 10000) {
       if (typeof val !== 'string') return typeof val === 'number' ? val : '';
       return val.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '').trim().slice(0, maxLen);
     }
@@ -2561,12 +2495,12 @@ export default async function adminRoutes(fastify) {
       // 1. Rezepte
       for (const recipe of recipes) {
         if (!recipe.title || typeof recipe.title !== 'string') { result.recipes.skipped++; continue; }
-        const title = sanitize(recipe.title, 200);
+        const title = _sanitize(recipe.title, 200);
         const existing = db.prepare('SELECT id FROM recipes WHERE user_id = ? AND LOWER(title) = LOWER(?)').get(userId, title);
         if (existing) { importedRecipeMap.set(title.toLowerCase(), existing.id); result.recipes.skipped++; continue; }
 
         const res = db.prepare(`INSERT INTO recipes (user_id, title, description, servings, prep_time, cook_time, total_time, difficulty, source_url, is_favorite, notes, ai_generated, times_cooked, last_cooked_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-          .run(userId, title, sanitize(recipe.description || '', 5000), Math.min(Math.max(1, parseInt(recipe.servings) || 4), 100), Math.min(parseInt(recipe.prep_time) || 0, 10080), Math.min(parseInt(recipe.cook_time) || 0, 10080), Math.min(parseInt(recipe.total_time) || 0, 10080), VALID_DIFFICULTIES.has(recipe.difficulty) ? recipe.difficulty : 'mittel', sanitize(recipe.source_url || '', 2000), recipe.is_favorite ? 1 : 0, sanitize(recipe.notes || '', 5000), recipe.ai_generated ? 1 : 0, Math.min(parseInt(recipe.times_cooked) || 0, 99999), recipe.last_cooked_at || null);
+          .run(userId, title, _sanitize(recipe.description || '', 5000), Math.min(Math.max(1, parseInt(recipe.servings) || 4), 100), Math.min(parseInt(recipe.prep_time) || 0, 10080), Math.min(parseInt(recipe.cook_time) || 0, 10080), Math.min(parseInt(recipe.total_time) || 0, 10080), VALID_DIFFICULTIES.has(recipe.difficulty) ? recipe.difficulty : 'mittel', _sanitize(recipe.source_url || '', 2000), recipe.is_favorite ? 1 : 0, _sanitize(recipe.notes || '', 5000), recipe.ai_generated ? 1 : 0, Math.min(parseInt(recipe.times_cooked) || 0, 99999), recipe.last_cooked_at || null);
         const newId = res.lastInsertRowid;
         importedRecipeMap.set(title.toLowerCase(), newId);
 
@@ -2579,13 +2513,13 @@ export default async function adminRoutes(fastify) {
         if (Array.isArray(recipe.ingredients)) {
           for (const ing of recipe.ingredients.slice(0, LIMITS.maxIngredientsPerRecipe)) {
             if (!ing.name) continue;
-            db.prepare('INSERT INTO ingredients (recipe_id, name, amount, unit, group_name, sort_order, is_optional, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(newId, sanitize(ing.name, 200), parseFloat(ing.amount) || null, sanitize(ing.unit || '', 50), sanitize(ing.group_name || '', 100), parseInt(ing.sort_order) || 0, ing.is_optional ? 1 : 0, sanitize(ing.notes || '', 500));
+            db.prepare('INSERT INTO ingredients (recipe_id, name, amount, unit, group_name, sort_order, is_optional, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(newId, _sanitize(ing.name, 200), parseFloat(ing.amount) || null, _sanitize(ing.unit || '', 50), _sanitize(ing.group_name || '', 100), parseInt(ing.sort_order) || 0, ing.is_optional ? 1 : 0, _sanitize(ing.notes || '', 500));
           }
         }
         if (Array.isArray(recipe.steps)) {
           for (const step of recipe.steps.slice(0, LIMITS.maxStepsPerRecipe)) {
             if (!step.instruction) continue;
-            db.prepare('INSERT INTO cooking_steps (recipe_id, step_number, title, instruction, duration_minutes) VALUES (?, ?, ?, ?, ?)').run(newId, parseInt(step.step_number) || 0, sanitize(step.title || '', 200), sanitize(step.instruction, 5000), parseInt(step.duration_minutes) || null);
+            db.prepare('INSERT INTO cooking_steps (recipe_id, step_number, title, instruction, duration_minutes) VALUES (?, ?, ?, ?, ?)').run(newId, parseInt(step.step_number) || 0, _sanitize(step.title || '', 200), _sanitize(step.instruction, 5000), parseInt(step.duration_minutes) || null);
           }
         }
         if (recipe.image_base64 && recipe.image_mime && typeof recipe.image_base64 === 'string' && recipe.image_base64.length < 14 * 1024 * 1024) pendingImages.push({ recipeId: newId, base64: recipe.image_base64 });
@@ -2595,8 +2529,8 @@ export default async function adminRoutes(fastify) {
       // 2. Sammlungen
       for (const col of collections) {
         if (!col.name || typeof col.name !== 'string') { result.collections.skipped++; continue; }
-        const name = sanitize(col.name, 100);
-        const icon = sanitize(col.icon || '📁', 10);
+        const name = _sanitize(col.name, 100);
+        const icon = _sanitize(col.icon || '📁', 10);
         const color = /^#[0-9a-fA-F]{6}$/.test(col.color) ? col.color : '#6366f1';
         const sortOrder = typeof col.sort_order === 'number' ? col.sort_order : 0;
         const existing = db.prepare('SELECT id FROM collections WHERE user_id = ? AND name = ? COLLATE NOCASE').get(userId, name);
@@ -2611,12 +2545,12 @@ export default async function adminRoutes(fastify) {
       // 3. Pantry
       for (const item of pantry) {
         if (!item.ingredient_name || typeof item.ingredient_name !== 'string') { result.pantry.skipped++; continue; }
-        const name = sanitize(item.ingredient_name, 200);
+        const name = _sanitize(item.ingredient_name, 200);
         const ex = db.prepare('SELECT id FROM pantry WHERE user_id = ? AND LOWER(ingredient_name) = LOWER(?)').get(userId, name);
         const amount = Math.min(Math.max(parseFloat(item.amount) || 1, 0), 99999);
         const expiryDate = (item.expiry_date && /^\d{4}-\d{2}-\d{2}$/.test(item.expiry_date)) ? item.expiry_date : null;
         if (ex) { db.prepare('UPDATE pantry SET amount = amount + ? WHERE id = ?').run(amount, ex.id); result.pantry.updated++; }
-        else { db.prepare('INSERT INTO pantry (user_id, ingredient_name, amount, unit, category, expiry_date, notes, is_permanent) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(userId, name, amount, sanitize(item.unit || 'Stk', 50), sanitize(item.category || 'Sonstiges', 100), expiryDate, sanitize(item.notes || '', 500), item.is_permanent ? 1 : 0); result.pantry.imported++; }
+        else { db.prepare('INSERT INTO pantry (user_id, ingredient_name, amount, unit, category, expiry_date, notes, is_permanent) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(userId, name, amount, _sanitize(item.unit || 'Stk', 50), _sanitize(item.category || 'Sonstiges', 100), expiryDate, _sanitize(item.notes || '', 500), item.is_permanent ? 1 : 0); result.pantry.imported++; }
       }
 
       // 4. Wochenpläne
@@ -2644,7 +2578,7 @@ export default async function adminRoutes(fastify) {
 
       // 5. Einkaufslisten
       for (const list of shoppingLists) {
-        const lr = db.prepare('INSERT INTO shopping_lists (user_id, name, is_active) VALUES (?, ?, 0)').run(userId, sanitize(list.name || 'Import', 200));
+        const lr = db.prepare('INSERT INTO shopping_lists (user_id, name, is_active) VALUES (?, ?, 0)').run(userId, _sanitize(list.name || 'Import', 200));
         result.shopping_lists.imported++;
         if (Array.isArray(list.items)) {
           for (const item of list.items.slice(0, 500)) {
@@ -2652,7 +2586,7 @@ export default async function adminRoutes(fastify) {
             let rid = null;
             if (item.recipe_title) rid = importedRecipeMap.get(item.recipe_title.toLowerCase()) || null;
             const amount = typeof item.amount === 'number' ? Math.min(Math.max(item.amount, 0), 99999) : (parseFloat(item.amount) || 1);
-            db.prepare('INSERT INTO shopping_list_items (shopping_list_id, ingredient_name, amount, unit, is_checked, recipe_id) VALUES (?, ?, ?, ?, ?, ?)').run(lr.lastInsertRowid, sanitize(item.ingredient_name, 300), amount, sanitize(item.unit || '', 50), item.is_checked ? 1 : 0, rid);
+            db.prepare('INSERT INTO shopping_list_items (shopping_list_id, ingredient_name, amount, unit, is_checked, recipe_id) VALUES (?, ?, ?, ?, ?, ?)').run(lr.lastInsertRowid, _sanitize(item.ingredient_name, 300), amount, _sanitize(item.unit || '', 50), item.is_checked ? 1 : 0, rid);
             result.shopping_lists.items_imported++;
           }
         }
@@ -2664,22 +2598,22 @@ export default async function adminRoutes(fastify) {
         const rid = importedRecipeMap.get(block.recipe_title.toLowerCase());
         if (!rid) { result.recipe_blocks.skipped++; continue; }
         const ex = db.prepare('SELECT id FROM recipe_blocks WHERE user_id = ? AND recipe_id = ?').get(userId, rid);
-        if (ex) { db.prepare('UPDATE recipe_blocks SET blocked_until = ?, reason = ? WHERE id = ?').run(block.blocked_until || null, sanitize(block.reason || '', 500), ex.id); result.recipe_blocks.updated++; }
-        else { db.prepare('INSERT INTO recipe_blocks (user_id, recipe_id, blocked_until, reason) VALUES (?, ?, ?, ?)').run(userId, rid, block.blocked_until || null, sanitize(block.reason || '', 500)); result.recipe_blocks.imported++; }
+        if (ex) { db.prepare('UPDATE recipe_blocks SET blocked_until = ?, reason = ? WHERE id = ?').run(block.blocked_until || null, _sanitize(block.reason || '', 500), ex.id); result.recipe_blocks.updated++; }
+        else { db.prepare('INSERT INTO recipe_blocks (user_id, recipe_id, blocked_until, reason) VALUES (?, ?, ?, ?)').run(userId, rid, block.blocked_until || null, _sanitize(block.reason || '', 500)); result.recipe_blocks.imported++; }
       }
 
       // 7. Zutaten-Aliase
       for (const alias of ingredientAliases) {
         if (!alias.canonical_name || !alias.alias_name) { result.ingredient_aliases.skipped++; continue; }
         const ex = db.prepare('SELECT id FROM ingredient_aliases WHERE user_id = ? AND alias_name = ? COLLATE NOCASE').get(userId, alias.alias_name);
-        if (ex) { db.prepare('UPDATE ingredient_aliases SET canonical_name = ? WHERE id = ?').run(sanitize(alias.canonical_name, 200), ex.id); result.ingredient_aliases.updated++; }
-        else { db.prepare('INSERT INTO ingredient_aliases (user_id, canonical_name, alias_name) VALUES (?, ?, ?)').run(userId, sanitize(alias.canonical_name, 200), sanitize(alias.alias_name, 200)); result.ingredient_aliases.imported++; }
+        if (ex) { db.prepare('UPDATE ingredient_aliases SET canonical_name = ? WHERE id = ?').run(_sanitize(alias.canonical_name, 200), ex.id); result.ingredient_aliases.updated++; }
+        else { db.prepare('INSERT INTO ingredient_aliases (user_id, canonical_name, alias_name) VALUES (?, ?, ?)').run(userId, _sanitize(alias.canonical_name, 200), _sanitize(alias.alias_name, 200)); result.ingredient_aliases.imported++; }
       }
 
       // 8. Geblockte Zutaten
       for (const name of blockedIngredients) {
         if (typeof name !== 'string' || !name.trim()) { result.blocked_ingredients.skipped++; continue; }
-        const r = db.prepare('INSERT OR IGNORE INTO blocked_ingredients (user_id, ingredient_name) VALUES (?, ?)').run(userId, sanitize(name, 200));
+        const r = db.prepare('INSERT OR IGNORE INTO blocked_ingredients (user_id, ingredient_name) VALUES (?, ?)').run(userId, _sanitize(name, 200));
         if (r.changes > 0) result.blocked_ingredients.imported++; else result.blocked_ingredients.skipped++;
       }
     });
@@ -2701,16 +2635,138 @@ export default async function adminRoutes(fastify) {
       }
     }
 
-    logAdminAction(request.user.id, 'JSON-Komplett-Import', `Import für ${targetUser.username}`);
+    return result;
+  }
 
-    const totalImported = Object.values(result).reduce((sum, r) => sum + (r.imported || 0), 0);
-    const totalSkipped = Object.values(result).reduce((sum, r) => sum + (r.skipped || 0), 0);
+  /**
+   * POST /api/admin/backup/import-json
+   * Kompletter JSON-Import — bei admin_full_backup werden alle Benutzer
+   * automatisch per Username zugeordnet. Bei full_backup (Einzel-User)
+   * muss ein Ziel-Benutzer angegeben werden.
+   */
+  fastify.post('/backup/import-json', {
+    schema: {
+      description: 'Kompletter JSON-Import (Admin) – Multi-User oder Einzel-User',
+      tags: ['Admin'],
+      security: [{ bearerAuth: [] }],
+    },
+  }, async (request, reply) => {
+    let importData;
+    let targetUserId;
 
-    return {
-      message: `Backup-Import für "${targetUser.username}" abgeschlossen: ${totalImported} importiert, ${totalSkipped} übersprungen.`,
-      target_user: targetUser.username,
-      details: result,
-    };
+    if (request.isMultipart()) {
+      const parts = {};
+      for await (const part of request.parts()) {
+        if (part.file) {
+          const buffer = await part.toBuffer();
+          parts.file = buffer.toString('utf-8').replace(/^\uFEFF/, '').trim();
+        } else {
+          parts[part.fieldname] = part.value;
+        }
+      }
+      if (!parts.file) return reply.status(400).send({ error: 'Keine Datei hochgeladen.' });
+      try { importData = JSON.parse(parts.file); } catch { return reply.status(400).send({ error: 'Ungültiges JSON.' }); }
+      targetUserId = parts.user_id ? parseInt(parts.user_id) : null;
+    } else {
+      importData = request.body;
+      targetUserId = importData?.user_id || null;
+    }
+
+    if (!importData || importData.source !== 'Zauberjournal') {
+      return reply.status(400).send({ error: 'Ungültige Quelle — nur Zauberjournal-Backups.' });
+    }
+
+    // ── admin_full_backup: Alle Benutzer automatisch per Username zuordnen ──
+    if (importData.type === 'admin_full_backup') {
+      if (!Array.isArray(importData.users) || importData.users.length === 0) {
+        return reply.status(400).send({ error: 'Keine Benutzerdaten im Backup gefunden.' });
+      }
+
+      // Alle existierenden User laden (Username → ID)
+      const allDbUsers = db.prepare('SELECT id, username FROM users').all();
+      const usernameToId = new Map(allDbUsers.map(u => [u.username.toLowerCase(), u.id]));
+
+      const perUserResults = [];
+      const unmatchedUsers = [];
+
+      for (const entry of importData.users) {
+        const backupUsername = entry.user?.username;
+        if (!backupUsername) { unmatchedUsers.push('(kein Username)'); continue; }
+
+        const matchedUserId = usernameToId.get(backupUsername.toLowerCase());
+        if (!matchedUserId) {
+          unmatchedUsers.push(backupUsername);
+          continue;
+        }
+
+        if (!entry.data || typeof entry.data !== 'object') {
+          unmatchedUsers.push(`${backupUsername} (keine Daten)`);
+          continue;
+        }
+
+        const userResult = await importBackupDataForUser(matchedUserId, entry.data);
+        const totalImported = Object.values(userResult).reduce((sum, r) => sum + (r.imported || 0), 0);
+        const totalSkipped = Object.values(userResult).reduce((sum, r) => sum + (r.skipped || 0), 0);
+        perUserResults.push({ username: backupUsername, imported: totalImported, skipped: totalSkipped, details: userResult });
+      }
+
+      logAdminAction(request.user.id, 'JSON-Komplett-Import', `Multi-User-Import: ${perUserResults.length} Benutzer`);
+
+      // Gesamt-Zusammenfassung
+      const totalDetails = {
+        recipes: { imported: 0, skipped: 0 },
+        collections: { imported: 0, updated: 0, skipped: 0, recipes_linked: 0 },
+        pantry: { imported: 0, updated: 0, skipped: 0 },
+        meal_plans: { imported: 0, skipped: 0, entries_imported: 0 },
+        shopping_lists: { imported: 0, items_imported: 0 },
+        recipe_blocks: { imported: 0, updated: 0, skipped: 0 },
+        ingredient_aliases: { imported: 0, updated: 0, skipped: 0 },
+        blocked_ingredients: { imported: 0, skipped: 0 },
+      };
+      for (const ur of perUserResults) {
+        for (const [key, val] of Object.entries(ur.details)) {
+          for (const [k, v] of Object.entries(val)) {
+            totalDetails[key][k] = (totalDetails[key][k] || 0) + v;
+          }
+        }
+      }
+
+      const totalImported = Object.values(totalDetails).reduce((sum, r) => sum + (r.imported || 0), 0);
+      const totalSkipped = Object.values(totalDetails).reduce((sum, r) => sum + (r.skipped || 0), 0);
+
+      return {
+        message: `Multi-User-Import abgeschlossen: ${perUserResults.length} Benutzer importiert, ${unmatchedUsers.length} nicht zugeordnet. ${totalImported} Einträge importiert, ${totalSkipped} übersprungen.`,
+        users_imported: perUserResults.length,
+        users_unmatched: unmatchedUsers,
+        per_user: perUserResults.map(r => ({ username: r.username, imported: r.imported, skipped: r.skipped })),
+        details: totalDetails,
+      };
+    }
+
+    // ── full_backup (Einzel-User): Ziel-Benutzer erforderlich ──
+    if (importData.type === 'full_backup') {
+      if (!targetUserId) return reply.status(400).send({ error: 'user_id ist erforderlich für Einzel-User-Backups.' });
+      const targetUser = db.prepare('SELECT id, username FROM users WHERE id = ?').get(targetUserId);
+      if (!targetUser) return reply.status(404).send({ error: 'Benutzer nicht gefunden.' });
+
+      if (!importData.data || typeof importData.data !== 'object') {
+        return reply.status(400).send({ error: 'Keine gültigen Daten im Backup.' });
+      }
+
+      const result = await importBackupDataForUser(targetUserId, importData.data);
+      logAdminAction(request.user.id, 'JSON-Komplett-Import', `Einzel-Import für ${targetUser.username}`);
+
+      const totalImported = Object.values(result).reduce((sum, r) => sum + (r.imported || 0), 0);
+      const totalSkipped = Object.values(result).reduce((sum, r) => sum + (r.skipped || 0), 0);
+
+      return {
+        message: `Backup-Import für "${targetUser.username}" abgeschlossen: ${totalImported} importiert, ${totalSkipped} übersprungen.`,
+        target_user: targetUser.username,
+        details: result,
+      };
+    }
+
+    return reply.status(400).send({ error: 'Unbekannter Backup-Typ. Erwartet: full_backup oder admin_full_backup.' });
   });
 
   // ============================================

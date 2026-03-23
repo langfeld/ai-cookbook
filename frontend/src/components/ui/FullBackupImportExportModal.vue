@@ -91,13 +91,14 @@
             <div class="flex items-start gap-2 bg-amber-50 dark:bg-amber-900/20 p-3 rounded-lg">
               <ShieldAlert class="mt-0.5 w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
               <p class="text-amber-700 dark:text-amber-300 text-xs">
-                Import nur aus vertrauenswürdigen Quellen! IDs werden ignoriert — alle Daten werden deinem Konto zugeordnet.
+                Import nur aus vertrauenswürdigen Quellen! IDs werden ignoriert.
+                {{ isAdmin ? 'Bei Multi-User-Backups werden Daten automatisch den jeweiligen Benutzern zugeordnet.' : 'Alle Daten werden deinem Konto zugeordnet.' }}
                 Einkaufslisten werden inaktiv importiert.
               </p>
             </div>
 
-            <!-- Admin: Ziel-User -->
-            <div v-if="isAdmin && users.length" class="space-y-2">
+            <!-- Admin: Ziel-User (nur bei Einzel-User-Backups) -->
+            <div v-if="isAdmin && users.length && !isMultiUserBackup" class="space-y-2">
               <label class="font-medium text-stone-700 dark:text-stone-300 text-sm">Für Benutzer importieren</label>
               <select v-model="importUserId" class="text-sm input" required>
                 <option :value="null" disabled>Benutzer wählen…</option>
@@ -105,6 +106,20 @@
                   {{ u.display_name || u.username }}
                 </option>
               </select>
+            </div>
+
+            <!-- Admin: Multi-User-Hinweis -->
+            <div v-if="isAdmin && isMultiUserBackup" class="flex items-start gap-2 bg-blue-50 dark:bg-blue-900/20 p-3 rounded-lg">
+              <Users class="mt-0.5 w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0" />
+              <div>
+                <p class="font-medium text-blue-700 dark:text-blue-300 text-xs">
+                  Multi-User-Backup erkannt ({{ filePreview?.user_count || '?' }} Benutzer)
+                </p>
+                <p class="mt-0.5 text-blue-600 dark:text-blue-400 text-xs">
+                  Daten werden automatisch per Username den bestehenden Benutzern zugeordnet.
+                  Benutzer die nicht existieren werden übersprungen.
+                </p>
+              </div>
             </div>
 
             <!-- Datei-Upload -->
@@ -149,7 +164,7 @@
             <button
               v-if="selectedFile"
               @click="handleImport"
-              :disabled="importing || (isAdmin && !importUserId)"
+              :disabled="importing || (isAdmin && !isMultiUserBackup && !importUserId)"
               class="flex justify-center items-center gap-2 bg-green-600 hover:bg-green-700 disabled:opacity-50 px-4 py-2.5 rounded-lg w-full font-medium text-white text-sm transition-colors"
             >
               <Loader2 v-if="importing" class="w-4 h-4 animate-spin" />
@@ -160,6 +175,22 @@
             <!-- Ergebnis -->
             <div v-if="importResult" class="bg-green-50 dark:bg-green-900/20 p-4 rounded-lg text-sm">
               <p class="mb-2 font-medium text-green-700 dark:text-green-300">{{ importResult.message }}</p>
+
+              <!-- Multi-User: Pro-Benutzer-Zusammenfassung -->
+              <div v-if="importResult.per_user && importResult.per_user.length" class="space-y-1 mb-2 text-green-600 dark:text-green-400 text-xs">
+                <p v-for="u in importResult.per_user" :key="u.username">
+                  <span class="font-medium">👤 {{ u.username }}:</span>
+                  {{ u.imported }} importiert, {{ u.skipped }} übersprungen
+                </p>
+              </div>
+
+              <!-- Nicht zugeordnete Benutzer -->
+              <div v-if="importResult.users_unmatched && importResult.users_unmatched.length" class="mb-2 text-amber-600 dark:text-amber-400 text-xs">
+                <p class="font-medium">⚠️ Nicht zugeordnete Benutzer (übersprungen):</p>
+                <p>{{ importResult.users_unmatched.join(', ') }}</p>
+              </div>
+
+              <!-- Detail-Aufschlüsselung -->
               <div v-if="importResult.details" class="space-y-1 text-green-600 dark:text-green-400 text-xs">
                 <p v-for="(detail, key) in importResult.details" :key="key">
                   <span class="font-medium">{{ detailLabels[key] || key }}:</span>
@@ -189,7 +220,7 @@ import { ref, computed } from 'vue';
 import { useApi } from '@/composables/useApi.js';
 import { useAuthStore } from '@/stores/auth.js';
 import { useNotification } from '@/composables/useNotification.js';
-import { X, Download, Upload, Loader2, ShieldAlert } from 'lucide-vue-next';
+import { X, Download, Upload, Loader2, ShieldAlert, Users } from 'lucide-vue-next';
 
 const props = defineProps({
   isAdmin: { type: Boolean, default: false },
@@ -213,6 +244,7 @@ const importResult = ref(null);
 const importError = ref(null);
 const selectedUserId = ref(null);
 const importUserId = ref(null);
+const isMultiUserBackup = ref(false);
 
 const detailLabels = {
   recipes: '📦 Rezepte',
@@ -302,6 +334,9 @@ function processFile(file) {
         return;
       }
 
+      // Multi-User-Backup erkennen
+      isMultiUserBackup.value = data.type === 'admin_full_backup' && Array.isArray(data.users) && data.users.length > 0;
+
       // Summary extrahieren
       let summary;
       if (data.type === 'full_backup') {
@@ -340,11 +375,12 @@ function clearFile() {
   filePreview.value = null;
   importResult.value = null;
   importError.value = null;
+  isMultiUserBackup.value = false;
 }
 
 async function handleImport() {
   if (!selectedFile.value) return;
-  if (props.isAdmin && !importUserId.value) return;
+  if (props.isAdmin && !isMultiUserBackup.value && !importUserId.value) return;
 
   importing.value = true;
   importResult.value = null;
@@ -353,7 +389,7 @@ async function handleImport() {
   try {
     const formData = new FormData();
     formData.append('file', selectedFile.value);
-    if (props.isAdmin && importUserId.value) {
+    if (props.isAdmin && !isMultiUserBackup.value && importUserId.value) {
       formData.append('user_id', importUserId.value);
     }
 
