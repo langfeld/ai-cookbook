@@ -27,6 +27,9 @@ Thumbs.db
 # Logs
 *.log
 
+# Local dev instructions
+.github/instructions/
+
 # E2E / Playwright
 e2e/node_modules/
 .playwright-mcp/
