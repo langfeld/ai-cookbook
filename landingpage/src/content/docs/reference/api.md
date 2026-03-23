@@ -61,12 +61,24 @@ description: Vollständige API-Referenz aller Endpunkte.
 | Methode | Pfad | Beschreibung |
 |---------|------|-------------|
 | `POST` | `/generate` | Wochenplan generieren |
-| `GET` | `/` | Aktuellen Plan abrufen |
+| `GET` | `/` | Aktuellen Plan abrufen (`?weekStart=YYYY-MM-DD`) |
 | `GET` | `/history` | Vergangene Pläne |
+| `GET` | `/available-weeks` | Wochen mit Plänen + Rezept-Thumbnails |
+| `GET` | `/reasoning/:planId` | KI-Reasoning für einen Plan abrufen (Polling) |
+| `GET` | `/suggestions` | Rezeptvorschläge für einen Slot (`?dayIdx&mealType&limit`) |
+| `GET` | `/last-week-recipes` | Rezepte der letzten Kalenderwoche |
+| `GET` | `/past-week-recipes` | Rezepte einer vergangenen Woche (`?weekStart=YYYY-MM-DD` oder `?offset=N`) |
+| `POST` | `/add-recipe` | Rezept manuell hinzufügen (erstellt Plan automatisch) |
+| `POST` | `/:planId/entry` | Neuen Eintrag in einen Slot hinzufügen |
 | `PUT` | `/:planId/entry/:entryId` | Eintrag bearbeiten (Rezept tauschen, Portionen) |
+| `POST` | `/:planId/entry/:entryId/move` | Eintrag per Drag & Drop verschieben |
 | `POST` | `/:planId/entry/:entryId/cooked` | Mahlzeit als gekocht markieren |
+| `DELETE` | `/:planId/entry/:entryId` | Einzelnen Eintrag entfernen |
 | `POST` | `/:planId/lock` | Plan sperren/entsperren (Toggle) |
+| `POST` | `/:planId/duplicate` | Plan auf eine andere Woche kopieren |
 | `DELETE` | `/:id` | Plan löschen |
+| `GET` | `/export` | Wochenpläne als JSON exportieren |
+| `POST` | `/import` | Wochenpläne aus JSON importieren |
 
 ## Einkaufsliste (`/api/shopping`)
 
@@ -159,6 +171,7 @@ description: Vollständige API-Referenz aller Endpunkte.
 | `DELETE` | `/:id/members/:userId` | Mitglied entfernen |
 | `PUT` | `/:id/default` | Als Standard-Haushalt setzen |
 | `GET` | `/:id/activity` | Aktivitätsprotokoll |
+| `GET` | `/:id/suggestions` | Rezeptvorschläge basierend auf Haushalt-Daten |
 | `POST` | `/:id/migrate` | Persönliche Daten in Haushalt migrieren |
 | `GET` | `/:id/export` | Haushalt-Daten als JSON exportieren |
 

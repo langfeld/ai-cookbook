@@ -74,6 +74,14 @@ Die SSE-Verbindung wird automatisch aufgebaut und bei Haushalt-Wechsel neu verbu
 - **Verlassen** — Mitglied kann jederzeit den Haushalt verlassen. Eigene Daten bleiben bestehen, `household_id` wird auf `NULL` gesetzt
 - **Auflösen** — Der letzte verbleibende Nutzer kann den Haushalt löschen. Alle `household_id`-Referenzen werden auf `NULL` gesetzt, Daten gehen nicht verloren
 
+## Rezeptvorschläge aus dem Haushalt
+
+Im Wochenplaner steht ein **Haushalt-Tab** in der Vorschlagsbox zur Verfügung:
+- Zeigt die **beliebtesten Rezepte** im Haushalt (am häufigsten in Wochenpläne eingeplant)
+- Ergänzt durch **Favoriten** anderer Haushaltsmitglieder
+- Bereits im aktuellen Wochenplan vertretene Rezepte werden automatisch ausgeblendet
+- Maximal 6 Vorschläge — per Drag & Drop (Desktop) oder Tap-Dialog (Mobile) direkt einplanbar
+
 ## Aktivitäts-Feed
 
 Auf der Haushalt-Seite wird ein **Aktivitätsprotokoll** angezeigt:

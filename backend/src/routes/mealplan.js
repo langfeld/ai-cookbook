@@ -366,24 +366,33 @@ export default async function mealplanRoutes(fastify) {
   // ─────────────────────────────────────────────
   fastify.get('/past-week-recipes', {
     schema: {
-      description: 'Rezepte einer vergangenen Kalenderwoche (offset = Wochen zurück)',
+      description: 'Rezepte einer vergangenen Kalenderwoche (per weekStart oder offset)',
       tags: ['Wochenplan'],
       security: [{ bearerAuth: [] }],
       querystring: {
         type: 'object',
         properties: {
           offset: { type: 'integer', minimum: 1, maximum: 52, default: 1 },
+          weekStart: { type: 'string', format: 'date', description: 'Wochenstart direkt als YYYY-MM-DD (alternative zu offset)' },
         },
       },
     },
   }, async (request) => {
-    const offset = request.query.offset || 1;
+    let weekStart;
+    let d;
 
-    // Wochenstart berechnen: offset Wochen vor der aktuellen Woche
-    const currentWeekStart = getWeekStart();
-    const d = new Date(currentWeekStart);
-    d.setDate(d.getDate() - (offset * 7));
-    const weekStart = d.toISOString().slice(0, 10);
+    if (request.query.weekStart) {
+      // Direkte Angabe des Wochenstarts (für Navigation ohne leere Wochen)
+      weekStart = request.query.weekStart;
+      d = new Date(weekStart + 'T00:00:00');
+    } else {
+      const offset = request.query.offset || 1;
+      // Wochenstart berechnen: offset Wochen vor der aktuellen Woche
+      const currentWeekStart = getWeekStart();
+      d = new Date(currentWeekStart);
+      d.setDate(d.getDate() - (offset * 7));
+      weekStart = d.toISOString().slice(0, 10);
+    }
 
     // KW berechnen (ISO 8601)
     const thursday = new Date(d);

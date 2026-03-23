@@ -7,7 +7,7 @@
  */
 
 import { defineStore } from 'pinia';
-import { ref } from 'vue';
+import { ref, computed } from 'vue';
 import { useApi, apiRaw } from '@/composables/useApi.js';
 import { offlineQueue } from '@/services/offlineQueue.js';
 
@@ -23,6 +23,7 @@ export const useMealPlanStore = defineStore('mealplan', () => {
   const pastWeekOffset = ref(1); // Offset für vergangene Wochen (1 = letzte Woche)
   const pastWeekNumber = ref(null); // KW-Nummer der geladenen vergangenen Woche
   const pastWeekHasPlan = ref(false); // Hat diese vergangene Woche einen Plan?
+  const pastWeekIndex = ref(0); // Index in pastWeeksList (für Skip-Navigation)
   const loading = ref(false);
   const generating = ref(false);
   const lastFetched = ref(null); // Timestamp des letzten Fetches
@@ -112,11 +113,10 @@ export const useMealPlanStore = defineStore('mealplan', () => {
     }
   }
 
-  /** Rezepte einer vergangenen Woche per Offset laden */
-  async function fetchPastWeekRecipes(offset = 1) {
+  /** Rezepte einer vergangenen Woche per weekStart laden */
+  async function fetchPastWeekRecipes(weekStart) {
     try {
-      pastWeekOffset.value = offset;
-      const data = await api.get(`/mealplan/past-week-recipes?offset=${offset}`);
+      const data = await api.get(`/mealplan/past-week-recipes?weekStart=${weekStart}`);
       pastWeekRecipes.value = data.recipes || [];
       pastWeekNumber.value = data.weekNumber || null;
       pastWeekHasPlan.value = data.hasPlan || false;
@@ -127,6 +127,25 @@ export const useMealPlanStore = defineStore('mealplan', () => {
       pastWeekHasPlan.value = false;
     }
   }
+
+  /** Vergangene Wochen mit Plänen (≥2 Wochen zurück), sortiert DESC */
+  const pastWeeksList = computed(() => {
+    const now = new Date();
+    // Montag der aktuellen Woche berechnen
+    const dayOfWeek = now.getDay(); // 0=So, 1=Mo, ...
+    const diff = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+    const currentMonday = new Date(now);
+    currentMonday.setHours(0, 0, 0, 0);
+    currentMonday.setDate(currentMonday.getDate() - diff);
+    // Grenze: alles vor letzter Woche (≥2 Wochen zurück)
+    const cutoff = new Date(currentMonday);
+    cutoff.setDate(cutoff.getDate() - 7); // letzte Woche noch ausschließen
+    const cutoffStr = cutoff.toISOString().slice(0, 10);
+
+    return (availableWeeks.value || [])
+      .filter(w => w.week_start < cutoffStr)
+      .sort((a, b) => b.week_start.localeCompare(a.week_start));
+  });
 
   /** Plan-Historie laden */
   async function fetchHistory() {
@@ -316,7 +335,7 @@ export const useMealPlanStore = defineStore('mealplan', () => {
 
   return {
     currentPlan, reasoning, reasoningSource, reasoningLoading, planHistory, availableWeeks, lastWeekRecipes, loading, generating, lastFetched,
-    pastWeekRecipes, pastWeekOffset, pastWeekNumber, pastWeekHasPlan,
+    pastWeekRecipes, pastWeekOffset, pastWeekNumber, pastWeekHasPlan, pastWeekIndex, pastWeeksList,
     mealTypeLabels,
     generatePlan, pollReasoning, fetchCurrentPlan, fetchHistory, fetchAvailableWeeks, fetchLastWeekRecipes, fetchPastWeekRecipes,
     fetchSuggestions, markCooked, updateServings, swapRecipe, addEntry, addRecipeToPlan, moveEntry, removeEntry, deletePlan,

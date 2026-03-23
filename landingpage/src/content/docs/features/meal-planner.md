@@ -75,6 +75,41 @@ Für jeden Tag im Wochenplan wird eine **Nährwert-Zusammenfassung** angezeigt:
 - Sichtbar in allen Ansichten: Kompakt-Grid, Karten-Ansicht, Tagesansicht und Mobile
 - Erscheint nur, wenn mindestens eine Mahlzeit Nährwertdaten hat
 
+## Rezeptvorschläge
+
+Unterhalb des Wochenplans zeigt eine **aufklappbare Vorschlagsbox** Rezept-Ideen aus drei Quellen:
+
+### Letzte Woche
+
+Rezepte aus dem **Wochenplan der vergangenen Kalenderwoche** — praktisch, um erfolgreiche Gerichte schnell zu wiederholen.
+
+### Vergangene Wochen
+
+Siehe Rezepte aus **älteren Wochenplänen** per KW-Slider durch:
+- Nur Wochen **mit Wochenplan** werden angezeigt — leere Wochen werden automatisch übersprungen
+- Navigation über Pfeil-Buttons (älter / neuer)
+- KW-Nummer wird als Label angezeigt
+
+### Haushalt
+
+Wenn der Benutzer einem **Haushalt** angehört, erscheint ein dritter Tab mit Empfehlungen:
+- **Beliebteste Rezepte** im Haushalt (am häufigsten in Wochenpläne eingeplant)
+- **Favoriten** anderer Haushaltsmitglieder
+- Rezepte, die bereits im aktuellen Wochenplan enthalten sind, werden ausgeschlossen
+
+### Drag & Drop (Desktop)
+
+Auf Desktop-Geräten (Maus-Pointer) können Rezepte direkt aus der Vorschlagsbox per **Drag & Drop** in einen Wochenplan-Slot gezogen werden:
+- Visuelles Drag-Handle (Grip-Icon) erscheint beim Hover
+- **Auto-Plan-Erstellung** — wenn noch kein Wochenplan existiert, wird beim ersten Drop automatisch einer angelegt
+- **Konflikt-Dialog** — wird ein Rezept auf einen bereits belegten Slot gezogen, erscheint ein Dialog mit Optionen: Ersetzen, anderen Slot wählen oder Abbrechen
+
+### Mobile Tap-Aktion
+
+Auf Touch-Geräten öffnet ein Tap auf eine Rezeptkarte ein **Bottom-Sheet** mit zwei Optionen:
+- **Rezept öffnen** — Rezeptdetails anzeigen
+- **Auf Tag planen** — Mahlzeit-Typ wählen, dann Tag antippen. Belegte Slots werden farblich markiert
+
 ## Offline-Modus
 
 Der aktuelle Wochenplan ist auch **ohne Netzwerkverbindung** verfügbar:

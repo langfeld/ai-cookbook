@@ -67,11 +67,15 @@
 
         <!-- Tab: Vergangene Wochen (KW-Slider) -->
         <div v-if="activeTab === 'pastWeeks'">
+          <!-- Keine vergangenen Wochen mit Plan -->
+          <p v-if="!pastWeeksList.length" class="py-4 text-stone-400 dark:text-stone-500 text-sm text-center">Keine vergangenen Wochenpläne vorhanden</p>
+          <template v-else>
           <!-- KW-Navigator -->
           <div class="flex justify-between items-center mb-3 px-1">
             <button
               @click="changePastWeek(1)"
-              class="flex items-center gap-1 hover:bg-stone-100 dark:hover:bg-stone-800 p-1.5 rounded-lg text-stone-500 hover:text-stone-700 dark:hover:text-stone-200 dark:text-stone-400 transition-colors"
+              :disabled="pastWeekIndex >= pastWeeksList.length - 1"
+              class="flex items-center gap-1 hover:bg-stone-100 dark:hover:bg-stone-800 disabled:opacity-30 p-1.5 rounded-lg text-stone-500 hover:text-stone-700 dark:hover:text-stone-200 dark:text-stone-400 transition-colors disabled:cursor-not-allowed"
               title="Ältere Woche"
             >
               <ChevronLeft class="w-4 h-4" />
@@ -84,7 +88,7 @@
             </div>
             <button
               @click="changePastWeek(-1)"
-              :disabled="pastWeekOffset <= 2"
+              :disabled="pastWeekIndex <= 0"
               class="flex items-center gap-1 hover:bg-stone-100 dark:hover:bg-stone-800 disabled:opacity-30 p-1.5 rounded-lg text-stone-500 hover:text-stone-700 dark:hover:text-stone-200 dark:text-stone-400 transition-colors disabled:cursor-not-allowed"
               title="Neuere Woche"
             >
@@ -105,7 +109,8 @@
               <p v-if="recipe.total_time" class="text-[10px] text-stone-400 truncate">{{ recipe.total_time }} Min.<span v-if="recipe.difficulty"> · {{ recipe.difficulty }}</span></p>
             </div>
           </div>
-          <p v-else class="py-4 text-stone-400 dark:text-stone-500 text-sm text-center">{{ pastWeekHasPlan ? 'Keine Rezepte in dieser Woche' : 'Kein Wochenplan für diese Woche vorhanden' }}</p>
+          <p v-else class="py-4 text-stone-400 dark:text-stone-500 text-sm text-center">Keine Rezepte in dieser Woche</p>
+          </template>
         </div>
 
         <!-- Tab: Haushalt-Vorschläge -->
@@ -236,9 +241,10 @@ const props = defineProps({
   lastWeekRecipes: { type: Array, default: () => [] },
   householdSuggestions: { type: Array, default: () => [] },
   pastWeekRecipes: { type: Array, default: () => [] },
-  pastWeekOffset: { type: Number, default: 2 },
+  pastWeekIndex: { type: Number, default: 0 },
   pastWeekNumber: { type: Number, default: null },
   pastWeekHasPlan: { type: Boolean, default: false },
+  pastWeeksList: { type: Array, default: () => [] },
   showHouseholdTab: { type: Boolean, default: false },
   currentPlan: { type: Object, default: null },
   isLocked: { type: Boolean, default: false },
@@ -272,21 +278,23 @@ const isDraggable = computed(() => {
   return window.matchMedia('(pointer: fine)').matches;
 });
 
-// ─── Past Weeks (Slider) ───
+// ─── Past Weeks (Slider – nur Wochen mit Plan) ───
 const pastWeekLoading = ref(false);
 
 function switchToPastWeeks() {
   activeTab.value = 'pastWeeks';
-  if (!props.pastWeekNumber) {
-    emit('past-week-change', 2);
+  if (!props.pastWeekNumber && props.pastWeeksList.length) {
+    // Erste verfügbare vergangene Woche laden (Index 0 = neueste)
+    emit('past-week-change', { index: 0, weekStart: props.pastWeeksList[0].week_start });
   }
 }
 
 function changePastWeek(delta) {
-  const newOffset = props.pastWeekOffset + delta;
-  if (newOffset < 2 || newOffset > 52) return;
+  // delta: -1 = neuere Woche (kleinerer Index), +1 = ältere Woche (größerer Index)
+  const newIndex = props.pastWeekIndex + delta;
+  if (newIndex < 0 || newIndex >= props.pastWeeksList.length) return;
   pastWeekLoading.value = true;
-  emit('past-week-change', newOffset);
+  emit('past-week-change', { index: newIndex, weekStart: props.pastWeeksList[newIndex].week_start });
 }
 
 watch(() => props.pastWeekNumber, () => {

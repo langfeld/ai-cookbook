@@ -129,9 +129,10 @@
       :last-week-recipes="store.lastWeekRecipes"
       :household-suggestions="suggestions"
       :past-week-recipes="store.pastWeekRecipes"
-      :past-week-offset="store.pastWeekOffset"
+      :past-week-index="store.pastWeekIndex"
       :past-week-number="store.pastWeekNumber"
       :past-week-has-plan="store.pastWeekHasPlan"
+      :past-weeks-list="store.pastWeeksList"
       :show-household-tab="householdStore.isInHousehold"
       :current-plan="currentPlan"
       :is-locked="isLocked"
@@ -2082,8 +2083,9 @@ function onSuggestionDragEnd() {
 }
 
 // ─── Vergangene Wochen Slider ───
-async function onPastWeekChange(offset) {
-  await store.fetchPastWeekRecipes(offset);
+async function onPastWeekChange({ index, weekStart }) {
+  store.pastWeekIndex = index;
+  await store.fetchPastWeekRecipes(weekStart);
 }
 
 // ─── Mobile: Rezept auf Tag planen (aus SuggestionBox) ───
@@ -2279,6 +2281,7 @@ async function doUnblockRecipe(blockId) {
 onMounted(async () => {
   await store.fetchCurrentPlan(currentWeekStart.value);
   store.fetchHistory();
+  store.fetchAvailableWeeks();
   collectionsStore.fetchCollections();
   blocksStore.fetchBlocks();
   fetchSuggestions();
