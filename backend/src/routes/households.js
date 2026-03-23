@@ -865,6 +865,10 @@ export default async function householdRoutes(fastify) {
     const remaining = limit - popular.length;
     let discoveries = [];
     if (remaining > 0) {
+      const popularIds = popular.map(p => p.id);
+      const excludeClause = popularIds.length > 0
+        ? `AND r.id NOT IN (${popularIds.map(() => '?').join(',')})`
+        : '';
       discoveries = db.prepare(`
         SELECT r.id, r.title, r.image_url, r.total_time, r.difficulty,
           0 as cook_count, NULL as last_cooked,
@@ -873,10 +877,10 @@ export default async function householdRoutes(fastify) {
         LEFT JOIN users u ON r.user_id = u.id
         WHERE r.household_id = ?
           AND r.id NOT IN (SELECT recipe_id FROM cooking_history)
-          AND r.id NOT IN (${popular.map(() => '?').join(',') || 'NULL'})
+          ${excludeClause}
         ORDER BY RANDOM()
         LIMIT ?
-      `).all(householdId, ...popular.map(p => p.id), remaining);
+      `).all(householdId, ...popularIds, remaining);
     }
 
     const suggestions = [

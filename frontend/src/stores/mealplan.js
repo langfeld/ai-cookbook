@@ -18,6 +18,7 @@ export const useMealPlanStore = defineStore('mealplan', () => {
   const reasoningLoading = ref(false); // Lädt KI-Reasoning im Hintergrund?
   const planHistory = ref([]);
   const availableWeeks = ref([]);
+  const lastWeekRecipes = ref([]); // Rezepte der letzten realen Kalenderwoche
   const loading = ref(false);
   const generating = ref(false);
   const lastFetched = ref(null); // Timestamp des letzten Fetches
@@ -93,6 +94,17 @@ export const useMealPlanStore = defineStore('mealplan', () => {
       throw err;
     } finally {
       loading.value = false;
+    }
+  }
+
+  /** Rezepte der letzten realen Kalenderwoche laden */
+  async function fetchLastWeekRecipes() {
+    try {
+      const data = await api.get('/mealplan/last-week-recipes');
+      lastWeekRecipes.value = data.recipes || [];
+      return data;
+    } catch {
+      // silent – nicht kritisch
     }
   }
 
@@ -283,14 +295,14 @@ export const useMealPlanStore = defineStore('mealplan', () => {
   }
 
   return {
-    currentPlan, reasoning, reasoningSource, reasoningLoading, planHistory, availableWeeks, loading, generating, lastFetched,
+    currentPlan, reasoning, reasoningSource, reasoningLoading, planHistory, availableWeeks, lastWeekRecipes, loading, generating, lastFetched,
     mealTypeLabels,
-    generatePlan, pollReasoning, fetchCurrentPlan, fetchHistory, fetchAvailableWeeks,
+    generatePlan, pollReasoning, fetchCurrentPlan, fetchHistory, fetchAvailableWeeks, fetchLastWeekRecipes,
     fetchSuggestions, markCooked, updateServings, swapRecipe, addEntry, addRecipeToPlan, moveEntry, removeEntry, deletePlan,
     toggleLock, duplicatePlan,
   };
 }, {
   persist: {
-    pick: ['currentPlan', 'availableWeeks', 'planHistory', 'lastFetched'],
+    pick: ['currentPlan', 'availableWeeks', 'planHistory', 'lastFetched', 'lastWeekRecipes'],
   },
 });

@@ -51,7 +51,8 @@ export default defineConfig({
           },
           {
             // API-Responses – NetworkFirst mit Fallback
-            urlPattern: /\/api\/(?!uploads\/)/,
+            // SSE-Endpunkte ausschließen (household-events)
+            urlPattern: /\/api\/(?!uploads\/|household-events\/)/,
             handler: 'NetworkFirst',
             options: {
               cacheName: 'api-cache',

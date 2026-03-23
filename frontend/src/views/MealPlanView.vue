@@ -125,32 +125,15 @@
     </div>
 
     <!-- ═══════════════════ REZEPT-VORSCHLÄGE ═══════════════════ -->
-    <div v-if="householdStore.isInHousehold && suggestions.length && !currentPlan" class="bg-white dark:bg-stone-900 p-4 border border-stone-200 dark:border-stone-800 rounded-xl">
-      <div class="flex justify-between items-center mb-3">
-        <h3 class="flex items-center gap-2 font-semibold text-stone-800 dark:text-stone-100 text-sm">
-          <Flame class="w-4 h-4 text-amber-500" />
-          Vorschläge aus dem Haushalt
-        </h3>
-        <button @click="showSuggestions = !showSuggestions" class="text-stone-400 hover:text-stone-600 text-xs transition-colors">
-          {{ showSuggestions ? 'Ausblenden' : 'Anzeigen' }}
-        </button>
-      </div>
-      <div v-if="showSuggestions" class="gap-3 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6">
-        <router-link
-          v-for="s in suggestions"
-          :key="s.id"
-          :to="`/recipes/${s.id}`"
-          class="group"
-        >
-          <div class="bg-stone-100 dark:bg-stone-800 mb-1.5 rounded-lg aspect-video overflow-hidden">
-            <img v-if="s.image_url" :src="s.image_url" :alt="s.title" class="w-full h-full object-cover group-hover:scale-105 transition-transform" />
-            <div v-else class="flex justify-center items-center w-full h-full text-2xl">🍽️</div>
-          </div>
-          <p class="font-medium text-stone-700 dark:group-hover:text-primary-400 dark:text-stone-300 group-hover:text-primary-600 text-xs truncate transition-colors">{{ s.title }}</p>
-          <p class="text-[10px] text-stone-400 truncate">{{ s.reason }}</p>
-        </router-link>
-      </div>
-    </div>
+    <SuggestionBox
+      :last-week-recipes="store.lastWeekRecipes"
+      :household-suggestions="suggestions"
+      :show-household-tab="householdStore.isInHousehold"
+      :current-plan="currentPlan"
+      :is-locked="isLocked"
+      @suggestion-drag-start="onSuggestionDragStart"
+      @suggestion-drag-end="onSuggestionDragEnd"
+    />
 
     <!-- ═══════════════════ INHALT ═══════════════════ -->
 
@@ -238,11 +221,18 @@
     </div>
 
     <!-- Kein Plan -->
-    <div v-else-if="!currentPlan" class="py-16 text-center">
+    <div v-else-if="!currentPlan" class="py-16 text-center"
+      @dragover.prevent="suggestionDragData && onDragOverEmpty($event)"
+      @dragleave="dragOverEmpty = false"
+      @drop.prevent="suggestionDragData && onDropEmpty($event)"
+      :class="{ 'no-plan-drop-target': dragOverEmpty }">
       <div class="mb-4 text-6xl">📋</div>
       <h2 class="mb-2 font-semibold text-stone-700 dark:text-stone-300 text-xl">Kein Plan für diese Woche</h2>
-      <p class="mx-auto mb-6 max-w-md text-stone-500 dark:text-stone-400 text-sm">
+      <p v-if="!dragOverEmpty" class="mx-auto mb-6 max-w-md text-stone-500 dark:text-stone-400 text-sm">
         Erstelle einen intelligenten Essensplan basierend auf deinen Rezepten, Kochhistorie und Vorräten.
+      </p>
+      <p v-else class="mx-auto mb-6 max-w-md font-medium text-primary-600 dark:text-primary-400 text-sm">
+        Loslassen um einen neuen Wochenplan zu erstellen
       </p>
       <div class="flex flex-wrap justify-center gap-3">
         <button @click="showGenerateModal = true"
@@ -1439,6 +1429,68 @@
       cancel-text="Abbrechen"
       @confirm="executeDeletePlan"
     />
+
+    <!-- ═══════════════════ KONFLIKT-MODAL (Drop auf belegten Slot) ═══════════════════ -->
+    <Teleport to="body">
+      <Transition name="modal">
+        <div v-if="showConflictModal && conflictData" class="z-50 fixed inset-0 flex justify-center items-center p-4" @mousedown.self="conflictCancel">
+          <div class="fixed inset-0 bg-black/40" />
+          <div class="z-10 relative bg-white dark:bg-stone-900 shadow-2xl p-6 rounded-2xl w-full max-w-md">
+            <h3 class="mb-1 font-semibold text-stone-800 dark:text-stone-100 text-lg">Slot bereits belegt</h3>
+            <p class="mb-5 text-stone-500 dark:text-stone-400 text-sm">
+              An <strong class="text-stone-700 dark:text-stone-200">{{ weekDays[conflictData.targetDay]?.fullDate }}</strong>
+              ist bereits <strong class="text-stone-700 dark:text-stone-200">{{ conflictData.existingEntry.recipe_title }}</strong> geplant.
+            </p>
+
+            <div class="flex flex-col gap-2.5">
+              <!-- Ersetzen -->
+              <button @click="conflictReplace"
+                class="flex items-center gap-3 bg-primary-50 hover:bg-primary-100 dark:bg-primary-950/50 dark:hover:bg-primary-900/50 px-4 py-3 border border-primary-200 dark:border-primary-800 rounded-xl text-left transition-colors">
+                <div class="flex justify-center items-center bg-primary-100 dark:bg-primary-900 rounded-lg w-9 h-9 shrink-0">
+                  <RefreshCw class="w-4 h-4 text-primary-600 dark:text-primary-400" />
+                </div>
+                <div class="min-w-0">
+                  <p class="font-medium text-stone-800 dark:text-stone-100 text-sm">Ersetzen</p>
+                  <p class="text-stone-500 dark:text-stone-400 text-xs">Durch <em>{{ conflictData.recipeTitle }}</em> ersetzen</p>
+                </div>
+              </button>
+
+              <!-- Verschieben -->
+              <button @click="conflictMove"
+                :disabled="getFreeDays(conflictData.targetMeal).length === 0"
+                class="flex items-center gap-3 bg-stone-50 hover:bg-stone-100 disabled:hover:bg-stone-50 dark:bg-stone-800/50 dark:hover:bg-stone-800 dark:disabled:hover:bg-stone-800/50 disabled:opacity-40 px-4 py-3 border border-stone-200 dark:border-stone-700 rounded-xl text-left transition-colors disabled:cursor-not-allowed">
+                <div class="flex justify-center items-center bg-stone-100 dark:bg-stone-800 rounded-lg w-9 h-9 shrink-0">
+                  <ChevronRight class="w-4 h-4 text-stone-500 dark:text-stone-400" />
+                </div>
+                <div class="min-w-0">
+                  <p class="font-medium text-stone-800 dark:text-stone-100 text-sm">Bestehendes verschieben</p>
+                  <p v-if="getFreeDays(conflictData.targetMeal).length" class="text-stone-500 dark:text-stone-400 text-xs">
+                    Auf {{ weekDays[getFreeDays(conflictData.targetMeal)[0]]?.short }} verschieben, neues hier einfügen
+                  </p>
+                  <p v-else class="text-stone-400 dark:text-stone-500 text-xs">Kein freier Tag verfügbar</p>
+                </div>
+              </button>
+
+              <!-- Löschen -->
+              <button @click="conflictDelete"
+                class="flex items-center gap-3 bg-red-50 hover:bg-red-100 dark:bg-red-950/30 dark:hover:bg-red-900/30 px-4 py-3 border border-red-200 dark:border-red-800/50 rounded-xl text-left transition-colors">
+                <div class="flex justify-center items-center bg-red-100 dark:bg-red-900/50 rounded-lg w-9 h-9 shrink-0">
+                  <Trash2 class="w-4 h-4 text-red-500 dark:text-red-400" />
+                </div>
+                <div class="min-w-0">
+                  <p class="font-medium text-stone-800 dark:text-stone-100 text-sm">Bestehendes löschen</p>
+                  <p class="text-stone-500 dark:text-stone-400 text-xs">{{ conflictData.existingEntry.recipe_title }} entfernen</p>
+                </div>
+              </button>
+            </div>
+
+            <button @click="conflictCancel" class="mt-4 w-full text-stone-400 hover:text-stone-600 dark:hover:text-stone-300 text-sm text-center transition-colors">
+              Abbrechen
+            </button>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
   </div>
 </template>
 
@@ -1455,12 +1507,14 @@ import { useHouseholdStore } from '@/stores/household.js';
 import { apiRaw } from '@/composables/useApi.js';
 import { offlineQueue } from '@/services/offlineQueue.js';
 import LoadPlanDialog from '@/components/mealplan/LoadPlanDialog.vue';
+import SuggestionBox from '@/components/mealplan/SuggestionBox.vue';
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue';
 import {
   Sparkles, ChevronLeft, ChevronRight, Check, Eye, RefreshCw,
   X, Clock, ChefHat, UtensilsCrossed, Plus, Minus, Star, Trash2,
   LayoutGrid, CalendarDays, Settings, Settings2, FolderOpen, Info,
   Ban, ShieldOff, Lock, Unlock, Users, ChevronDown, FolderSearch, EllipsisVertical, Search, Flame, RotateCcw, Home,
+  ArrowRightLeft, Replace, Move, Trash,
 } from 'lucide-vue-next';
 
 const router = useRouter();
@@ -1514,7 +1568,6 @@ const reasoningCollapsed = ref(true);
 
 // Rezept-Vorschläge aus dem Haushalt
 const suggestions = ref([]);
-const showSuggestions = ref(true);
 
 async function fetchSuggestions() {
   if (!householdStore.isInHousehold) return;
@@ -1595,6 +1648,12 @@ const swapSearchLoading = ref(false);
 let swapSearchTimer = null;
 const dragSource = ref(null);
 const dragTarget = ref(null);
+const dragOverEmpty = ref(false);
+const suggestionDragData = ref(null); // { recipeId, recipeTitle, source: 'suggestion' }
+
+// Konflikt-Modal für Drop auf belegten Slot
+const showConflictModal = ref(false);
+const conflictData = ref(null); // { recipeId, recipeTitle, existingEntry, targetDay, targetMeal }
 
 // Sperr-Dialog
 const blockDialog = ref({ show: false, recipeId: null, recipeTitle: '' });
@@ -1996,11 +2055,21 @@ async function toggleLockPlan() {
 // ─── Drag & Drop ───
 function onDragStart(event, meal) {
   dragSource.value = meal;
+  suggestionDragData.value = null;
   event.dataTransfer.effectAllowed = 'move';
   event.dataTransfer.setData('text/plain', meal.id.toString());
 }
 function onDragEnd() {
   dragSource.value = null;
+  dragTarget.value = null;
+  suggestionDragData.value = null;
+}
+function onSuggestionDragStart(data) {
+  suggestionDragData.value = data;
+  dragSource.value = null;
+}
+function onSuggestionDragEnd() {
+  suggestionDragData.value = null;
   dragTarget.value = null;
 }
 function onDragOver(dayIdx, mealKey) {
@@ -2009,16 +2078,128 @@ function onDragOver(dayIdx, mealKey) {
 function onDragLeave() {
   dragTarget.value = null;
 }
+
+/** Freie Slots eines bestimmten Meal-Types ermitteln */
+function getFreeDays(mealType) {
+  if (!currentPlan.value?.entries) return [0, 1, 2, 3, 4, 5, 6];
+  return [0, 1, 2, 3, 4, 5, 6].filter(day =>
+    !currentPlan.value.entries.some(e => e.day_of_week === day && e.meal_type === mealType)
+  );
+}
+
 async function onDrop(dayIdx, mealKey) {
-  const source = dragSource.value;
   dragTarget.value = null;
-  dragSource.value = null;
-  if (!source || !currentPlan.value) return;
-  // Nur verschieben wenn sich der Slot tatsächlich ändert
-  if (source.day_of_week === dayIdx && source.meal_type === mealKey) return;
+
+  // Fall 1: Interner Tausch (bestehendes Rezept im Plan ziehen)
+  const source = dragSource.value;
+  if (source) {
+    dragSource.value = null;
+    if (!currentPlan.value) return;
+    if (source.day_of_week === dayIdx && source.meal_type === mealKey) return;
+    try {
+      await store.moveEntry(currentPlan.value.id, source.id, dayIdx, mealKey);
+      showSuccess('Mahlzeit verschoben! ↕️');
+    } catch { /* useApi */ }
+    return;
+  }
+
+  // Fall 2: Externer Drop aus SuggestionBox
+  const suggestion = suggestionDragData.value;
+  if (!suggestion) return;
+  suggestionDragData.value = null;
+
+  const existingMeal = getMeal(dayIdx, mealKey);
+
+  // Fall 2a: Kein Plan vorhanden → Plan automatisch erstellen
+  if (!currentPlan.value) {
+    try {
+      const data = await store.addRecipeToPlan(suggestion.recipeId, dayIdx, mealKey, currentWeekStart.value);
+      if (data.plan) currentPlan.value = data.plan;
+      showSuccess('Wochenplan erstellt & Rezept hinzugefügt! 🎉');
+    } catch { /* useApi */ }
+    return;
+  }
+
+  // Fall 2b: Slot ist frei → direkt hinzufügen
+  if (!existingMeal) {
+    try {
+      await store.addEntry(currentPlan.value.id, suggestion.recipeId, dayIdx, mealKey);
+      showSuccess('Rezept hinzugefügt! ✓');
+    } catch { /* useApi */ }
+    return;
+  }
+
+  // Fall 2c: Slot belegt → Konflikt-Modal öffnen
+  conflictData.value = {
+    recipeId: suggestion.recipeId,
+    recipeTitle: suggestion.recipeTitle,
+    existingEntry: existingMeal,
+    targetDay: dayIdx,
+    targetMeal: mealKey,
+  };
+  showConflictModal.value = true;
+}
+
+// ─── Konflikt-Auflösung ───
+async function conflictReplace() {
+  const { recipeId, existingEntry } = conflictData.value;
+  showConflictModal.value = false;
   try {
-    await store.moveEntry(currentPlan.value.id, source.id, dayIdx, mealKey);
-    showSuccess('Mahlzeit verschoben! ↕️');
+    await store.swapRecipe(currentPlan.value.id, existingEntry.id, recipeId);
+    showSuccess('Rezept ersetzt! 🔄');
+  } catch { /* useApi */ }
+  conflictData.value = null;
+}
+
+async function conflictMove() {
+  const { recipeId, existingEntry, targetDay, targetMeal } = conflictData.value;
+  showConflictModal.value = false;
+  const freeDays = getFreeDays(targetMeal);
+  if (!freeDays.length) return;
+  const freeDay = freeDays[0];
+  try {
+    // Bestehendes auf freien Tag verschieben
+    await store.moveEntry(currentPlan.value.id, existingEntry.id, freeDay, targetMeal);
+    // Neues Rezept auf den Ziel-Slot setzen
+    await store.addEntry(currentPlan.value.id, recipeId, targetDay, targetMeal);
+    const dayName = weekDays.value[freeDay]?.short || freeDay;
+    showSuccess(`Bestehendes nach ${dayName} verschoben, neues Rezept eingefügt! ↕️`);
+  } catch { /* useApi */ }
+  conflictData.value = null;
+}
+
+async function conflictDelete() {
+  const { recipeId, existingEntry, targetDay, targetMeal } = conflictData.value;
+  showConflictModal.value = false;
+  try {
+    await store.removeEntry(currentPlan.value.id, existingEntry.id);
+    await store.addEntry(currentPlan.value.id, recipeId, targetDay, targetMeal);
+    showSuccess('Bestehendes gelöscht, neues Rezept eingefügt! 🗑️');
+  } catch { /* useApi */ }
+  conflictData.value = null;
+}
+
+function conflictCancel() {
+  showConflictModal.value = false;
+  conflictData.value = null;
+}
+
+// ─── Drop auf "Kein Plan"-Bereich ───
+function onDragOverEmpty(event) {
+  dragOverEmpty.value = true;
+  event.dataTransfer.dropEffect = 'copy';
+}
+async function onDropEmpty() {
+  dragOverEmpty.value = false;
+  const suggestion = suggestionDragData.value;
+  if (!suggestion) return;
+  suggestionDragData.value = null;
+  try {
+    // Auf den ersten sichtbaren Meal-Type und Montag (Tag 0) legen
+    const defaultMealType = mealTypes.value[0]?.key || 'abendessen';
+    const data = await store.addRecipeToPlan(suggestion.recipeId, 0, defaultMealType, currentWeekStart.value);
+    if (data.plan) store.currentPlan = data.plan;
+    showSuccess('Wochenplan erstellt & Rezept hinzugefügt! 🎉');
   } catch { /* useApi */ }
 }
 
@@ -2053,6 +2234,7 @@ onMounted(async () => {
   collectionsStore.fetchCollections();
   blocksStore.fetchBlocks();
   fetchSuggestions();
+  store.fetchLastWeekRecipes();
 });
 </script>
 
@@ -2073,6 +2255,18 @@ onMounted(async () => {
   background-color: var(--color-primary-50);
   outline: 2px dashed var(--color-primary-400);
   outline-offset: -2px;
+}
+
+/* ─── Drop auf "Kein Plan" ─── */
+.no-plan-drop-target {
+  outline: 2px dashed var(--color-primary-400);
+  outline-offset: -2px;
+  border-radius: var(--radius-xl);
+  background-color: var(--color-primary-50);
+  transition: background-color 0.15s ease, outline-color 0.15s ease;
+}
+:is(.dark .no-plan-drop-target) {
+  background-color: color-mix(in srgb, var(--color-primary-900) 30%, transparent);
 }
 :is(.dark .meal-slot-dragover) {
   background-color: color-mix(in srgb, var(--color-primary-900) 30%, transparent);

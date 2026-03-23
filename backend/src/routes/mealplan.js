@@ -321,6 +321,47 @@ export default async function mealplanRoutes(fastify) {
   });
 
   // ─────────────────────────────────────────────
+  // GET /last-week-recipes – Rezepte der letzten realen Kalenderwoche
+  // ─────────────────────────────────────────────
+  fastify.get('/last-week-recipes', {
+    schema: {
+      description: 'Rezepte der letzten realen Kalenderwoche (dedupliziert)',
+      tags: ['Wochenplan'],
+      security: [{ bearerAuth: [] }],
+    },
+  }, async (request) => {
+    // Letzte reale Kalenderwoche = aktuelle Woche minus 7 Tage
+    const now = new Date();
+    const currentWeekStart = getWeekStart();
+    const d = new Date(currentWeekStart);
+    d.setDate(d.getDate() - 7);
+    const lastWeekStart = d.toISOString().slice(0, 10);
+
+    const plan = getMealPlan(request.user.id, lastWeekStart, request.householdId);
+    if (!plan) return { recipes: [], weekStart: lastWeekStart };
+
+    // Deduplizierte Rezept-Liste (ein Rezept kann in mehreren Slots sein)
+    const seen = new Set();
+    const recipes = [];
+    for (const entry of plan.entries) {
+      if (seen.has(entry.recipe_id)) continue;
+      seen.add(entry.recipe_id);
+      recipes.push({
+        id: entry.recipe_id,
+        title: entry.recipe_title,
+        image_url: entry.image_url,
+        total_time: entry.total_time,
+        difficulty: entry.difficulty,
+        is_favorite: entry.is_favorite,
+        calories: entry.calories,
+        category_names: entry.category_names,
+      });
+    }
+
+    return { recipes, weekStart: lastWeekStart };
+  });
+
+  // ─────────────────────────────────────────────
   // POST /add-recipe – Rezept manuell zum Planer hinzufügen
   // ─────────────────────────────────────────────
   fastify.post('/add-recipe', {
