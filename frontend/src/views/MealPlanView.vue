@@ -128,11 +128,19 @@
     <SuggestionBox
       :last-week-recipes="store.lastWeekRecipes"
       :household-suggestions="suggestions"
+      :past-week-recipes="store.pastWeekRecipes"
+      :past-week-offset="store.pastWeekOffset"
+      :past-week-number="store.pastWeekNumber"
+      :past-week-has-plan="store.pastWeekHasPlan"
       :show-household-tab="householdStore.isInHousehold"
       :current-plan="currentPlan"
       :is-locked="isLocked"
+      :week-days="weekDays"
+      :meal-types="mealTypes"
       @suggestion-drag-start="onSuggestionDragStart"
       @suggestion-drag-end="onSuggestionDragEnd"
+      @past-week-change="onPastWeekChange"
+      @assign-recipe="onAssignRecipe"
     />
 
     <!-- ═══════════════════ INHALT ═══════════════════ -->
@@ -2072,6 +2080,46 @@ function onSuggestionDragEnd() {
   suggestionDragData.value = null;
   dragTarget.value = null;
 }
+
+// ─── Vergangene Wochen Slider ───
+async function onPastWeekChange(offset) {
+  await store.fetchPastWeekRecipes(offset);
+}
+
+// ─── Mobile: Rezept auf Tag planen (aus SuggestionBox) ───
+async function onAssignRecipe({ recipeId, recipeTitle, dayOfWeek, mealType }) {
+  const existingMeal = getMeal(dayOfWeek, mealType);
+
+  // Kein Plan vorhanden → automatisch erstellen
+  if (!currentPlan.value) {
+    try {
+      const data = await store.addRecipeToPlan(recipeId, dayOfWeek, mealType, currentWeekStart.value);
+      if (data.plan) currentPlan.value = data.plan;
+      showSuccess('Wochenplan erstellt & Rezept hinzugefügt! 🎉');
+    } catch { /* useApi */ }
+    return;
+  }
+
+  // Slot frei → direkt hinzufügen
+  if (!existingMeal) {
+    try {
+      await store.addEntry(currentPlan.value.id, recipeId, dayOfWeek, mealType);
+      showSuccess('Rezept hinzugefügt! ✓');
+    } catch { /* useApi */ }
+    return;
+  }
+
+  // Slot belegt → Konflikt-Modal
+  conflictData.value = {
+    recipeId,
+    recipeTitle,
+    existingEntry: existingMeal,
+    targetDay: dayOfWeek,
+    targetMeal: mealType,
+  };
+  showConflictModal.value = true;
+}
+
 function onDragOver(dayIdx, mealKey) {
   dragTarget.value = { day: dayIdx, meal: mealKey };
 }

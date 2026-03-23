@@ -362,6 +362,60 @@ export default async function mealplanRoutes(fastify) {
   });
 
   // ─────────────────────────────────────────────
+  // GET /past-week-recipes – Rezepte einer vergangenen Woche (per Offset)
+  // ─────────────────────────────────────────────
+  fastify.get('/past-week-recipes', {
+    schema: {
+      description: 'Rezepte einer vergangenen Kalenderwoche (offset = Wochen zurück)',
+      tags: ['Wochenplan'],
+      security: [{ bearerAuth: [] }],
+      querystring: {
+        type: 'object',
+        properties: {
+          offset: { type: 'integer', minimum: 1, maximum: 52, default: 1 },
+        },
+      },
+    },
+  }, async (request) => {
+    const offset = request.query.offset || 1;
+
+    // Wochenstart berechnen: offset Wochen vor der aktuellen Woche
+    const currentWeekStart = getWeekStart();
+    const d = new Date(currentWeekStart);
+    d.setDate(d.getDate() - (offset * 7));
+    const weekStart = d.toISOString().slice(0, 10);
+
+    // KW berechnen (ISO 8601)
+    const thursday = new Date(d);
+    thursday.setDate(thursday.getDate() + 3 - ((thursday.getDay() + 6) % 7));
+    const yearStart = new Date(thursday.getFullYear(), 0, 1);
+    const weekNumber = Math.ceil(((thursday - yearStart) / 86400000 + 1) / 7);
+
+    const plan = getMealPlan(request.user.id, weekStart, request.householdId);
+    if (!plan) return { recipes: [], weekStart, weekNumber, hasPlan: false };
+
+    // Deduplizierte Rezept-Liste
+    const seen = new Set();
+    const recipes = [];
+    for (const entry of plan.entries) {
+      if (seen.has(entry.recipe_id)) continue;
+      seen.add(entry.recipe_id);
+      recipes.push({
+        id: entry.recipe_id,
+        title: entry.recipe_title,
+        image_url: entry.image_url,
+        total_time: entry.total_time,
+        difficulty: entry.difficulty,
+        is_favorite: entry.is_favorite,
+        calories: entry.calories,
+        category_names: entry.category_names,
+      });
+    }
+
+    return { recipes, weekStart, weekNumber, hasPlan: true };
+  });
+
+  // ─────────────────────────────────────────────
   // POST /add-recipe – Rezept manuell zum Planer hinzufügen
   // ─────────────────────────────────────────────
   fastify.post('/add-recipe', {

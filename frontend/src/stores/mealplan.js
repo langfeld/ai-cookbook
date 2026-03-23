@@ -19,6 +19,10 @@ export const useMealPlanStore = defineStore('mealplan', () => {
   const planHistory = ref([]);
   const availableWeeks = ref([]);
   const lastWeekRecipes = ref([]); // Rezepte der letzten realen Kalenderwoche
+  const pastWeekRecipes = ref([]); // Rezepte einer vergangenen Woche (Slider)
+  const pastWeekOffset = ref(1); // Offset für vergangene Wochen (1 = letzte Woche)
+  const pastWeekNumber = ref(null); // KW-Nummer der geladenen vergangenen Woche
+  const pastWeekHasPlan = ref(false); // Hat diese vergangene Woche einen Plan?
   const loading = ref(false);
   const generating = ref(false);
   const lastFetched = ref(null); // Timestamp des letzten Fetches
@@ -105,6 +109,22 @@ export const useMealPlanStore = defineStore('mealplan', () => {
       return data;
     } catch {
       // silent – nicht kritisch
+    }
+  }
+
+  /** Rezepte einer vergangenen Woche per Offset laden */
+  async function fetchPastWeekRecipes(offset = 1) {
+    try {
+      pastWeekOffset.value = offset;
+      const data = await api.get(`/mealplan/past-week-recipes?offset=${offset}`);
+      pastWeekRecipes.value = data.recipes || [];
+      pastWeekNumber.value = data.weekNumber || null;
+      pastWeekHasPlan.value = data.hasPlan || false;
+      return data;
+    } catch {
+      pastWeekRecipes.value = [];
+      pastWeekNumber.value = null;
+      pastWeekHasPlan.value = false;
     }
   }
 
@@ -296,8 +316,9 @@ export const useMealPlanStore = defineStore('mealplan', () => {
 
   return {
     currentPlan, reasoning, reasoningSource, reasoningLoading, planHistory, availableWeeks, lastWeekRecipes, loading, generating, lastFetched,
+    pastWeekRecipes, pastWeekOffset, pastWeekNumber, pastWeekHasPlan,
     mealTypeLabels,
-    generatePlan, pollReasoning, fetchCurrentPlan, fetchHistory, fetchAvailableWeeks, fetchLastWeekRecipes,
+    generatePlan, pollReasoning, fetchCurrentPlan, fetchHistory, fetchAvailableWeeks, fetchLastWeekRecipes, fetchPastWeekRecipes,
     fetchSuggestions, markCooked, updateServings, swapRecipe, addEntry, addRecipeToPlan, moveEntry, removeEntry, deletePlan,
     toggleLock, duplicatePlan,
   };

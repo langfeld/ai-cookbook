@@ -19,14 +19,22 @@
     <Transition name="suggestion-expand">
       <div v-if="!collapsed" class="px-4 pb-4">
         <!-- Tab-Leiste -->
-        <div class="flex gap-1 mb-3 border-stone-200 dark:border-stone-700 border-b">
+        <div class="flex gap-1 mb-3 border-stone-200 dark:border-stone-700 border-b overflow-x-auto scrollbar-hide">
           <button
             @click="activeTab = 'lastWeek'"
             class="suggestion-tab"
             :class="{ 'suggestion-tab--active': activeTab === 'lastWeek' }"
           >
             <RotateCcw class="w-3.5 h-3.5" />
-            Letzte Woche
+            <span class="whitespace-nowrap">Letzte Woche</span>
+          </button>
+          <button
+            @click="switchToPastWeeks"
+            class="suggestion-tab"
+            :class="{ 'suggestion-tab--active': activeTab === 'pastWeeks' }"
+          >
+            <Calendar class="w-3.5 h-3.5" />
+            <span class="whitespace-nowrap">Vergangene Wochen</span>
           </button>
           <button
             v-if="showHouseholdTab"
@@ -35,100 +43,224 @@
             :class="{ 'suggestion-tab--active': activeTab === 'household' }"
           >
             <Flame class="w-3.5 h-3.5" />
-            Haushalt
+            <span class="whitespace-nowrap">Haushalt</span>
           </button>
         </div>
 
         <!-- Tab: Letzte Woche -->
         <div v-if="activeTab === 'lastWeek'">
           <div v-if="lastWeekRecipes.length" class="gap-3 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6">
-            <div
-              v-for="recipe in lastWeekRecipes"
-              :key="recipe.id"
-              class="group suggestion-card"
-              :draggable="isDraggable"
-              @dragstart="onDragStart($event, recipe)"
-              @dragend="onDragEnd"
-              @click="$router.push(`/recipes/${recipe.id}`)"
-            >
+            <div v-for="recipe in lastWeekRecipes" :key="recipe.id" class="group suggestion-card" :draggable="isDraggable" @dragstart="onDragStart($event, recipe)" @dragend="onDragEnd" @click="onRecipeTap(recipe)">
               <div class="relative bg-stone-100 dark:bg-stone-800 mb-1.5 rounded-lg aspect-video overflow-hidden">
                 <img v-if="recipe.image_url" :src="recipe.image_url" :alt="recipe.title" class="w-full h-full object-cover group-hover:scale-105 transition-transform" loading="lazy" />
                 <div v-else class="flex justify-center items-center w-full h-full text-2xl">🍽️</div>
-                <!-- Drag-Hinweis auf Desktop -->
                 <div v-if="isDraggable" class="absolute inset-0 flex justify-center items-center bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none drag-hint">
                   <GripVertical class="w-5 h-5 text-white" />
                 </div>
               </div>
               <p class="font-medium text-stone-700 dark:group-hover:text-primary-400 dark:text-stone-300 group-hover:text-primary-600 text-xs truncate transition-colors">{{ recipe.title }}</p>
-              <p v-if="recipe.total_time" class="text-[10px] text-stone-400 truncate">
-                {{ recipe.total_time }} Min.
-                <span v-if="recipe.difficulty"> · {{ recipe.difficulty }}</span>
-              </p>
+              <p v-if="recipe.total_time" class="text-[10px] text-stone-400 truncate">{{ recipe.total_time }} Min.<span v-if="recipe.difficulty"> · {{ recipe.difficulty }}</span></p>
             </div>
           </div>
-          <p v-else class="py-4 text-stone-400 dark:text-stone-500 text-sm text-center">
-            Kein Wochenplan für die letzte Woche vorhanden
-          </p>
+          <p v-else class="py-4 text-stone-400 dark:text-stone-500 text-sm text-center">Kein Wochenplan für die letzte Woche vorhanden</p>
         </div>
 
-        <!-- Tab: Haushalt-Vorschläge -->
-        <div v-if="activeTab === 'household'">
-          <div v-if="householdSuggestions.length" class="gap-3 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6">
-            <div
-              v-for="s in householdSuggestions"
-              :key="s.id"
-              class="group suggestion-card"
-              :draggable="isDraggable"
-              @dragstart="onDragStart($event, s)"
-              @dragend="onDragEnd"
-              @click="$router.push(`/recipes/${s.id}`)"
+        <!-- Tab: Vergangene Wochen (KW-Slider) -->
+        <div v-if="activeTab === 'pastWeeks'">
+          <!-- KW-Navigator -->
+          <div class="flex justify-between items-center mb-3 px-1">
+            <button
+              @click="changePastWeek(1)"
+              class="flex items-center gap-1 hover:bg-stone-100 dark:hover:bg-stone-800 p-1.5 rounded-lg text-stone-500 hover:text-stone-700 dark:hover:text-stone-200 dark:text-stone-400 transition-colors"
+              title="Ältere Woche"
             >
+              <ChevronLeft class="w-4 h-4" />
+            </button>
+            <div class="text-center">
+              <span v-if="pastWeekLoading" class="text-stone-400 dark:text-stone-500 text-sm">Lade…</span>
+              <span v-else class="font-medium text-stone-700 dark:text-stone-200 text-sm">
+                KW {{ pastWeekNumber }}
+              </span>
+            </div>
+            <button
+              @click="changePastWeek(-1)"
+              :disabled="pastWeekOffset <= 2"
+              class="flex items-center gap-1 hover:bg-stone-100 dark:hover:bg-stone-800 disabled:opacity-30 p-1.5 rounded-lg text-stone-500 hover:text-stone-700 dark:hover:text-stone-200 dark:text-stone-400 transition-colors disabled:cursor-not-allowed"
+              title="Neuere Woche"
+            >
+              <ChevronRight class="w-4 h-4" />
+            </button>
+          </div>
+
+          <div v-if="pastWeekRecipes.length" class="gap-3 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6">
+            <div v-for="recipe in pastWeekRecipes" :key="recipe.id" class="group suggestion-card" :draggable="isDraggable" @dragstart="onDragStart($event, recipe)" @dragend="onDragEnd" @click="onRecipeTap(recipe)">
               <div class="relative bg-stone-100 dark:bg-stone-800 mb-1.5 rounded-lg aspect-video overflow-hidden">
-                <img v-if="s.image_url" :src="s.image_url" :alt="s.title" class="w-full h-full object-cover group-hover:scale-105 transition-transform" loading="lazy" />
+                <img v-if="recipe.image_url" :src="recipe.image_url" :alt="recipe.title" class="w-full h-full object-cover group-hover:scale-105 transition-transform" loading="lazy" />
                 <div v-else class="flex justify-center items-center w-full h-full text-2xl">🍽️</div>
                 <div v-if="isDraggable" class="absolute inset-0 flex justify-center items-center bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none drag-hint">
                   <GripVertical class="w-5 h-5 text-white" />
                 </div>
               </div>
-              <p class="font-medium text-stone-700 dark:group-hover:text-primary-400 dark:text-stone-300 group-hover:text-primary-600 text-xs truncate transition-colors">{{ s.title }}</p>
-              <p class="text-[10px] text-stone-400 truncate">{{ s.reason }}</p>
+              <p class="font-medium text-stone-700 dark:group-hover:text-primary-400 dark:text-stone-300 group-hover:text-primary-600 text-xs truncate transition-colors">{{ recipe.title }}</p>
+              <p v-if="recipe.total_time" class="text-[10px] text-stone-400 truncate">{{ recipe.total_time }} Min.<span v-if="recipe.difficulty"> · {{ recipe.difficulty }}</span></p>
             </div>
           </div>
-          <p v-else class="py-4 text-stone-400 dark:text-stone-500 text-sm text-center">
-            Keine Vorschläge verfügbar
-          </p>
+          <p v-else class="py-4 text-stone-400 dark:text-stone-500 text-sm text-center">{{ pastWeekHasPlan ? 'Keine Rezepte in dieser Woche' : 'Kein Wochenplan für diese Woche vorhanden' }}</p>
+        </div>
+
+        <!-- Tab: Haushalt-Vorschläge -->
+        <div v-if="activeTab === 'household'">
+          <div v-if="householdSuggestions.length" class="gap-3 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6">
+            <div v-for="recipe in householdSuggestions" :key="recipe.id" class="group suggestion-card" :draggable="isDraggable" @dragstart="onDragStart($event, recipe)" @dragend="onDragEnd" @click="onRecipeTap(recipe)">
+              <div class="relative bg-stone-100 dark:bg-stone-800 mb-1.5 rounded-lg aspect-video overflow-hidden">
+                <img v-if="recipe.image_url" :src="recipe.image_url" :alt="recipe.title" class="w-full h-full object-cover group-hover:scale-105 transition-transform" loading="lazy" />
+                <div v-else class="flex justify-center items-center w-full h-full text-2xl">🍽️</div>
+                <div v-if="isDraggable" class="absolute inset-0 flex justify-center items-center bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none drag-hint">
+                  <GripVertical class="w-5 h-5 text-white" />
+                </div>
+              </div>
+              <p class="font-medium text-stone-700 dark:group-hover:text-primary-400 dark:text-stone-300 group-hover:text-primary-600 text-xs truncate transition-colors">{{ recipe.title }}</p>
+              <p v-if="recipe.reason" class="text-[10px] text-stone-400 truncate">{{ recipe.reason }}</p>
+              <p v-else-if="recipe.total_time" class="text-[10px] text-stone-400 truncate">{{ recipe.total_time }} Min.<span v-if="recipe.difficulty"> · {{ recipe.difficulty }}</span></p>
+            </div>
+          </div>
+          <p v-else class="py-4 text-stone-400 dark:text-stone-500 text-sm text-center">Keine Vorschläge verfügbar</p>
         </div>
       </div>
     </Transition>
+
+    <!-- ═══ Mobile Tap-Aktions-Dialog ═══ -->
+    <Teleport to="body">
+      <Transition name="modal">
+        <div v-if="tapDialog.show" class="z-50 fixed inset-0 flex justify-center items-end sm:items-center p-0 sm:p-4" @mousedown.self="closeTapDialog">
+          <div class="fixed inset-0 bg-black/40" @click="closeTapDialog" />
+          <div class="safe-bottom z-10 relative bg-white dark:bg-stone-900 shadow-2xl sm:rounded-2xl rounded-t-2xl w-full sm:max-w-sm">
+            <!-- Rezept-Vorschau -->
+            <div class="flex items-center gap-3 px-5 pt-5 pb-3">
+              <div class="bg-stone-100 dark:bg-stone-800 rounded-lg w-12 h-12 overflow-hidden shrink-0">
+                <img v-if="tapDialog.recipe?.image_url" :src="tapDialog.recipe.image_url" :alt="tapDialog.recipe.title" class="w-full h-full object-cover" />
+                <div v-else class="flex justify-center items-center w-full h-full text-lg">🍽️</div>
+              </div>
+              <div class="min-w-0">
+                <p class="font-semibold text-stone-800 dark:text-stone-100 text-sm truncate">{{ tapDialog.recipe?.title }}</p>
+                <p v-if="tapDialog.recipe?.total_time" class="text-stone-400 text-xs">{{ tapDialog.recipe.total_time }} Min.</p>
+              </div>
+            </div>
+
+            <div class="flex flex-col gap-2 px-5 pb-2">
+              <!-- Rezept öffnen -->
+              <button
+                @click="openRecipe"
+                class="flex items-center gap-3 bg-stone-50 hover:bg-stone-100 dark:bg-stone-800/50 dark:hover:bg-stone-800 px-4 py-3 rounded-xl text-left transition-colors"
+              >
+                <div class="flex justify-center items-center bg-stone-100 dark:bg-stone-800 rounded-lg w-9 h-9 shrink-0">
+                  <ExternalLink class="w-4 h-4 text-stone-500 dark:text-stone-400" />
+                </div>
+                <div>
+                  <p class="font-medium text-stone-800 dark:text-stone-100 text-sm">Rezept öffnen</p>
+                  <p class="text-stone-400 dark:text-stone-500 text-xs">Details anzeigen</p>
+                </div>
+              </button>
+
+              <!-- Auf einen Tag legen -->
+              <button
+                @click="showDayPicker = true"
+                :disabled="isLocked"
+                class="flex items-center gap-3 bg-primary-50 hover:bg-primary-100 dark:bg-primary-950/50 dark:hover:bg-primary-900/50 disabled:opacity-40 px-4 py-3 border border-primary-200 dark:border-primary-800 rounded-xl text-left transition-colors disabled:cursor-not-allowed"
+              >
+                <div class="flex justify-center items-center bg-primary-100 dark:bg-primary-900 rounded-lg w-9 h-9 shrink-0">
+                  <CalendarPlus class="w-4 h-4 text-primary-600 dark:text-primary-400" />
+                </div>
+                <div>
+                  <p class="font-medium text-stone-800 dark:text-stone-100 text-sm">Auf Tag planen</p>
+                  <p class="text-stone-400 dark:text-stone-500 text-xs">Zum Wochenplan hinzufügen</p>
+                </div>
+              </button>
+            </div>
+
+            <!-- Tag-Auswahl (aufklappbar) -->
+            <Transition name="slide-down">
+              <div v-if="showDayPicker" class="px-5 pb-2">
+                <div class="mt-1 pt-3 border-stone-200 dark:border-stone-700 border-t">
+                  <p class="mb-2 font-medium text-stone-500 dark:text-stone-400 text-xs">Tag & Mahlzeit wählen:</p>
+                  <!-- Meal-Type Auswahl -->
+                  <div class="flex gap-1 mb-2 overflow-x-auto scrollbar-hide">
+                    <button
+                      v-for="mt in dayPickerMealTypes"
+                      :key="mt.key"
+                      @click="dayPickerMealType = mt.key"
+                      class="px-2.5 py-1 rounded-lg font-medium text-xs whitespace-nowrap transition-colors"
+                      :class="dayPickerMealType === mt.key
+                        ? 'bg-primary-100 dark:bg-primary-900/50 text-primary-700 dark:text-primary-300'
+                        : 'bg-stone-100 dark:bg-stone-800 text-stone-500 dark:text-stone-400 hover:bg-stone-200 dark:hover:bg-stone-700'"
+                    >
+                      {{ mt.icon }} {{ mt.label }}
+                    </button>
+                  </div>
+                  <!-- Tage als Grid -->
+                  <div class="gap-1 grid grid-cols-7">
+                    <button
+                      v-for="(day, idx) in weekDays"
+                      :key="idx"
+                      @click="assignToDay(idx)"
+                      class="flex flex-col items-center gap-0.5 hover:bg-primary-50 dark:hover:bg-primary-950/50 py-2 rounded-lg font-medium hover:text-primary-600 dark:hover:text-primary-400 text-xs transition-colors"
+                      :class="getDaySlotStatus(idx, dayPickerMealType) === 'occupied'
+                        ? 'bg-amber-50 dark:bg-amber-950/30 text-amber-600 dark:text-amber-400'
+                        : 'bg-stone-50 dark:bg-stone-800/50 text-stone-600 dark:text-stone-300'"
+                    >
+                      <span>{{ day.short }}</span>
+                      <span class="text-[10px] text-stone-400">{{ day.date }}</span>
+                      <span v-if="getDaySlotStatus(idx, dayPickerMealType) === 'occupied'" class="text-[9px] text-amber-500">belegt</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </Transition>
+
+            <button @click="closeTapDialog" class="mt-2 py-3 border-stone-100 dark:border-stone-800 border-t w-full text-stone-400 hover:text-stone-600 dark:hover:text-stone-300 text-sm text-center transition-colors">
+              Abbrechen
+            </button>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
   </div>
 </template>
 
 <script setup>
 import { ref, computed, watch } from 'vue';
-import { Lightbulb, Flame, RotateCcw, ChevronDown, GripVertical } from 'lucide-vue-next';
+import { useRouter } from 'vue-router';
+import { Lightbulb, Flame, RotateCcw, ChevronDown, ChevronLeft, ChevronRight, GripVertical, Calendar, ExternalLink, CalendarPlus } from 'lucide-vue-next';
 
 const props = defineProps({
   lastWeekRecipes: { type: Array, default: () => [] },
   householdSuggestions: { type: Array, default: () => [] },
+  pastWeekRecipes: { type: Array, default: () => [] },
+  pastWeekOffset: { type: Number, default: 2 },
+  pastWeekNumber: { type: Number, default: null },
+  pastWeekHasPlan: { type: Boolean, default: false },
   showHouseholdTab: { type: Boolean, default: false },
   currentPlan: { type: Object, default: null },
   isLocked: { type: Boolean, default: false },
+  weekDays: { type: Array, default: () => [] },
+  mealTypes: { type: Array, default: () => [] },
 });
 
-const emit = defineEmits(['suggestion-drag-start', 'suggestion-drag-end']);
+const emit = defineEmits([
+  'suggestion-drag-start',
+  'suggestion-drag-end',
+  'past-week-change',
+  'assign-recipe',
+]);
+
+const router = useRouter();
 
 // Eingeklappt wenn Plan existiert, aufgeklappt wenn nicht
 const collapsed = ref(!!props.currentPlan);
 
-// Wenn currentPlan sich ändert (z.B. Plan erstellt oder gelöscht), Collapse-State anpassen
 watch(() => props.currentPlan, (newPlan, oldPlan) => {
-  if (!oldPlan && newPlan) {
-    // Plan wurde gerade erstellt → einklappen
-    collapsed.value = true;
-  } else if (oldPlan && !newPlan) {
-    // Plan wurde gelöscht → aufklappen
-    collapsed.value = false;
-  }
+  if (!oldPlan && newPlan) collapsed.value = true;
+  else if (oldPlan && !newPlan) collapsed.value = false;
 });
 
 const activeTab = ref('lastWeek');
@@ -140,6 +272,28 @@ const isDraggable = computed(() => {
   return window.matchMedia('(pointer: fine)').matches;
 });
 
+// ─── Past Weeks (Slider) ───
+const pastWeekLoading = ref(false);
+
+function switchToPastWeeks() {
+  activeTab.value = 'pastWeeks';
+  if (!props.pastWeekNumber) {
+    emit('past-week-change', 2);
+  }
+}
+
+function changePastWeek(delta) {
+  const newOffset = props.pastWeekOffset + delta;
+  if (newOffset < 2 || newOffset > 52) return;
+  pastWeekLoading.value = true;
+  emit('past-week-change', newOffset);
+}
+
+watch(() => props.pastWeekNumber, () => {
+  pastWeekLoading.value = false;
+});
+
+// ─── Drag & Drop (Desktop) ───
 function onDragStart(event, recipe) {
   const data = {
     recipeId: recipe.id,
@@ -149,18 +303,70 @@ function onDragStart(event, recipe) {
   event.dataTransfer.effectAllowed = 'copy';
   event.dataTransfer.setData('application/json', JSON.stringify(data));
   event.dataTransfer.setData('text/plain', recipe.id.toString());
-  // Drag-Ghost etwas transparenter
-  if (event.target) {
-    event.target.style.opacity = '0.5';
-  }
+  if (event.target) event.target.style.opacity = '0.5';
   emit('suggestion-drag-start', data);
 }
 
 function onDragEnd(event) {
-  if (event.target) {
-    event.target.style.opacity = '';
-  }
+  if (event?.target) event.target.style.opacity = '';
   emit('suggestion-drag-end');
+}
+
+// ─── Mobile Tap-Aktions-Dialog ───
+const tapDialog = ref({ show: false, recipe: null });
+const showDayPicker = ref(false);
+const dayPickerMealType = ref('abendessen');
+
+const dayPickerMealTypes = computed(() => {
+  if (props.mealTypes?.length) return props.mealTypes;
+  return [
+    { key: 'fruehstueck', label: 'Frühstück', icon: '🌅' },
+    { key: 'mittag', label: 'Mittag', icon: '☀️' },
+    { key: 'abendessen', label: 'Abend', icon: '🌙' },
+    { key: 'snack', label: 'Snack', icon: '🍎' },
+  ];
+});
+
+function onRecipeTap(recipe) {
+  if (isDraggable.value) {
+    // Desktop: Klick öffnet direkt das Rezept
+    router.push(`/recipes/${recipe.id}`);
+    return;
+  }
+  // Mobile: Aktions-Dialog anzeigen
+  tapDialog.value = { show: true, recipe };
+  showDayPicker.value = false;
+  dayPickerMealType.value = dayPickerMealTypes.value[0]?.key || 'abendessen';
+}
+
+function closeTapDialog() {
+  tapDialog.value = { show: false, recipe: null };
+  showDayPicker.value = false;
+}
+
+function openRecipe() {
+  if (tapDialog.value.recipe) {
+    router.push(`/recipes/${tapDialog.value.recipe.id}`);
+  }
+  closeTapDialog();
+}
+
+function getDaySlotStatus(dayIdx, mealType) {
+  if (!props.currentPlan?.entries) return 'free';
+  return props.currentPlan.entries.some(
+    e => e.day_of_week === dayIdx && e.meal_type === mealType
+  ) ? 'occupied' : 'free';
+}
+
+function assignToDay(dayIdx) {
+  if (!tapDialog.value.recipe) return;
+  emit('assign-recipe', {
+    recipeId: tapDialog.value.recipe.id,
+    recipeTitle: tapDialog.value.recipe.title,
+    dayOfWeek: dayIdx,
+    mealType: dayPickerMealType.value,
+  });
+  closeTapDialog();
 }
 </script>
 
@@ -178,6 +384,7 @@ function onDragEnd(event) {
   margin-bottom: -1px;
   cursor: pointer;
   transition: color 0.15s ease, border-color 0.15s ease;
+  flex-shrink: 0;
 }
 .suggestion-tab:hover {
   color: var(--color-stone-700);
@@ -211,6 +418,20 @@ function onDragEnd(event) {
   }
 }
 
+/* ─── Hide Scrollbar ─── */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+/* ─── Safe Bottom (iPhone notch) ─── */
+.safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 0);
+}
+
 /* ─── Expand Transition ─── */
 .suggestion-expand-enter-active,
 .suggestion-expand-leave-active {
@@ -228,5 +449,36 @@ function onDragEnd(event) {
 .suggestion-expand-leave-from {
   opacity: 1;
   max-height: 500px;
+}
+
+/* ─── Modal Transition ─── */
+.modal-enter-active,
+.modal-leave-active {
+  transition: all 0.2s ease;
+}
+.modal-enter-from,
+.modal-leave-to {
+  opacity: 0;
+}
+.modal-enter-from .safe-bottom,
+.modal-leave-to .safe-bottom {
+  transform: translateY(100%);
+}
+
+/* ─── Slide Down Transition ─── */
+.slide-down-enter-active,
+.slide-down-leave-active {
+  transition: all 0.2s ease;
+  overflow: hidden;
+}
+.slide-down-enter-from,
+.slide-down-leave-to {
+  opacity: 0;
+  max-height: 0;
+}
+.slide-down-enter-to,
+.slide-down-leave-from {
+  opacity: 1;
+  max-height: 300px;
 }
 </style>
