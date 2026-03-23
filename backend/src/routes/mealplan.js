@@ -899,6 +899,7 @@ export default async function mealplanRoutes(fastify) {
     let imported = 0;
     let skipped = 0;
     let entriesImported = 0;
+    let entriesSkipped = 0;
 
     const householdId = request.householdId;
     const hhWhere = householdWhereClause(userId, householdId);
@@ -911,6 +912,9 @@ export default async function mealplanRoutes(fastify) {
     );
     const findRecipe = db.prepare(
       `SELECT id FROM recipes WHERE (${hhWhere.clause}) AND LOWER(title) = LOWER(?)`
+    );
+    const findRecipeById = db.prepare(
+      `SELECT id FROM recipes WHERE (${hhWhere.clause}) AND id = ?`
     );
     const existingPlan = db.prepare(
       `SELECT id FROM meal_plans WHERE (${hhWhere.clause}) AND week_start = ?`
@@ -932,13 +936,18 @@ export default async function mealplanRoutes(fastify) {
           const validMealTypes = new Set(['fruehstueck', 'mittag', 'abendessen', 'snack']);
           const entries = plan.entries.slice(0, 50); // Max 50 Einträge pro Plan
           for (const entry of entries) {
-            // Rezept per Titel finden
-            let recipeId = entry.recipe_id;
-            if (entry.recipe_title && !recipeId) {
+            // Rezept per Titel finden (bevorzugt, da ID aus fremdem System stammt)
+            let recipeId = null;
+            if (entry.recipe_title) {
               const recipe = findRecipe.get(...hhWhere.params, entry.recipe_title);
               if (recipe) recipeId = recipe.id;
             }
-            if (!recipeId) continue;
+            // Fallback: recipe_id aus Export verwenden, aber nur wenn sie in der DB existiert
+            if (!recipeId && entry.recipe_id) {
+              const recipe = findRecipeById.get(...hhWhere.params, entry.recipe_id);
+              if (recipe) recipeId = recipe.id;
+            }
+            if (!recipeId) { entriesSkipped++; continue; }
 
             const dayOfWeek = Math.min(Math.max(parseInt(entry.day_of_week) || 0, 0), 6);
             const mealType = validMealTypes.has(entry.meal_type) ? entry.meal_type : 'mittag';
@@ -960,10 +969,15 @@ export default async function mealplanRoutes(fastify) {
 
     transaction();
 
+    const entriesSkippedNote = entriesSkipped > 0
+      ? ` (${entriesSkipped} ${entriesSkipped === 1 ? 'Rezept' : 'Rezepte'} nicht gefunden und übersprungen)`
+      : '';
+
     return {
-      message: `${imported} Pläne importiert, ${entriesImported} Einträge, ${skipped} übersprungen.`,
+      message: `${imported} Pläne importiert, ${entriesImported} Einträge${entriesSkippedNote}, ${skipped} Pläne übersprungen.`,
       imported,
       entries_imported: entriesImported,
+      entries_skipped: entriesSkipped,
       skipped,
     };
   });
