@@ -220,41 +220,55 @@ export async function generateShoppingList(userId, householdId, mealPlanId, opti
     let pantryDeducted = 0;
     let pantryNote = null;
 
-    // Pantry-Match suchen (auch Alias-aufgelöste Namen berücksichtigen)
-    const matchingPantry = pantryItems.find(p => {
+    // Pantry-Matches suchen (alle passenden Einträge – im Haushalt können mehrere User Vorräte haben)
+    const matchingPantryItems = pantryItems.filter(p => {
       const pantryName = (aliasMap.get(p.ingredient_name.toLowerCase()) || p.ingredient_name).toLowerCase();
       const itemName = item.name.toLowerCase();
       return pantryName === itemName || p.ingredient_name.toLowerCase() === itemName;
     });
 
-    if (matchingPantry && remainingAmount) {
-      if (matchingPantry.is_permanent) {
+    if (matchingPantryItems.length > 0 && remainingAmount) {
+      // Permanente Vorräte zuerst prüfen (Salz, Wasser etc.)
+      const hasPermanent = matchingPantryItems.some(p => p.is_permanent);
+      if (hasPermanent) {
         pantryDeducted = remainingAmount;
         remainingAmount = 0;
       } else {
-        // Mengen vergleichen – inkl. Küchenstandard-Tabelle für Stück↔g etc.
-        const result = comparePantryAmount(
-          item.name,
-          remainingAmount,
-          normalizeUnit(item.unit),
-          matchingPantry.amount,
-          normalizeUnit(matchingPantry.unit),
-        );
+        // Alle passenden Pantry-Einträge durchgehen und kumulativ abziehen
+        let hasIncompatible = false;
+        let lastIncompatiblePantry = null;
 
-        if (result.compatible) {
-          pantryDeducted = result.deduction;
-          remainingAmount = result.remaining;
-        } else {
-          // Statische Tabelle hat keine Konvertierung → KI-Fallback merken
+        for (const matchingPantry of matchingPantryItems) {
+          if (remainingAmount <= 0) break;
+
+          const result = comparePantryAmount(
+            item.name,
+            remainingAmount,
+            normalizeUnit(item.unit),
+            matchingPantry.amount,
+            normalizeUnit(matchingPantry.unit),
+          );
+
+          if (result.compatible) {
+            pantryDeducted += result.deduction;
+            remainingAmount = result.remaining;
+          } else {
+            hasIncompatible = true;
+            lastIncompatiblePantry = matchingPantry;
+            pantryNote = result.pantryNote;
+          }
+        }
+
+        // KI-Fallback nur wenn nach allen kompatiblen Abzügen noch Rest bleibt UND es inkompatible gab
+        if (remainingAmount > 0 && hasIncompatible && lastIncompatiblePantry) {
           needsAIEstimate.push({
-            index: adjustedItems.length, // Position im adjustedItems-Array
+            index: adjustedItems.length,
             item,
             remainingAmount,
-            pantry: matchingPantry,
+            pantry: lastIncompatiblePantry,
             recipeUnit: normalizeUnit(item.unit),
-            pantryUnit: normalizeUnit(matchingPantry.unit),
+            pantryUnit: normalizeUnit(lastIncompatiblePantry.unit),
           });
-          pantryNote = result.pantryNote;
         }
       }
     }

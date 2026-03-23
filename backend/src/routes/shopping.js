@@ -140,13 +140,23 @@ export default async function shoppingRoutes(fastify) {
       // Speichern (deaktiviert alte Liste, erstellt neue)
       listId = saveShoppingList(userId, householdId, mealPlanId, shoppingData.items, name);
 
-      // Manuelle Items in die neue Liste übernehmen
+      // Manuelle Items in die neue Liste übernehmen (nur wenn kein generiertes Item mit gleichem Namen existiert)
       if (manualItems.length > 0) {
+        // Generierte Zutatennamen sammeln (lowercase) um Duplikate zu vermeiden
+        const generatedNames = new Set(
+          shoppingData.items
+            .filter(i => i.needsToBuy)
+            .map(i => i.name.toLowerCase())
+        );
+
         const insertManual = db.prepare(
           "INSERT INTO shopping_list_items (shopping_list_id, ingredient_name, amount, unit, is_checked, recipe_ids, source) VALUES (?, ?, ?, ?, ?, '[]', ?)"
         );
         for (const item of manualItems) {
-          insertManual.run(listId, item.ingredient_name, item.amount, item.unit, item.is_checked, item.source || 'manual');
+          // Manuelles Item nur übernehmen, wenn keine generierte Zutat mit gleichem Namen existiert
+          if (!generatedNames.has(item.ingredient_name.toLowerCase())) {
+            insertManual.run(listId, item.ingredient_name, item.amount, item.unit, item.is_checked, item.source || 'manual');
+          }
         }
       }
     }

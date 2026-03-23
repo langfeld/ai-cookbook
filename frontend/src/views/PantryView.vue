@@ -119,7 +119,7 @@
                   </span>
                 </h4>
                 <p v-if="!item.is_permanent" class="mt-0.5 text-stone-500 dark:text-stone-400 text-xs">
-                  {{ item.amount }} {{ item.unit }}
+                  {{ formatAmount(item.amount) }} {{ item.unit }}
                 </p>
                 <p v-else class="mt-0.5 text-blue-500 dark:text-blue-400 text-xs">
                   Immer verfügbar
@@ -267,7 +267,7 @@
                     <CheckCircle2
                       v-else-if="ing.unit_mismatch"
                       class="w-4.5 h-4.5 text-blue-400"
-                      :title="`Im Vorrat: ${ing.pantry_amount} ${ing.pantry_unit} (andere Einheit)`"
+                      :title="`Im Vorrat: ${formatAmount(ing.pantry_amount)} ${ing.pantry_unit} (andere Einheit)`"
                     />
                     <button
                       v-else-if="ing.is_partial"
@@ -350,11 +350,11 @@
                   </h4>
                   <p v-if="!item.is_permanent" class="mt-0.5 text-stone-500 dark:text-stone-400 text-xs">
                     <template v-if="item.remaining_amount !== item.amount">
-                      {{ item.remaining_amount }} {{ item.unit }}
-                      <span class="text-stone-400 dark:text-stone-500">(von {{ item.amount }})</span>
+                      {{ formatAmount(item.remaining_amount) }} {{ item.unit }}
+                      <span class="text-stone-400 dark:text-stone-500">(von {{ formatAmount(item.amount) }})</span>
                     </template>
                     <template v-else>
-                      {{ item.amount }} {{ item.unit }}
+                      {{ formatAmount(item.amount) }} {{ item.unit }}
                     </template>
                   </p>
                   <p v-else class="mt-0.5 text-blue-500 dark:text-blue-400 text-xs">
@@ -509,7 +509,7 @@
           <!-- Verbrauchen-Modus -->
           <template v-if="useModal.mode === 'use' && !useModal.item?.is_permanent">
             <p class="text-stone-500 text-sm">
-              Vorrätig: {{ useModal.item?.amount }} {{ useModal.item?.unit }}
+              Vorrätig: {{ formatAmount(useModal.item?.amount) }} {{ useModal.item?.unit }}
             </p>
             <div>
               <label class="block mb-1 text-stone-600 dark:text-stone-400 text-sm">Menge verbrauchen</label>
