@@ -469,6 +469,110 @@ export default async function shoppingRoutes(fastify) {
   });
 
   /**
+   * PUT /api/shopping/item/:id
+   * Menge/Einheit/Name eines Einkaufsitems ändern
+   */
+  fastify.put('/item/:id', {
+    schema: {
+      description: 'Einkaufsitem aktualisieren (Menge, Einheit, Name)',
+      tags: ['Einkaufsliste'],
+      security: [{ bearerAuth: [] }],
+      body: {
+        type: 'object',
+        properties: {
+          amount: { type: ['number', 'null'] },
+          unit: { type: ['string', 'null'] },
+          ingredient_name: { type: ['string', 'null'] },
+        },
+      },
+    },
+  }, async (request, reply) => {
+    const itemId = Number(request.params.id);
+    const hhWhere = householdWhereClause(request.user.id, request.householdId);
+
+    // Item und zugehörige Liste verifizieren
+    const item = db.prepare(`
+      SELECT sli.*, sl.meal_plan_id FROM shopping_list_items sli
+      JOIN shopping_lists sl ON sli.shopping_list_id = sl.id
+      WHERE sli.id = ? AND sl.id IN (SELECT id FROM shopping_lists WHERE (${hhWhere.clause}))
+    `).get(itemId, ...hhWhere.params);
+
+    if (!item) {
+      return reply.status(404).send({ error: 'Artikel nicht gefunden' });
+    }
+
+    const updates = [];
+    const params = [];
+
+    if (request.body.amount !== undefined) {
+      updates.push('amount = ?');
+      params.push(request.body.amount);
+    }
+    if (request.body.unit !== undefined) {
+      updates.push('unit = ?');
+      params.push(request.body.unit);
+    }
+    if (request.body.ingredient_name !== undefined && request.body.ingredient_name) {
+      updates.push('ingredient_name = ?');
+      params.push(request.body.ingredient_name.trim());
+    }
+
+    if (updates.length === 0) {
+      return reply.status(400).send({ error: 'Keine Änderungen angegeben' });
+    }
+
+    params.push(itemId);
+    db.prepare(`UPDATE shopping_list_items SET ${updates.join(', ')} WHERE id = ?`).run(...params);
+
+    // Aktualisiertes Item zurückgeben
+    const updated = db.prepare('SELECT * FROM shopping_list_items WHERE id = ?').get(itemId);
+
+    // Benötigte Menge aus Rezepten berechnen (für Warnung)
+    let requiredAmount = null;
+    if (item.meal_plan_id && updated.recipe_ids) {
+      try {
+        const recipeIds = JSON.parse(updated.recipe_ids);
+        if (recipeIds.length > 0) {
+          const ingredientName = updated.ingredient_name.toLowerCase();
+          let totalRequired = 0;
+          let requiredUnit = null;
+
+          for (const recipeId of recipeIds) {
+            const entry = db.prepare(`
+              SELECT mpe.servings as planned_servings, r.servings as recipe_servings
+              FROM meal_plan_entries mpe
+              JOIN recipes r ON mpe.recipe_id = r.id
+              WHERE mpe.meal_plan_id = ? AND mpe.recipe_id = ?
+              LIMIT 1
+            `).get(item.meal_plan_id, recipeId);
+
+            const ingredient = db.prepare(`
+              SELECT amount, unit FROM ingredients
+              WHERE recipe_id = ? AND LOWER(name) = ?
+            `).get(recipeId, ingredientName);
+
+            if (entry && ingredient && ingredient.amount) {
+              const factor = (entry.planned_servings || entry.recipe_servings) / entry.recipe_servings;
+              totalRequired += ingredient.amount * factor;
+              requiredUnit = requiredUnit || ingredient.unit;
+            }
+          }
+
+          if (totalRequired > 0) {
+            requiredAmount = { amount: totalRequired, unit: requiredUnit };
+          }
+        }
+      } catch { /* ignore */ }
+    }
+
+    return {
+      item: updated,
+      requiredAmount,
+      message: 'Artikel aktualisiert',
+    };
+  });
+
+  /**
    * DELETE /api/shopping/item/:id
    * Einzelnes Item von der Einkaufsliste löschen
    */
@@ -479,14 +583,34 @@ export default async function shoppingRoutes(fastify) {
       security: [{ bearerAuth: [] }],
     },
   }, async (request, reply) => {
+    const itemId = Number(request.params.id);
     const hhWhere = householdWhereClause(request.user.id, request.householdId);
-    const result = db.prepare(`
-      DELETE FROM shopping_list_items
-      WHERE id = ? AND shopping_list_id IN (SELECT id FROM shopping_lists WHERE (${hhWhere.clause}))
-    `).run(request.params.id, ...hhWhere.params);
 
-    if (result.changes === 0) {
+    // Zugehörige Liste finden (für AI-Issues Cleanup)
+    const item = db.prepare(`
+      SELECT sli.shopping_list_id FROM shopping_list_items sli
+      JOIN shopping_lists sl ON sli.shopping_list_id = sl.id
+      WHERE sli.id = ? AND sl.id IN (SELECT id FROM shopping_lists WHERE (${hhWhere.clause}))
+    `).get(itemId, ...hhWhere.params);
+
+    if (!item) {
       return reply.status(404).send({ error: 'Artikel nicht gefunden' });
+    }
+
+    // Item löschen
+    db.prepare('DELETE FROM shopping_list_items WHERE id = ?').run(itemId);
+
+    // AI-Issues bereinigen: alle Issues die dieses Item referenzieren entfernen
+    const list = db.prepare('SELECT ai_review_issues FROM shopping_lists WHERE id = ?').get(item.shopping_list_id);
+    if (list?.ai_review_issues) {
+      try {
+        const issues = JSON.parse(list.ai_review_issues);
+        const filtered = issues.filter(i => i.item_id !== itemId && i.merge_target_id !== itemId);
+        if (filtered.length !== issues.length) {
+          db.prepare('UPDATE shopping_lists SET ai_review_issues = ? WHERE id = ?')
+            .run(JSON.stringify(filtered), item.shopping_list_id);
+        }
+      } catch { /* JSON-Parse-Fehler ignorieren */ }
     }
 
     return { message: 'Artikel gelöscht' };

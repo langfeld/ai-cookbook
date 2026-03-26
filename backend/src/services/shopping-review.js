@@ -221,7 +221,20 @@ Prüfe die Einkaufsliste auf folgende Probleme und antworte als JSON:
 
 4. **plausibility**: Ungewöhnlich hohe oder niedrige Mengen die auf einen Fehler hindeuten (z.B. 500g Salz für ein Rezept, 0.01 kg Fleisch).
 
-5. **duplicate**: Zutaten die TATSÄCHLICH mehrfach als separate Einträge in der Einkaufsliste vorkommen und zusammengeführt werden sollten. Nutze die semantische Zutatenerkennung: "Zwiebel rot" und "Rote Zwiebel" als zwei Zeilen = Duplikat. "Tomate" und "Tomaten" als zwei Zeilen = Duplikat. WICHTIG: Wenn eine Zutat nur EINMAL in der Liste steht (auch wenn sie aus mehreren Rezepten kommt), ist sie KEIN Duplikat – sie wurde bereits korrekt aggregiert. Prüfe die Einkaufsliste (nicht die Rezepte!) auf doppelte Einträge.${hasReweMatching ? `
+5. **duplicate**: Zutaten die TATSÄCHLICH als ZWEI ODER MEHR separate Zeilen in der Einkaufsliste vorkommen und zusammengeführt werden sollten. Nutze die semantische Zutatenerkennung: "Zwiebel rot" und "Rote Zwiebel" als zwei Zeilen = Duplikat. "Tomate" und "Tomaten" als zwei Zeilen = Duplikat.
+   KRITISCH: Wenn eine Zutat nur EINMAL in der Liste steht, ist sie KEIN Duplikat – auch wenn sie aus mehreren Rezepten stammt. Zähle die tatsächlichen Zeilen in der Einkaufsliste! Gib NIEMALS ein Issue für korrekt aggregierte Einzelzeilen aus.
+   Bei duplicate-Issues MUSST du zusätzlich angeben:
+   - "mergeTargetId": Die ID des Items das BEHALTEN werden soll (das "Ziel")
+   - "mergedAmount": Die SUMME beider Mengen. Mengen werden IMMER addiert, niemals absorbiert! Jede Zeile in der Einkaufsliste stammt aus einem Rezept und wird gebraucht.
+   - "mergedUnit": Die Einheit der zusammengeführten Menge
+   - "mergedName": Der beste Name für die zusammengeführte Zutat
+   WICHTIG: itemId ist das Quell-Item (wird ENTFERNT), mergeTargetId ist das Ziel-Item (wird BEHALTEN und aktualisiert).
+   KRITISCH Mengenberechnung: Mengen werden IMMER ADDIERT! Beide Einträge stammen aus verschiedenen Rezepten, daher wird die Gesamtmenge gebraucht.
+   - Gleiche Einheiten: 200g + 300g → 500g. 1 Pkg + 1 Pkg → 2 Pkg.
+   - Verschiedene Einheiten: Wandle in eine gemeinsame Einheit um und addiere. Nutze typische Packungsgrößen zur Umrechnung.
+     Beispiel: 1 Pkg Halloumi (≈ 200g) + 200g Halloumi → Gesamtbedarf 400g → 2 Pkg.
+     Beispiel: 500ml Milch + 1 Liter Milch → 1.5 Liter.
+   - NIEMALS darf eine Menge die andere "abdecken" oder "absorbieren"! 1 Pkg + 200g ≠ 1 Pkg!${hasReweMatching ? `
 
 6. **rewe_mismatch**: REWE-Produkte die nicht zur Zutat passen. Beispiel: "Bohnen" zugeordnet zu "Bohnenaufstrich" ist falsch. Prüfe ob der REWE-Produktname (rewe_product.name) das richtige Produkt für die Zutat ist.
 
@@ -253,17 +266,17 @@ Regeln:
 - type: Einer der oben genannten Typen
 - severity: "high" (sollte behoben werden), "medium" (prüfen empfohlen), "low" (Info)
 - confidence: 0.0-1.0 (nur relevant bei pantry_covered)
-- suggestion: "remove" (entfernen), "adjust" (Menge anpassen), "add" (hinzufügen), "review" (manuell prüfen), "merge" (zusammenführen)
-- recipeId: Die numerische ID des betroffenen Rezepts (aus der Rezeptliste oben). IMMER angeben wenn sich das Issue auf ein bestimmtes Rezept bezieht (z.B. missing_ingredient, quantity_logic). Null wenn kein bestimmtes Rezept betroffen.
+- suggestion: "remove" (entfernen), "adjust" (Menge anpassen), "add" (hinzufügen), "review" (manuell prüfen), "merge" (zusammenführen, MUSS mergeTargetId + mergedAmount + mergedUnit + mergedName enthalten)
+- recipeId: Die numerische ID des betroffenen Rezepts (NUR IDs aus der Rezeptliste oben verwenden!). IMMER angeben wenn sich das Issue auf ein bestimmtes Rezept bezieht (z.B. missing_ingredient, quantity_logic). Null wenn kein bestimmtes Rezept betroffen.
 - recipeTitle: Der Titel des betroffenen Rezepts. IMMER zusammen mit recipeId angeben.${hasReweMatching ? '\n- severity für rewe_missing und rewe_mismatch immer "high"' : ''}
+- Nenne Rezepte NICHT im message-Text. Verwende AUSSCHLIESSLICH die Felder recipeId und recipeTitle für Rezept-Referenzen. Der message-Text beschreibt nur das Problem.
 - Keine Issues für geblockte oder als optional markierte Zutaten
 - Keine Issues für permanente Vorräte die korrekt abgezogen wurden
-- Keine Issues für Dinge die offensichtlich korrekt sind
-- Sei präzise und gib nur echte Probleme aus, keine Vermutungen
+- KRITISCH: Gib NUR echte Probleme aus. NIEMALS Bestätigungen, Statusmeldungen oder Erklärungen warum etwas KORREKT ist. Wenn etwas in Ordnung ist, einfach NICHT in die Issues aufnehmen.
+- KEIN Issue ausgeben für korrekt aggregierte Einzelzeilen, auch wenn die Menge aus mehreren Rezepten summiert wurde.
 - Leeres Array wenn alles in Ordnung ist
 - WICHTIG: Nutze IMMER die semantische Zutatenerkennung. Melde NIEMALS eine Zutat als fehlend die unter einem anderen aber gleichbedeutenden Namen bereits in der Liste steht (z.B. "Zwiebel rot" deckt "Rote Zwiebel" ab, "Paprika gelb" deckt "Gelbe Paprika" ab, etc.)
-- WICHTIG: Die Einkaufsliste wurde möglicherweise ohne vergangene Wochentage generiert. Prüfe nur Rezepte die in der obigen Rezeptliste aufgeführt sind.${skippedDayInfo ? `\n- HINWEIS: ${skippedDayInfo.skippedDays} vergangene Tage wurden beim Erstellen übersprungen. Die Rezepte dieser Tage sind NICHT in der obigen Rezeptliste enthalten und dürfen NICHT als fehlend gemeldet werden.` : ''}
-- Bei "duplicate": Nur melden wenn tatsächlich ZWEI ODER MEHR separate Zeilen in der Einkaufsliste für semantisch gleiche Zutaten existieren. Eine einzelne korrekt aggregierte Zeile mit der Summe aus mehreren Rezepten ist KEIN Duplikat.`;
+- WICHTIG: Die Einkaufsliste wurde möglicherweise ohne vergangene Wochentage generiert. Prüfe nur Rezepte die in der obigen Rezeptliste aufgeführt sind.${skippedDayInfo ? `\n- HINWEIS: ${skippedDayInfo.skippedDays} vergangene Tage wurden beim Erstellen übersprungen. Die Rezepte dieser Tage sind NICHT in der obigen Rezeptliste enthalten und dürfen NICHT als fehlend gemeldet werden.` : ''}`;
 
   try {
     const result = await ai.chatJSON(prompt, { temperature: 0.2, maxTokens: 4096 });
@@ -277,9 +290,21 @@ Regeln:
     const autoResolved = [];
     const manualIssues = [];
 
+    // Gültige Recipe-IDs sammeln (für Validierung)
+    const validRecipeIds = new Set(recipesWithIngredients.map(r => r.id));
+
     for (const rawIssue of result.issues) {
       // Validierung des Issue-Formats
       if (!rawIssue.type || !rawIssue.message) continue;
+
+      // Falsche "Bestätigungs-Issues" herausfiltern (KI bestätigt Korrektheit statt Probleme zu melden)
+      const msgLower = rawIssue.message.toLowerCase();
+      if (msgLower.includes('kein duplikat') || msgLower.includes('korrekt aggregiert') ||
+          msgLower.includes('ist korrekt') || msgLower.includes('kein problem') ||
+          msgLower.includes('passt zusammen') || msgLower.includes('alles in ordnung')) {
+        console.log(`🔍 KI-Review: Bestätigungs-Issue gefiltert: "${rawIssue.message.substring(0, 80)}"`);
+        continue;
+      }
 
       // Normalisierung: itemId → item_id, ingredientName → ingredient
       const issue = {
@@ -288,6 +313,10 @@ Regeln:
         ingredient: rawIssue.ingredientName || rawIssue.ingredient || null,
         recipe_id: rawIssue.recipeId || rawIssue.recipe_id || null,
         recipe_title: rawIssue.recipeTitle || rawIssue.recipe_title || null,
+        merge_target_id: rawIssue.mergeTargetId || rawIssue.merge_target_id || null,
+        merged_amount: rawIssue.mergedAmount ?? rawIssue.merged_amount ?? null,
+        merged_unit: rawIssue.mergedUnit || rawIssue.merged_unit || null,
+        merged_name: rawIssue.mergedName || rawIssue.merged_name || null,
       };
       // Normalisierung: suggestion String → Objekt { action, label }
       if (typeof issue.suggestion === 'string') {
@@ -311,6 +340,48 @@ Regeln:
       delete issue.suggestedUnit;
       delete issue.recipeId;
       delete issue.recipeTitle;
+      delete issue.mergeTargetId;
+      delete issue.mergedAmount;
+      delete issue.mergedUnit;
+      delete issue.mergedName;
+
+      // Recipe-ID validieren (muss in unserer Rezeptliste existieren)
+      if (issue.recipe_id && !validRecipeIds.has(issue.recipe_id)) {
+        console.log(`🔍 KI-Review: Ungültige recipe_id ${issue.recipe_id} gefiltert`);
+        issue.recipe_id = null;
+        issue.recipe_title = null;
+      }
+
+      // Merge-Issue validieren: mergeTargetId muss ein existierendes Item sein
+      if (issue.suggestion?.action === 'merge') {
+        const validItemIds = new Set(listItems.map(i => i.id));
+        // item_id und merge_target_id dürfen nicht identisch sein
+        if (issue.item_id && issue.merge_target_id && issue.item_id === issue.merge_target_id) {
+          console.log(`🔍 KI-Review: merge item_id === merge_target_id (${issue.item_id}) – Issue übersprungen`);
+          continue;
+        }
+        if (issue.merge_target_id && !validItemIds.has(issue.merge_target_id)) {
+          console.log(`🔍 KI-Review: Ungültige merge_target_id ${issue.merge_target_id} gefiltert`);
+          issue.merge_target_id = null;
+        }
+        if (issue.item_id && !validItemIds.has(issue.item_id)) {
+          console.log(`🔍 KI-Review: Ungültige item_id ${issue.item_id} in merge-Issue gefiltert`);
+          continue; // Ganzes Issue überspringen wenn Source-Item nicht existiert
+        }
+      }
+
+      // Duplicate-Issue validieren: Prüfe ob tatsächlich 2+ Zeilen für diese Zutat existieren
+      if (issue.type === 'duplicate') {
+        const ingredientLower = (issue.ingredient || '').toLowerCase();
+        const matchingItems = listItems.filter(i =>
+          (i.ingredient_name || '').toLowerCase() === ingredientLower
+        );
+        if (matchingItems.length < 2) {
+          // Kein echter Duplikat — die Zutat kommt nur einmal vor
+          console.log(`🔍 KI-Review: Falsches Duplikat gefiltert – "${issue.ingredient}" kommt nur ${matchingItems.length}x vor`);
+          continue;
+        }
+      }
 
       // Auto-Resolve: pantry_covered mit hoher Konfidenz → Item als erledigt markieren
       if (issue.type === 'pantry_covered' && issue.confidence >= 0.9 && issue.suggestion?.action === 'remove' && issue.item_id) {

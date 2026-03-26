@@ -116,12 +116,24 @@ Eine KI-gestützte Überprüfung der Einkaufsliste, die automatisch oder manuell
 
 - **Manueller KI-Check** — violetter Button in der Kopfzeile mit Badge-Counter für offene Hinweise
 - **Automatischer KI-Check** — optional beim Generieren der Einkaufsliste (User-Setting)
-- **Inline-Hinweise** — farbcodierte Hinweise direkt am betroffenen Artikel
+- **KI-Check nach REWE-Abgleich** — optional nach dem REWE-Produktmatching automatisch einen KI-Check durchführen (User-Setting)
+- **Inline-Hinweise** — farbcodierte Hinweise direkt am betroffenen Artikel mit Rezept-Verlinkung
 - **Globale Hinweise** — für Issues ohne Artikelbezug (z.B. fehlende Zutaten)
 - **Vorschläge anwenden** — Ein-Klick-Aktionen: Entfernen, Abhaken, Hinzufügen, Menge anpassen, Zusammenführen
+- **Intelligentes Zusammenführen** — Duplikate werden KI-gestützt zusammengeführt (Mengen-Berechnung, Einheiten-Konvertierung, z.B. 1 Pkg + 200g → 1 Pkg)
 - **Auto-Resolve** — hohe Vorrats-Abdeckung (Konfidenz ≥ 90%) wird automatisch abgehakt
 - **Vergangene Tage beachtet** — übersprungene Wochentage werden nicht als fehlend gemeldet
+- **Semantische Zutatenerkennung** — Wortreihenfolge, Singular/Plural und Varianten werden erkannt (z.B. „Zwiebel rot" = „Rote Zwiebel")
+- **REWE-Prüfungen optional** — REWE-spezifische Checks (6 + 7) nur wenn ein REWE-Abgleich durchgeführt wurde
 - **Admin-Toggle** — zwischen Thinking-Modus (gründlicher) und Instant-Modus (schneller) umschaltbar
+
+## Mengen bearbeiten
+
+Artikel-Mengen direkt in der Einkaufsliste bearbeiten:
+
+- **Klick auf Menge** — öffnet einen Inline-Editor zum Anpassen von Menge und Einheit
+- **Pflichtmenge** — zeigt die Mindestmenge basierend auf den Rezepten an
+- **Warnung** — wenn die eingegebene Menge unter der benötigten Pflichtmenge liegt
 
 ## Intelligente Duplikat-Erkennung
 

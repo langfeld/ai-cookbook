@@ -273,6 +273,9 @@ export const useShoppingStore = defineStore('shopping', () => {
     const removedItem = items.value.find(i => i.id === itemId);
     items.value = items.value.filter(i => i.id !== itemId);
 
+    // AI-Issues bereinigen die dieses Item referenzieren (verhindert verwaiste Hinweise)
+    aiReviewIssues.value = aiReviewIssues.value.filter(i => i.item_id !== itemId);
+
     // Temp-Items (offline erstellt) brauchen keinen Server-Call
     if (typeof itemId === 'string' && itemId.startsWith('temp-')) {
       return;
@@ -296,6 +299,26 @@ export const useShoppingStore = defineStore('shopping', () => {
       if (removedItem) items.value.push(removedItem);
       throw err;
     }
+  }
+
+  /** Menge/Einheit/Name eines Items aktualisieren */
+  async function updateItem(itemId, { amount, unit, ingredient_name } = {}) {
+    const body = {};
+    if (amount !== undefined) body.amount = amount;
+    if (unit !== undefined) body.unit = unit;
+    if (ingredient_name !== undefined) body.ingredient_name = ingredient_name;
+
+    const data = await api.put(`/shopping/item/${itemId}`, body);
+
+    // Lokales Item sofort aktualisieren
+    const item = items.value.find(i => i.id === itemId);
+    if (item && data.item) {
+      item.amount = data.item.amount;
+      item.unit = data.item.unit;
+      item.ingredient_name = data.item.ingredient_name;
+    }
+
+    return data;
   }
 
   /** Vorratscheck laden (welche Vorräte sollten für den Wochenplan vorhanden sein?) */
@@ -396,6 +419,10 @@ export const useShoppingStore = defineStore('shopping', () => {
 
   /** Vorschlag eines AI-Issues anwenden */
   async function applyIssueSuggestion(issue, issueIndex) {
+    // Issue sofort entfernen (Optimistic UI) – verhindert Stale-Index-Probleme
+    // wenn deleteItem() das Array ebenfalls modifiziert
+    dismissIssue(issueIndex);
+
     try {
       const action = issue.suggestion?.action;
       const itemId = issue.item_id;
@@ -435,13 +462,43 @@ export const useShoppingStore = defineStore('shopping', () => {
           });
         }
       } else if (action === 'merge' && itemId) {
-        // Duplikat zusammenführen: das Item entfernen (das andere bleibt)
-        await deleteItem(itemId);
+        // KI-gestütztes Zusammenführen: Ziel-Item aktualisieren und Quell-Item löschen
+        const targetId = issue.merge_target_id;
+        const sourceItem = items.value.find(i => i.id === itemId);
+
+        if (targetId && issue.merged_amount != null) {
+          // Neues Format: KI hat Merge-Details geliefert
+          await updateItem(targetId, {
+            amount: issue.merged_amount,
+            unit: issue.merged_unit || null,
+            ingredient_name: issue.merged_name || null,
+          });
+        } else if (sourceItem) {
+          // Fallback: Duplikat über Zutatennamen suchen und Mengen addieren
+          const ingredientLower = (issue.ingredient || sourceItem.ingredient_name || '').toLowerCase();
+          const target = items.value.find(i =>
+            i.id !== itemId &&
+            (i.ingredient_name || '').toLowerCase() === ingredientLower
+          );
+          if (target) {
+            const sameUnit = (target.unit || '') === (sourceItem.unit || '');
+            const newAmount = sameUnit
+              ? (parseFloat(target.amount) || 0) + (parseFloat(sourceItem.amount) || 0)
+              : target.amount; // Verschiedene Einheiten → Ziel-Menge behalten
+            await updateItem(target.id, {
+              amount: newAmount || target.amount,
+              unit: target.unit || sourceItem.unit || null,
+            });
+          }
+        }
+        // Quell-Item entfernen (deleteItem bereinigt auch zugehörige AI-Issues)
+        if (sourceItem) {
+          await deleteItem(itemId);
+        }
       } else if (action === 'review') {
         // "Prüfen" → nur den Hinweis verwerfen, User soll selbst schauen
       }
-      // Issue nach Anwendung entfernen
-      dismissIssue(issueIndex);
+      // Issue wurde bereits am Anfang entfernt (Optimistic UI)
     } catch (err) {
       console.error('[Shopping] Fehler beim Anwenden des KI-Vorschlags:', err);
       throw err;
@@ -624,7 +681,7 @@ export const useShoppingStore = defineStore('shopping', () => {
     pantryCheck, pantryCheckLoading,
     // KI-Review
     aiReviewIssues, aiReviewAutoResolved, aiReviewLoading, userSettings, userSettingsLoaded,
-    generateList, fetchActiveList, fetchListHistory, loadList, reactivateList, toggleItem, matchWithRewe, completePurchase, addItem, deleteItem, moveToPantry,
+    generateList, fetchActiveList, fetchListHistory, loadList, reactivateList, toggleItem, matchWithRewe, completePurchase, addItem, deleteItem, updateItem, moveToPantry,
     fetchPantryCheck, moveFromPantryToList,
     fetchAIReview, dismissIssue, dismissAllIssues, applyIssueSuggestion, fetchUserSettings, saveUserSetting,
     searchReweProducts, setReweProduct, updateReweQuantity, fetchPreferences, deletePreference, updatePreference, clearAllPreferences,

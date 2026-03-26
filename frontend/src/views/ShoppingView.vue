@@ -564,9 +564,26 @@
                     <span v-else-if="item.source === 'bring'" title="Aus Bring! importiert" class="text-teal-400 dark:text-teal-500">
                       <Download class="w-3 h-3" />
                     </span>
-                    <span v-if="item.amount" class="text-stone-400 dark:text-stone-500 text-xs">
+                    <!-- Menge (klickbar zum Bearbeiten) -->
+                    <button
+                      v-if="item.amount && !selectMode && editingItemId !== item.id"
+                      @click.stop="startEditItem(item)"
+                      class="bg-stone-100 hover:bg-stone-200 dark:bg-stone-800 dark:hover:bg-stone-700 px-1.5 py-0.5 rounded text-stone-500 dark:text-stone-400 text-xs transition-colors"
+                      title="Menge anpassen"
+                    >
+                      {{ item.amount }} {{ item.unit }}
+                    </button>
+                    <span v-else-if="item.amount && (selectMode || editingItemId === item.id)" class="text-stone-400 dark:text-stone-500 text-xs">
                       {{ item.amount }} {{ item.unit }}
                     </span>
+                    <button
+                      v-else-if="!item.amount && !selectMode && editingItemId !== item.id"
+                      @click.stop="startEditItem(item)"
+                      class="text-stone-400 hover:text-stone-500 dark:hover:text-stone-400 dark:text-stone-500 text-xs transition-colors"
+                      title="Menge hinzufügen"
+                    >
+                      <Plus class="inline w-3 h-3" /> Menge
+                    </button>
                     <!-- Mini Rezept-Thumbnails -->
                     <div v-if="showRecipeLinks && item.recipes?.length" class="flex -space-x-1.5">
                       <router-link
@@ -614,7 +631,7 @@
                         </p>
                         <div v-if="issue.suggestion" class="flex gap-2 mt-1">
                           <button
-                            @click.stop="applyAISuggestion(issue, issueIdx)"
+                            @click.stop="applyAISuggestion(issue, getGlobalIssueIndex(item.id, issueIdx))"
                             class="font-medium underline underline-offset-2 hover:no-underline"
                           >
                             {{ issue.suggestion.label || 'Anwenden' }}
@@ -649,6 +666,54 @@
                   </button>
                 </div>
               </div>
+
+              <!-- Inline-Mengen-Editor -->
+              <Transition name="slide">
+                <div v-if="editingItemId === item.id" class="mx-3 -mt-1 pb-3" @click.stop>
+                  <div class="space-y-2 bg-stone-50 dark:bg-stone-800/60 px-3 py-2.5 border border-stone-200 dark:border-stone-700 rounded-xl">
+                    <div class="flex items-center gap-2">
+                      <input
+                        ref="editAmountInput"
+                        v-model.number="editAmount"
+                        type="number"
+                        step="any"
+                        min="0"
+                        placeholder="Menge"
+                        class="bg-white dark:bg-stone-900 px-2.5 py-1.5 border border-stone-300 dark:border-stone-600 rounded-lg focus:outline-none focus:ring-2 w-24 text-sm focus:ring-accent-500"
+                        @keydown.enter="saveEditItem(item)"
+                        @keydown.escape="cancelEditItem"
+                      />
+                      <input
+                        v-model="editUnit"
+                        type="text"
+                        placeholder="Einheit (g, ml, Stk...)"
+                        class="flex-1 bg-white dark:bg-stone-900 px-2.5 py-1.5 border border-stone-300 dark:border-stone-600 rounded-lg focus:outline-none focus:ring-2 text-sm focus:ring-accent-500"
+                        @keydown.enter="saveEditItem(item)"
+                        @keydown.escape="cancelEditItem"
+                      />
+                      <button
+                        @click="saveEditItem(item)"
+                        class="p-1.5 rounded-lg text-white transition-colors bg-accent-500 hover:bg-accent-600 shrink-0"
+                        title="Speichern"
+                      >
+                        <Check class="w-4 h-4" />
+                      </button>
+                      <button
+                        @click="cancelEditItem"
+                        class="hover:bg-stone-200 dark:hover:bg-stone-700 p-1.5 rounded-lg text-stone-400 transition-colors shrink-0"
+                        title="Abbrechen"
+                      >
+                        <X class="w-4 h-4" />
+                      </button>
+                    </div>
+                    <!-- Warnung bei zu niedriger Menge -->
+                    <div v-if="editAmountWarning" class="flex items-start gap-1.5 text-amber-600 dark:text-amber-400 text-xs">
+                      <AlertTriangle class="mt-0.5 w-3.5 h-3.5 shrink-0" />
+                      <span>{{ editAmountWarning }}</span>
+                    </div>
+                  </div>
+                </div>
+              </Transition>
 
               <!-- REWE-Produkt-Karte (wenn zugewiesen) -->
               <div v-if="item.rewe_product" class="mx-3 pb-3" :class="selectMode ? 'pointer-events-none select-none' : ''">
@@ -1353,6 +1418,24 @@
                       <div>
                         <p class="font-medium text-stone-700 dark:text-stone-200 text-sm">Intelligente Duplikat-Erkennung</p>
                         <p class="text-stone-400 dark:text-stone-500 text-xs">KI erkennt und vereint ähnliche Zutaten (z.B. Tomaten/Cherry-Tomaten, Singular/Plural)</p>
+                      </div>
+                    </label>
+
+                    <!-- Auto KI-Check nach REWE -->
+                    <label class="group flex items-center gap-3 mb-5 cursor-pointer select-none">
+                      <div class="relative">
+                        <input
+                          type="checkbox"
+                          :checked="shoppingStore.userSettings.shopping_auto_ai_after_rewe === '1'"
+                          @change="toggleUserSetting('shopping_auto_ai_after_rewe')"
+                          class="sr-only peer"
+                        />
+                        <div class="bg-stone-200 dark:bg-stone-600 peer-checked:bg-violet-500 rounded-full w-9 h-5 transition-colors" />
+                        <div class="top-0.5 left-0.5 absolute bg-white shadow-sm rounded-full w-4 h-4 transition-transform peer-checked:translate-x-4" />
+                      </div>
+                      <div>
+                        <p class="font-medium text-stone-700 dark:text-stone-200 text-sm">KI-Check nach REWE-Abgleich</p>
+                        <p class="text-stone-400 dark:text-stone-500 text-xs">Nach dem REWE-Produktabgleich automatisch einen KI-Check durchführen</p>
                       </div>
                     </label>
 
@@ -2634,6 +2717,24 @@ const mergeSelection = ref([]);  // Wird aus selectedItems befüllt
 const showMergeDialog = ref(false);
 const mergeName = ref('');       // Gewählter Name für das zusammengefasste Item
 
+// Inline-Mengen-Editor
+const editingItemId = ref(null);
+const editAmount = ref(null);
+const editUnit = ref('');
+const editRequiredAmount = ref(null); // Benötigte Menge aus Rezepten
+const editAmountInput = ref(null);
+
+const editAmountWarning = computed(() => {
+  if (!editRequiredAmount.value || editAmount.value == null || editAmount.value === '') return null;
+  const required = editRequiredAmount.value;
+  // Einfacher Vergleich nur bei gleicher oder fehlender Einheit
+  const unitMatch = !required.unit || !editUnit.value || required.unit.toLowerCase() === editUnit.value.toLowerCase();
+  if (unitMatch && editAmount.value < required.amount) {
+    return `Laut Rezepten werden ${required.amount} ${required.unit || ''} benötigt – du kaufst möglicherweise zu wenig ein.`;
+  }
+  return null;
+});
+
 // KI-Matching-Begründung Popover
 const activeMatchReason = ref(null); // { id, matchedBy, matchReason, x, y, arrowX }
 
@@ -2831,6 +2932,55 @@ async function deleteItem(item) {
   }
 }
 
+/** Inline-Mengen-Editor öffnen */
+function startEditItem(item) {
+  editingItemId.value = item.id;
+  editAmount.value = item.amount || null;
+  editUnit.value = item.unit || '';
+  editRequiredAmount.value = null;
+  nextTick(() => {
+    // Input fokussieren (editAmountInput ist ein Array wegen v-for + ref)
+    const inputs = editAmountInput.value;
+    if (Array.isArray(inputs) && inputs.length > 0) {
+      inputs[0].focus();
+      inputs[0].select();
+    } else if (inputs) {
+      inputs.focus();
+      inputs.select();
+    }
+  });
+}
+
+/** Inline-Mengen-Editor abschließen */
+async function saveEditItem(item) {
+  try {
+    const data = await shoppingStore.updateItem(item.id, {
+      amount: editAmount.value || null,
+      unit: editUnit.value?.trim() || null,
+    });
+    // Warnung prüfen (required amount vom Server)
+    if (data?.requiredAmount) {
+      editRequiredAmount.value = data.requiredAmount;
+      // Warnung anzeigen, aber Editor offen lassen wenn Menge zu niedrig
+      const unitMatch = !data.requiredAmount.unit || !editUnit.value || data.requiredAmount.unit.toLowerCase() === (editUnit.value || '').toLowerCase();
+      if (unitMatch && (editAmount.value || 0) < data.requiredAmount.amount) {
+        // Editor bleibt offen mit Warnung
+        return;
+      }
+    }
+    editingItemId.value = null;
+    editRequiredAmount.value = null;
+  } catch {
+    showError('Menge konnte nicht aktualisiert werden.');
+  }
+}
+
+/** Inline-Mengen-Editor abbrechen */
+function cancelEditItem() {
+  editingItemId.value = null;
+  editRequiredAmount.value = null;
+}
+
 async function moveToPantry(item) {
   try {
     await shoppingStore.moveToPantry(item.id);
@@ -2960,6 +3110,17 @@ async function matchWithRewe() {
   try {
     await shoppingStore.matchWithRewe();
     showSuccess('REWE-Produkte zugeordnet! 🏪');
+    // Optional: Auto-KI-Check nach REWE-Abgleich
+    if (shoppingStore.userSettings.shopping_auto_ai_after_rewe === '1') {
+      try {
+        await shoppingStore.fetchAIReview();
+        if (shoppingStore.aiReviewIssues.length > 0) {
+          showSuccess(`KI-Check: ${shoppingStore.aiReviewIssues.length} Hinweis${shoppingStore.aiReviewIssues.length > 1 ? 'e' : ''} gefunden`);
+        }
+      } catch {
+        // KI-Check-Fehler ist nicht kritisch
+      }
+    }
   } catch {
     // Fehler wird von useApi angezeigt
   } finally {
