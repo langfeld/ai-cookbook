@@ -100,7 +100,7 @@ ${aliasList}
 
 Analysiere den Artikel und entscheide:
 
-1. **Name normalisieren**: Entferne Markenbezeichnungen, Prozentangaben, Packungsgrößen aus dem Namen. 
+1. **Name normalisieren**: Entferne Markenbezeichnungen, Prozentangaben, Packungsgrößen aus dem Namen.
    - "Bio-Vollmilch 3.5%" → "Vollmilch"
    - "Barilla Penne Rigate 500g" → "Penne Rigate"
    - "Stückige Tomaten 400g Dose" → "Stückige Tomaten"
