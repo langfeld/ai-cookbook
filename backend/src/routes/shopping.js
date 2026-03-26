@@ -13,6 +13,8 @@ import { buildReweProductUrl, calculatePackagesNeeded, parsePackageSize } from '
 import { convertToBaseUnit, getUnitType, normalizeUnit, unitsCompatible } from '../utils/helpers.js';
 import { calculatePantryAllocations } from '../services/pantry-allocation.js';
 import { broadcastToHousehold } from './household-events.js';
+import { aiPantryTransfer } from '../services/pantry-transfer-ai.js';
+import { getSetting } from '../config/settings.js';
 
 // In-Memory Map: householdId → Map<userId, { username, display_name, started_at }>
 const activeShoppers = new Map();
@@ -778,52 +780,157 @@ export default async function shoppingRoutes(fastify) {
       unit = normalizeUnit(unit);
     }
 
-    // Prüfen ob Zutat schon im Vorratsschrank existiert
-    const pantryWhere = householdWhereClause(userId, householdId);
-    const existing = db.prepare(
-      `SELECT * FROM pantry WHERE (${pantryWhere.clause}) AND LOWER(ingredient_name) = LOWER(?)`
-    ).get(...pantryWhere.params, ingredientName);
+    // ── KI-gestützter Vorrats-Transfer ──
+    const aiEnabled = getSetting('ai_pantry_transfer', 'false') === 'true';
+    let aiResult = null;
+
+    if (aiEnabled) {
+      try {
+        aiResult = await aiPantryTransfer({
+          userId,
+          householdId,
+          ingredientName,
+          amount,
+          unit,
+        });
+      } catch (err) {
+        console.error('⚠️ AI Pantry-Transfer Fehler, Fallback auf regelbasiert:', err.message);
+        // Fallback auf regelbasierte Logik
+        aiResult = null;
+      }
+    }
 
     let pantryId;
-    if (existing) {
-      // Einheiten auf Kompatibilität prüfen bevor addiert wird
-      const existingConverted = convertToBaseUnit(existing.amount, existing.unit);
-      const newConverted = convertToBaseUnit(amount, unit);
-      const compat = unitsCompatible(existingConverted.unit, newConverted.unit);
+    let updated = false;
+    let finalName = ingredientName;
+    let finalCategory = 'Sonstiges';
 
-      if (compat.compatible) {
-        // Kompatible Einheiten → Mengen addieren (z.B. 500g + 200g)
-        db.prepare(
-          'UPDATE pantry SET amount = amount + ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
-        ).run(amount, existing.id);
-      } else {
-        // Inkompatible Einheiten (z.B. 500g + 2 Stk)
-        const existingType = getUnitType(existing.unit);
-        const newType = getUnitType(unit);
+    if (aiResult && !aiResult.errors?.some(e => e.startsWith('KI-Fehler'))) {
+      // ── AI-Pfad: KI bestimmt Name, Kategorie und Merge-Ziel ──
+      finalName = aiResult.normalized_name || ingredientName;
+      finalCategory = aiResult.category || 'Sonstiges';
+      const aiAmount = aiResult.amount || amount;
+      const aiUnit = aiResult.unit || unit;
 
-        if ((newType === 'weight' || newType === 'volume') && existingType === 'counting') {
-          // Neue Daten sind präziser → ersetzen
-          db.prepare(
-            'UPDATE pantry SET amount = ?, unit = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
-          ).run(amount, unit, existing.id);
+      if (aiResult.merge_with_pantry_id) {
+        // KI hat ein passendes Vorrats-Item gefunden → zusammenführen
+        const mergeTarget = db.prepare('SELECT * FROM pantry WHERE id = ?').get(aiResult.merge_with_pantry_id);
+
+        if (mergeTarget) {
+          // Einheiten-Kompatibilität prüfen (Sicherheitsnetz)
+          const existingConverted = convertToBaseUnit(mergeTarget.amount, mergeTarget.unit);
+          const newConverted = convertToBaseUnit(aiAmount, aiUnit);
+          const compat = unitsCompatible(existingConverted.unit, newConverted.unit);
+
+          if (compat.compatible) {
+            db.prepare(
+              'UPDATE pantry SET amount = amount + ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
+            ).run(aiAmount, mergeTarget.id);
+          } else {
+            // KI hat gematcht aber Einheiten passen nicht → trotzdem addieren
+            // (KI sollte bereits umgerechnet haben)
+            db.prepare(
+              'UPDATE pantry SET amount = amount + ?, unit = CASE WHEN ? IN (\'g\', \'kg\', \'ml\', \'l\') THEN ? ELSE unit END, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
+            ).run(aiAmount, aiUnit, aiUnit, mergeTarget.id);
+          }
+          pantryId = mergeTarget.id;
+          updated = true;
+          finalName = mergeTarget.ingredient_name; // Bestehenden Namen behalten
+        } else {
+          // Merge-Ziel existiert nicht mehr → neues Item
+          const result = db.prepare(
+            'INSERT INTO pantry (user_id, ingredient_name, amount, unit, category, household_id) VALUES (?, ?, ?, ?, ?, ?)'
+          ).run(userId, finalName, aiAmount, aiUnit, finalCategory, householdId || null);
+          pantryId = result.lastInsertRowid;
         }
-        // Sonst: bestehende Gewichts-/Volumendaten behalten
+      } else {
+        // KI: Kein Match → exakten Name-Check als Sicherheitsnetz (KI könnte Duplikat übersehen)
+        const pantryWhere = householdWhereClause(userId, householdId);
+        const existing = db.prepare(
+          `SELECT * FROM pantry WHERE (${pantryWhere.clause}) AND LOWER(ingredient_name) = LOWER(?)`
+        ).get(...pantryWhere.params, finalName);
+
+        if (existing) {
+          const existingConverted = convertToBaseUnit(existing.amount, existing.unit);
+          const newConverted = convertToBaseUnit(aiAmount, aiUnit);
+          const compat = unitsCompatible(existingConverted.unit, newConverted.unit);
+
+          if (compat.compatible) {
+            db.prepare(
+              'UPDATE pantry SET amount = amount + ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
+            ).run(aiAmount, existing.id);
+          } else {
+            const existingType = getUnitType(existing.unit);
+            const newType = getUnitType(aiUnit);
+            if ((newType === 'weight' || newType === 'volume') && existingType === 'counting') {
+              db.prepare(
+                'UPDATE pantry SET amount = ?, unit = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
+              ).run(aiAmount, aiUnit, existing.id);
+            }
+          }
+          pantryId = existing.id;
+          updated = true;
+          finalName = existing.ingredient_name;
+        } else {
+          const result = db.prepare(
+            'INSERT INTO pantry (user_id, ingredient_name, amount, unit, category, household_id) VALUES (?, ?, ?, ?, ?, ?)'
+          ).run(userId, finalName, aiAmount, aiUnit, finalCategory, householdId || null);
+          pantryId = result.lastInsertRowid;
+        }
       }
-      pantryId = existing.id;
     } else {
-      const result = db.prepare(
-        "INSERT INTO pantry (user_id, ingredient_name, amount, unit, category, household_id) VALUES (?, ?, ?, ?, 'Sonstiges', ?)"
-      ).run(userId, ingredientName, amount, unit, householdId || null);
-      pantryId = result.lastInsertRowid;
+      // ── Regelbasierter Pfad (Fallback) ──
+      const pantryWhere = householdWhereClause(userId, householdId);
+      const existing = db.prepare(
+        `SELECT * FROM pantry WHERE (${pantryWhere.clause}) AND LOWER(ingredient_name) = LOWER(?)`
+      ).get(...pantryWhere.params, ingredientName);
+
+      if (existing) {
+        const existingConverted = convertToBaseUnit(existing.amount, existing.unit);
+        const newConverted = convertToBaseUnit(amount, unit);
+        const compat = unitsCompatible(existingConverted.unit, newConverted.unit);
+
+        if (compat.compatible) {
+          db.prepare(
+            'UPDATE pantry SET amount = amount + ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
+          ).run(amount, existing.id);
+        } else {
+          const existingType = getUnitType(existing.unit);
+          const newType = getUnitType(unit);
+          if ((newType === 'weight' || newType === 'volume') && existingType === 'counting') {
+            db.prepare(
+              'UPDATE pantry SET amount = ?, unit = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
+            ).run(amount, unit, existing.id);
+          }
+        }
+        pantryId = existing.id;
+        updated = true;
+        finalName = existing.ingredient_name;
+      } else {
+        const result = db.prepare(
+          "INSERT INTO pantry (user_id, ingredient_name, amount, unit, category, household_id) VALUES (?, ?, ?, ?, 'Sonstiges', ?)"
+        ).run(userId, ingredientName, amount, unit, householdId || null);
+        pantryId = result.lastInsertRowid;
+      }
     }
 
     // Item von der Einkaufsliste entfernen
     db.prepare('DELETE FROM shopping_list_items WHERE id = ?').run(item.id);
 
     return {
-      message: `${ingredientName} in den Vorratsschrank verschoben`,
+      message: `${finalName} in den Vorratsschrank verschoben`,
       pantryId,
-      updated: !!existing,
+      updated,
+      ...(aiResult ? {
+        aiTransfer: {
+          original_name: ingredientName,
+          normalized_name: aiResult.normalized_name,
+          category: aiResult.category,
+          merged: !!aiResult.merge_with_pantry_id,
+          reasoning: aiResult.reasoning,
+          errors: aiResult.errors,
+        },
+      } : {}),
     };
   });
 

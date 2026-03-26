@@ -52,6 +52,9 @@ const ALLOWED_SETTINGS = new Set([
   // Vorratsabzug
   'ai_pantry_deduction',
   'ai_pantry_deduction_instant',
+  // Vorrats-Transfer
+  'ai_pantry_transfer',
+  'ai_pantry_transfer_instant',
   // REWE
   'rewe_enabled',
   // Haushalte
