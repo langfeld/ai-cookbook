@@ -473,6 +473,25 @@ export function initializeDatabase() {
       FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE CASCADE
     );
     CREATE INDEX IF NOT EXISTS idx_recipe_shares_token ON recipe_shares(share_token);
+
+    -- ============================================
+    -- KI-Vorratsabzug Logs (für Undo-Unterstützung)
+    -- ============================================
+    CREATE TABLE IF NOT EXISTS pantry_deductions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      meal_plan_entry_id INTEGER NOT NULL,
+      ingredient_name TEXT NOT NULL,
+      pantry_item_id INTEGER NOT NULL,
+      deducted_amount REAL NOT NULL,
+      deducted_unit TEXT,
+      original_pantry_amount REAL,
+      original_pantry_unit TEXT,
+      ai_reasoning TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (meal_plan_entry_id) REFERENCES meal_plan_entries(id) ON DELETE CASCADE,
+      FOREIGN KEY (pantry_item_id) REFERENCES pantry(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_pantry_deductions_entry ON pantry_deductions(meal_plan_entry_id);
   `);
 
   // ============================================

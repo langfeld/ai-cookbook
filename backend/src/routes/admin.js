@@ -49,6 +49,9 @@ const ALLOWED_SETTINGS = new Set([
   'anthropic_model',
   'ollama_base_url',
   'ollama_model',
+  // Vorratsabzug
+  'ai_pantry_deduction',
+  'ai_pantry_deduction_instant',
   // REWE
   'rewe_enabled',
   // Haushalte

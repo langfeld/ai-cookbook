@@ -11,6 +11,56 @@ import { householdWhereClause } from '../config/database.js';
 import { generateWeekPlan, generateReasoning, saveMealPlan, getMealPlan, getSuggestions } from '../services/meal-planner.js';
 import { getWeekStart, scaleIngredient, convertToBaseUnit, normalizeUnit, unitsCompatible, comparePantryAmount } from '../utils/helpers.js';
 import { broadcastToHousehold } from './household-events.js';
+import { getSetting } from '../config/settings.js';
+import { aiPantryDeduction, undoAIPantryDeduction } from '../services/pantry-deduction-ai.js';
+
+/**
+ * Regelbasierter Vorratsabzug (Original-Logik).
+ * Wird als Fallback verwendet wenn KI-Deduktion deaktiviert ist oder fehlschlägt.
+ */
+function fallbackPantryDeduction(entry, userId, householdId, newState) {
+  const ingredients = db.prepare('SELECT * FROM ingredients WHERE recipe_id = ?').all(entry.recipe_id);
+  let pantryUpdated = 0;
+
+  for (const ing of ingredients) {
+    if (ing.is_optional) continue;
+
+    const scaledAmount = ing.amount
+      ? scaleIngredient(ing.amount, entry.original_servings, entry.servings)
+      : null;
+
+    if (!scaledAmount || scaledAmount <= 0) continue;
+
+    const pantryHhWhere = householdWhereClause(userId, householdId);
+    const pantryItem = db.prepare(
+      `SELECT * FROM pantry WHERE (${pantryHhWhere.clause}) AND LOWER(ingredient_name) = LOWER(?)`
+    ).get(...pantryHhWhere.params, ing.name);
+
+    if (!pantryItem) continue;
+    if (pantryItem.is_permanent) continue;
+
+    const result = comparePantryAmount(
+      ing.name, scaledAmount, ing.unit, pantryItem.amount, pantryItem.unit
+    );
+    if (!result.compatible) continue;
+
+    const pantryNormalized = convertToBaseUnit(pantryItem.amount, pantryItem.unit);
+
+    if (newState === 1) {
+      const newAmount = Math.max(0, pantryNormalized.amount - result.pantryBaseDeduction);
+      db.prepare('UPDATE pantry SET amount = ?, unit = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
+        .run(newAmount, pantryNormalized.unit, pantryItem.id);
+      pantryUpdated++;
+    } else {
+      const newAmount = pantryNormalized.amount + result.pantryBaseDeduction;
+      db.prepare('UPDATE pantry SET amount = ?, unit = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
+        .run(newAmount, pantryNormalized.unit, pantryItem.id);
+      pantryUpdated++;
+    }
+  }
+
+  return pantryUpdated;
+}
 
 export default async function mealplanRoutes(fastify) {
   fastify.addHook('onRequest', fastify.resolveHousehold);
@@ -774,50 +824,45 @@ export default async function mealplanRoutes(fastify) {
     }
 
     // ── Vorräte anpassen ──
-    const ingredients = db.prepare('SELECT * FROM ingredients WHERE recipe_id = ?').all(entry.recipe_id);
+    const useAIDeduction = getSetting('ai_pantry_deduction', 'false') === 'true';
     let pantryUpdated = 0;
+    let aiDeductionResult = null;
 
-    for (const ing of ingredients) {
-      if (ing.is_optional) continue; // Optionale Zutaten nicht abziehen
-
-      // Menge auf geplante Portionen skalieren
-      const scaledAmount = ing.amount
-        ? scaleIngredient(ing.amount, entry.original_servings, entry.servings)
-        : null;
-
-      if (!scaledAmount || scaledAmount <= 0) continue;
-
-      // Passenden Vorrat suchen
-      const pantryHhWhere = householdWhereClause(userId, request.householdId);
-      const pantryItem = db.prepare(
-        `SELECT * FROM pantry WHERE (${pantryHhWhere.clause}) AND LOWER(ingredient_name) = LOWER(?)`
-      ).get(...pantryHhWhere.params, ing.name);
-
-      if (!pantryItem) continue; // Kein Vorrat vorhanden → nichts abziehen
-      if (pantryItem.is_permanent) continue; // Dauerhafte Vorräte nicht verbrauchen
-
-      // Vergleich inkl. Küchenstandard-Tabelle (Stück↔g, Zehe↔g etc.)
-      const result = comparePantryAmount(
-        ing.name, scaledAmount, ing.unit, pantryItem.amount, pantryItem.unit
-      );
-      if (!result.compatible) continue;
-
-      // Pantry in Basiseinheit für DB-Update
-      const pantryNormalized = convertToBaseUnit(pantryItem.amount, pantryItem.unit);
-
+    if (useAIDeduction) {
+      // ── KI-gestützter Vorratsabzug ──
       if (newState === 1) {
-        // Gekocht → Vorrat abziehen
-        const newAmount = Math.max(0, pantryNormalized.amount - result.pantryBaseDeduction);
-        db.prepare('UPDATE pantry SET amount = ?, unit = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
-          .run(newAmount, pantryNormalized.unit, pantryItem.id);
-        pantryUpdated++;
+        // Rezepttitel laden
+        const recipe = db.prepare('SELECT title FROM recipes WHERE id = ?').get(entry.recipe_id);
+        try {
+          aiDeductionResult = await aiPantryDeduction({
+            userId,
+            householdId: request.householdId,
+            entryId: entry.id,
+            recipeId: entry.recipe_id,
+            recipeTitle: recipe?.title || 'Unbekanntes Rezept',
+            originalServings: entry.original_servings,
+            plannedServings: entry.servings,
+          });
+          pantryUpdated = aiDeductionResult.deductions.length;
+          if (aiDeductionResult.errors.length > 0) {
+            console.warn('⚠️ AI Pantry-Deduction Warnungen:', aiDeductionResult.errors);
+          }
+        } catch (err) {
+          console.error('❌ AI Pantry-Deduction Fehler, Fallback auf regelbasiert:', err.message);
+          // Fallback auf regelbasierte Deduktion
+          pantryUpdated = fallbackPantryDeduction(entry, userId, request.householdId, 1);
+        }
       } else {
-        // Rückgängig → Vorrat wieder gutschreiben
-        const newAmount = pantryNormalized.amount + result.pantryBaseDeduction;
-        db.prepare('UPDATE pantry SET amount = ?, unit = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
-          .run(newAmount, pantryNormalized.unit, pantryItem.id);
-        pantryUpdated++;
+        // Rückgängig: Gespeicherte AI-Deduktionen rückgängig machen
+        const undoResult = undoAIPantryDeduction(entry.id);
+        pantryUpdated = undoResult.restored;
+        if (undoResult.errors.length > 0) {
+          console.warn('⚠️ AI Pantry-Undo Warnungen:', undoResult.errors);
+        }
       }
+    } else {
+      // ── Regelbasierter Vorratsabzug (Original-Logik) ──
+      pantryUpdated = fallbackPantryDeduction(entry, userId, request.householdId, newState);
     }
 
     // Bei Tausch: kompletten Plan zurückgeben, damit Frontend Positionen aktualisieren kann
@@ -827,6 +872,10 @@ export default async function mealplanRoutes(fastify) {
         message: 'Als gekocht markiert und auf heute verschoben!',
         is_cooked: newState,
         pantryUpdated,
+        aiDeduction: aiDeductionResult ? {
+          deductions: aiDeductionResult.deductions,
+          errors: aiDeductionResult.errors,
+        } : undefined,
         swapped: true,
         plan: updatedPlan,
       };
@@ -836,6 +885,10 @@ export default async function mealplanRoutes(fastify) {
       message: newState ? 'Als gekocht markiert!' : 'Markierung entfernt',
       is_cooked: newState,
       pantryUpdated,
+      aiDeduction: aiDeductionResult ? {
+        deductions: aiDeductionResult.deductions,
+        errors: aiDeductionResult.errors,
+      } : undefined,
       swapped: false,
     };
   });
