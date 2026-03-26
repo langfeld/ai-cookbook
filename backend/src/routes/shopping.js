@@ -65,8 +65,8 @@ export default async function shoppingRoutes(fastify) {
     const userAutoReview = db.prepare(
       "SELECT value FROM user_settings WHERE user_id = ? AND key = 'shopping_auto_ai_review'"
     ).get(userId);
-    const smartDedup = userSmartDedup?.value === 'true';
-    const autoReview = userAutoReview?.value === 'true';
+    const smartDedup = userSmartDedup?.value === 'true' || userSmartDedup?.value === '1';
+    const autoReview = userAutoReview?.value === 'true' || userAutoReview?.value === '1';
 
     // Prüfen ob Plan existiert und dem User gehört
     const mpWhere = householdWhereClause(userId, householdId);

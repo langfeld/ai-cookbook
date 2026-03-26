@@ -96,6 +96,44 @@ Alle blockierten Zutaten einsehen und einzeln freigeben.
 
 Einzelne Artikel direkt vom Einkaufszettel in den Vorratsschrank übertragen — noch vor dem Einkaufsabschluss.
 
+## KI-Überprüfung (KI-Check)
+
+Eine KI-gestützte Überprüfung der Einkaufsliste, die automatisch oder manuell ausgelöst werden kann:
+
+### Prüfungen
+
+| Typ | Beschreibung | Farbe |
+|-----|-------------|-------|
+| **Fehlende Zutaten** | Zutaten aus Rezepten, die weder auf der Liste noch im Vorrat sind | Orange |
+| **Mengen-Logik** | Stückzahlen vs. Packungseinheiten (z.B. „4 Tortillas“ ≠ 4 Packungen) | Amber |
+| **Vorrats-Abdeckung** | Artikel die der Vorrat bereits abdeckt | Grün |
+| **Plausibilität** | Ungewöhnlich hohe/niedrige Mengen | Amber |
+| **Duplikate** | Semantisch gleiche Zutaten als separate Einträge | Amber |
+| **REWE-Zuordnungsfehler** | Falsches REWE-Produkt zugewiesen (z.B. „Bohnen“ → „Bohnenaufstrich“) | Rot |
+| **Fehlende REWE-Artikel** | Zutaten ohne REWE-Produktzuordnung | Rot |
+
+### Features
+
+- **Manueller KI-Check** — violetter Button in der Kopfzeile mit Badge-Counter für offene Hinweise
+- **Automatischer KI-Check** — optional beim Generieren der Einkaufsliste (User-Setting)
+- **Inline-Hinweise** — farbcodierte Hinweise direkt am betroffenen Artikel
+- **Globale Hinweise** — für Issues ohne Artikelbezug (z.B. fehlende Zutaten)
+- **Vorschläge anwenden** — Ein-Klick-Aktionen: Entfernen, Abhaken, Hinzufügen, Menge anpassen, Zusammenführen
+- **Auto-Resolve** — hohe Vorrats-Abdeckung (Konfidenz ≥ 90%) wird automatisch abgehakt
+- **Vergangene Tage beachtet** — übersprungene Wochentage werden nicht als fehlend gemeldet
+- **Admin-Toggle** — zwischen Thinking-Modus (gründlicher) und Instant-Modus (schneller) umschaltbar
+
+## Intelligente Duplikat-Erkennung
+
+Optionale KI-gestützte Zusammenführung ähnlicher Zutaten beim Generieren der Einkaufsliste:
+
+- **Synonyme** — „Butter“ und „Frische Butter“
+- **Singular/Plural** — „Tomate“ und „Tomaten“
+- **Wortreihenfolge** — „Paprika rot“ und „rote Paprika“
+- **Schreibvarianten** — „Joghurt“ und „Jogurt“
+- **Dedup-Hinweis** — zusammengeführte Artikel zeigen einen blauen Info-Hinweis mit der Merge-Erklärung
+- Aktivierbar über **⚙️ Einstellungen → 🤖 KI → Intelligente Duplikat-Erkennung**
+
 ## Offline-Modus
 
 Die Einkaufsliste funktioniert auch **ohne Netzwerkverbindung**:

@@ -25,7 +25,7 @@ Das `kimi-k2.5`-Modell unterstützt zwei Modi über den `thinking`-Parameter:
 
 | Variante | Modus | Verwendung |
 |----------|-------|------------|
-| **K2.5 Thinking** | `thinking: enabled` (Standard) | Komplexe Aufgaben (Rezept-Import, Wochenplan-Reasoning). Temperature fest 1.0. |
+| **K2.5 Thinking** | `thinking: enabled` (Standard) | Komplexe Aufgaben (Rezept-Import, Wochenplan-Reasoning, Einkaufslisten-Check). Temperature fest 1.0. |
 | **K2.5 Instant** | `thinking: disabled` | Einfache strukturierte Aufgaben (JSON-Erzeugung, Nährwert-Schätzung). Schneller, temperature fest 0.6. |
 
 Das **schnelle Modell** (`KIMI_SIMPLE_MODEL`) nutzt automatisch den Instant-Modus (Thinking deaktiviert) — konfigurierbar im Admin-Panel unter *KI-Konfiguration → Schnelles Modell*.

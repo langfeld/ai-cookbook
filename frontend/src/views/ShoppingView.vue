@@ -7,6 +7,8 @@
   - Gruppierung nach Abteilungen
   - Abhaken der Produkte
   - REWE-Integration (Produktsuche/Matching)
+  - KI-Überprüfung (fehlende Zutaten, Mengenlogik, Duplikate, REWE-Zuordnung)
+  - Intelligente Duplikat-Erkennung (KI-basiert)
   - Einkauf abschließen → Vorratsschrank
 -->
 <template>
@@ -274,7 +276,7 @@
           <Loader2 v-if="shoppingStore.aiReviewLoading" class="w-4 h-4 animate-spin" />
           <Bot v-else class="w-4 h-4" />
           KI-Check
-          <span v-if="shoppingStore.aiReviewIssues.length" class="absolute -top-1.5 -right-1.5 flex justify-center items-center bg-red-500 rounded-full w-5 h-5 text-white text-xs">
+          <span v-if="shoppingStore.aiReviewIssues.length" class="-top-1.5 -right-1.5 absolute flex justify-center items-center bg-red-500 rounded-full w-5 h-5 text-white text-xs">
             {{ shoppingStore.aiReviewIssues.length }}
           </span>
         </button>
@@ -600,9 +602,16 @@
                       class="flex items-start gap-1.5 mt-1 px-2 py-1 rounded-lg text-xs"
                       :class="aiIssueClasses(issue.type)"
                     >
-                      <component :is="aiIssueIcon(issue.type)" class="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                      <component :is="aiIssueIcon(issue.type)" class="mt-0.5 w-3.5 h-3.5 shrink-0" />
                       <div class="flex-1 min-w-0">
                         <p>{{ issue.message }}</p>
+                        <p v-if="issue.recipe_id && issue.recipe_title" class="mt-0.5">
+                          <router-link
+                            :to="`/recipes/${issue.recipe_id}`"
+                            @click.stop
+                            class="font-medium underline underline-offset-2 hover:no-underline"
+                          >{{ issue.recipe_title }}</router-link>
+                        </p>
                         <div v-if="issue.suggestion" class="flex gap-2 mt-1">
                           <button
                             @click.stop="applyAISuggestion(issue, issueIdx)"
@@ -770,10 +779,17 @@
             class="flex items-start gap-2 px-3 py-2 rounded-xl text-sm"
             :class="aiIssueClasses(issue.type)"
           >
-            <component :is="aiIssueIcon(issue.type)" class="w-4 h-4 shrink-0 mt-0.5" />
+            <component :is="aiIssueIcon(issue.type)" class="mt-0.5 w-4 h-4 shrink-0" />
             <div class="flex-1 min-w-0">
               <p>{{ issue.message }}</p>
               <p v-if="issue.ingredient" class="mt-0.5 font-medium">{{ issue.ingredient }}</p>
+              <p v-if="issue.recipe_id && issue.recipe_title" class="mt-0.5 text-xs">
+                Rezept:
+                <router-link
+                  :to="`/recipes/${issue.recipe_id}`"
+                  class="font-medium underline underline-offset-2 hover:no-underline"
+                >{{ issue.recipe_title }}</router-link>
+              </p>
               <div v-if="issue.suggestion" class="flex gap-2 mt-1">
                 <button
                   @click="applyAISuggestion(issue, issue._globalIdx)"
@@ -795,8 +811,8 @@
 
       <!-- KI-Review: Auto-resolved Info -->
       <Transition name="slide">
-        <div v-if="shoppingStore.aiReviewAutoResolved.length > 0" class="flex items-start gap-2 bg-emerald-50 dark:bg-emerald-900/20 px-3 py-2 border border-emerald-200 dark:border-emerald-800/40 rounded-xl text-sm text-emerald-700 dark:text-emerald-300">
-          <CheckCircle class="w-4 h-4 shrink-0 mt-0.5" />
+        <div v-if="shoppingStore.aiReviewAutoResolved.length > 0" class="flex items-start gap-2 bg-emerald-50 dark:bg-emerald-900/20 px-3 py-2 border border-emerald-200 dark:border-emerald-800/40 rounded-xl text-emerald-700 dark:text-emerald-300 text-sm">
+          <CheckCircle class="mt-0.5 w-4 h-4 shrink-0" />
           <p>{{ shoppingStore.aiReviewAutoResolved.length }} Artikel automatisch abgehakt (Vorrat ausreichend)</p>
         </div>
       </Transition>
@@ -1305,7 +1321,7 @@
                     </h3>
 
                     <!-- Auto-Review beim Generieren -->
-                    <label class="group flex items-center gap-3 cursor-pointer select-none mb-5">
+                    <label class="group flex items-center gap-3 mb-5 cursor-pointer select-none">
                       <div class="relative">
                         <input
                           type="checkbox"
@@ -1323,7 +1339,7 @@
                     </label>
 
                     <!-- Smart Dedup -->
-                    <label class="group flex items-center gap-3 cursor-pointer select-none mb-5">
+                    <label class="group flex items-center gap-3 mb-5 cursor-pointer select-none">
                       <div class="relative">
                         <input
                           type="checkbox"
@@ -1344,7 +1360,7 @@
 
                     <!-- Info -->
                     <div class="flex items-start gap-2 mt-4 text-stone-400 dark:text-stone-500 text-xs">
-                      <Info class="w-4 h-4 shrink-0 mt-0.5" />
+                      <Info class="mt-0.5 w-4 h-4 shrink-0" />
                       <p>
                         Der KI-Check prüft: fehlende Zutaten, Mengenlogik (z.B. 4 Tortillas ≠ 4 Packungen),
                         Vorrats-Abdeckung, Plausibilität, Duplikate, REWE-Produkt-Zuordnung und fehlende REWE-Artikel.

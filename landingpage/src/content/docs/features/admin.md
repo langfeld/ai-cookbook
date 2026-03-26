@@ -22,6 +22,8 @@ description: Dashboard, Benutzerverwaltung, Systemeinstellungen und Datenverwalt
 - **Registrierung** aktivieren/deaktivieren
 - **Wartungsmodus**
 - **KI-Anbieter** wählen (inkl. schnelles Modell für einfache Aufgaben)
+- **Rezept-Import: Instant-Modus** — schnelleres KI-Parsing ohne Thinking
+- **Einkaufslisten-Check: Instant-Modus** — schnellerer KI-Review ohne Thinking
 - **Upload-Größe** konfigurieren
 - **REWE-Integration** ein-/ausschalten
 - **Max. Haushaltsmitglieder** konfigurieren (Standard: 10)

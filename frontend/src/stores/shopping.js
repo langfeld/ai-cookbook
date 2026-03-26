@@ -26,6 +26,7 @@ export const useShoppingStore = defineStore('shopping', () => {
   const aiReviewIssues = ref([]);
   const aiReviewAutoResolved = ref([]);
   const aiReviewLoading = ref(false);
+  const aiReviewDismissed = ref(false); // Guard: verhindert Re-Loading nach Dismiss
 
   // User-Settings (serverseitig)
   const userSettings = ref({});
@@ -60,6 +61,7 @@ export const useShoppingStore = defineStore('shopping', () => {
   /** Einkaufsliste aus Wochenplan generieren */
   async function generateList(mealPlanId, { name, excludePastDays = true, mode = 'replace' } = {}) {
     loading.value = true;
+    aiReviewDismissed.value = false; // Guard zurücksetzen bei neuer Liste
     try {
       const data = await api.post('/shopping/generate', { mealPlanId, name, excludePastDays, mode });
       await fetchActiveList();
@@ -84,11 +86,11 @@ export const useShoppingStore = defineStore('shopping', () => {
       items.value = data.items || [];
       lastFetched.value = Date.now();
       // AI-Review Issues aus der Liste laden (falls vorhanden)
-      if (data.list?.ai_review_issues) {
+      if (data.list?.ai_review_issues && !aiReviewDismissed.value) {
         try {
           aiReviewIssues.value = JSON.parse(data.list.ai_review_issues);
         } catch { aiReviewIssues.value = []; }
-      } else {
+      } else if (!aiReviewDismissed.value) {
         aiReviewIssues.value = [];
       }
       return data;
@@ -357,6 +359,7 @@ export const useShoppingStore = defineStore('shopping', () => {
   async function fetchAIReview() {
     if (!currentList.value?.id) return;
     aiReviewLoading.value = true;
+    aiReviewDismissed.value = false; // Guard zurücksetzen bei neuem Review
     try {
       const data = await api.post('/shopping/ai-review', { listId: currentList.value.id });
       aiReviewIssues.value = data.issues || [];
@@ -381,42 +384,61 @@ export const useShoppingStore = defineStore('shopping', () => {
 
   /** Alle AI-Issues verwerfen und serverseitig löschen */
   async function dismissAllIssues() {
-    if (currentList.value?.id) {
-      try {
-        await api.del(`/shopping/ai-review?listId=${currentList.value.id}`);
-      } catch { /* ignore */ }
-    }
+    // Sofort lokal clearen (Optimistic UI)
     aiReviewIssues.value = [];
     aiReviewAutoResolved.value = [];
+    aiReviewDismissed.value = true;
+    // Server-Cleanup fire-and-forget
+    if (currentList.value?.id) {
+      api.del(`/shopping/ai-review?listId=${currentList.value.id}`).catch(() => {});
+    }
   }
 
   /** Vorschlag eines AI-Issues anwenden */
   async function applyIssueSuggestion(issue, issueIndex) {
     try {
-      if (issue.suggestion?.action === 'remove' && issue.item_id) {
-        await deleteItem(issue.item_id);
-      } else if (issue.suggestion?.action === 'check' && issue.item_id) {
-        const item = items.value.find(i => i.id === issue.item_id);
+      const action = issue.suggestion?.action;
+      const itemId = issue.item_id;
+
+      if (action === 'remove' && itemId) {
+        await deleteItem(itemId);
+      } else if (action === 'check' && itemId) {
+        const item = items.value.find(i => i.id === itemId);
         if (item && !item.is_checked) {
-          await toggleItem(issue.item_id);
+          await toggleItem(itemId);
         }
-      } else if (issue.suggestion?.action === 'add') {
+      } else if (action === 'add') {
         await addItem({
           ingredient_name: issue.suggestion.ingredient_name || issue.ingredient,
           amount: issue.suggestion.amount || null,
           unit: issue.suggestion.unit || null,
         });
-      } else if (issue.suggestion?.action === 'update_amount' && issue.item_id) {
-        // Menge aktualisieren – derzeit kein spezieller Endpoint, Item löschen + neu anlegen
-        const item = items.value.find(i => i.id === issue.item_id);
+      } else if (action === 'update_amount' && itemId) {
+        const item = items.value.find(i => i.id === itemId);
         if (item) {
-          await deleteItem(issue.item_id);
+          await deleteItem(itemId);
           await addItem({
             ingredient_name: item.ingredient_name,
             amount: issue.suggestion.amount,
             unit: issue.suggestion.unit || item.unit,
           });
         }
+      } else if (action === 'adjust' && itemId) {
+        // Menge anpassen
+        const item = items.value.find(i => i.id === itemId);
+        if (item && issue.suggestion.amount != null) {
+          await deleteItem(itemId);
+          await addItem({
+            ingredient_name: item.ingredient_name,
+            amount: issue.suggestion.amount,
+            unit: issue.suggestion.unit || item.unit,
+          });
+        }
+      } else if (action === 'merge' && itemId) {
+        // Duplikat zusammenführen: das Item entfernen (das andere bleibt)
+        await deleteItem(itemId);
+      } else if (action === 'review') {
+        // "Prüfen" → nur den Hinweis verwerfen, User soll selbst schauen
       }
       // Issue nach Anwendung entfernen
       dismissIssue(issueIndex);
