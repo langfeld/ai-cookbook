@@ -10,8 +10,9 @@ import db from '../config/database.js';
 
 // Erlaubte User-Setting-Keys (Whitelist)
 const ALLOWED_USER_SETTINGS = new Set([
-  'shopping_auto_ai_review',   // Automatischer KI-Check beim Generieren der Einkaufsliste
-  'shopping_smart_dedup',      // Intelligente KI-Duplikaterkennung statt einfacher Aggregation
+  'shopping_auto_ai_review',        // Automatischer KI-Check beim Generieren der Einkaufsliste
+  'shopping_smart_dedup',           // Intelligente KI-Duplikaterkennung statt einfacher Aggregation
+  'shopping_auto_ai_after_rewe',    // Automatischer KI-Check nach REWE-Abgleich
 ]);
 
 export default async function userSettingsRoutes(fastify) {
