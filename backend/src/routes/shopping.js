@@ -8,6 +8,7 @@
 import db from '../config/database.js';
 import { householdWhereClause } from '../config/database.js';
 import { generateShoppingList, saveShoppingList, processPurchase } from '../services/shopping-list.js';
+import { reviewShoppingList } from '../services/shopping-review.js';
 import { buildReweProductUrl, calculatePackagesNeeded, parsePackageSize } from '../services/rewe-api.js';
 import { convertToBaseUnit, getUnitType, normalizeUnit, unitsCompatible } from '../utils/helpers.js';
 import { calculatePantryAllocations } from '../services/pantry-allocation.js';
@@ -57,6 +58,16 @@ export default async function shoppingRoutes(fastify) {
     const householdId = request.householdId;
     const { mealPlanId, name, excludePastDays = true, mode = 'replace' } = request.body;
 
+    // User-Settings laden (Smart-Dedup und Auto-Review)
+    const userSmartDedup = db.prepare(
+      "SELECT value FROM user_settings WHERE user_id = ? AND key = 'shopping_smart_dedup'"
+    ).get(userId);
+    const userAutoReview = db.prepare(
+      "SELECT value FROM user_settings WHERE user_id = ? AND key = 'shopping_auto_ai_review'"
+    ).get(userId);
+    const smartDedup = userSmartDedup?.value === 'true';
+    const autoReview = userAutoReview?.value === 'true';
+
     // Prüfen ob Plan existiert und dem User gehört
     const mpWhere = householdWhereClause(userId, householdId);
     const plan = db.prepare(
@@ -68,7 +79,7 @@ export default async function shoppingRoutes(fastify) {
     }
 
     // Einkaufsliste generieren (mit Vorratsschrank-Abgleich + KI-Aggregation)
-    const shoppingData = await generateShoppingList(userId, householdId, mealPlanId, { excludePastDays });
+    const shoppingData = await generateShoppingList(userId, householdId, mealPlanId, { excludePastDays, smartDedup });
 
     // Aktive Liste ermitteln
     const slWhere = householdWhereClause(userId, householdId);
@@ -162,10 +173,22 @@ export default async function shoppingRoutes(fastify) {
     }
 
     broadcastToHousehold(householdId, 'shopping:generated', { list_id: listId }, userId);
+
+    // Automatischer KI-Review (wenn User-Setting aktiv)
+    let aiReview = null;
+    if (autoReview) {
+      try {
+        aiReview = await reviewShoppingList(userId, householdId, listId);
+      } catch (err) {
+        console.warn('⚠️ Auto-KI-Review fehlgeschlagen:', err.message);
+      }
+    }
+
     return {
       listId,
       ...shoppingData,
       mode,
+      aiReview,
       message: mode === 'append' ? 'Artikel zur Einkaufsliste hinzugefügt!' : 'Einkaufsliste generiert!',
     };
   });
@@ -1190,5 +1213,59 @@ export default async function shoppingRoutes(fastify) {
     return {
       shoppers: shoppers ? Array.from(shoppers.values()) : [],
     };
+  });
+
+  // ─────────────────────────────────────────────
+  // POST /api/shopping/ai-review
+  // KI-gestützter Review der aktiven Einkaufsliste
+  // ─────────────────────────────────────────────
+  fastify.post('/ai-review', {
+    schema: {
+      description: 'KI-Review der aktiven Einkaufsliste',
+      tags: ['Einkaufsliste'],
+      security: [{ bearerAuth: [] }],
+    },
+  }, async (request, reply) => {
+    const userId = request.user.id;
+    const householdId = request.householdId;
+
+    // Aktive Liste finden
+    const hhWhere = householdWhereClause(userId, householdId);
+    const list = db.prepare(
+      `SELECT id FROM shopping_lists WHERE (${hhWhere.clause}) AND is_active = 1 ORDER BY created_at DESC LIMIT 1`
+    ).get(...hhWhere.params);
+
+    if (!list) {
+      return reply.status(404).send({ error: 'Keine aktive Einkaufsliste gefunden' });
+    }
+
+    const result = await reviewShoppingList(userId, householdId, list.id);
+    return result;
+  });
+
+  // ─────────────────────────────────────────────
+  // DELETE /api/shopping/ai-review
+  // KI-Review-Ergebnisse löschen (Dismiss All)
+  // ─────────────────────────────────────────────
+  fastify.delete('/ai-review', {
+    schema: {
+      description: 'KI-Review-Ergebnisse löschen',
+      tags: ['Einkaufsliste'],
+      security: [{ bearerAuth: [] }],
+    },
+  }, async (request, reply) => {
+    const userId = request.user.id;
+    const householdId = request.householdId;
+
+    const hhWhere = householdWhereClause(userId, householdId);
+    const list = db.prepare(
+      `SELECT id FROM shopping_lists WHERE (${hhWhere.clause}) AND is_active = 1 ORDER BY created_at DESC LIMIT 1`
+    ).get(...hhWhere.params);
+
+    if (list) {
+      db.prepare('UPDATE shopping_lists SET ai_review_issues = NULL WHERE id = ?').run(list.id);
+    }
+
+    return { message: 'KI-Review-Ergebnisse gelöscht' };
   });
 }

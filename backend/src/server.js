@@ -39,6 +39,7 @@ import backupRoutes from './routes/backup.js';
 import householdRoutes from './routes/households.js';
 import sharedRecipesRoutes from './routes/shared-recipes.js';
 import householdEventsRoutes from './routes/household-events.js';
+import userSettingsRoutes from './routes/user-settings.js';
 // ingredient-conversions entfernt – KI-Aggregation ersetzt zutat-spezifische Umrechnungen
 
 // Upload-Verzeichnisse sicherstellen (inkl. Unterordner)
@@ -261,6 +262,7 @@ await app.register(collectionsRoutes, { prefix: '/api/collections' });
     await app.register(householdRoutes, { prefix: '/api/households' });
     await app.register(sharedRecipesRoutes, { prefix: '/api/shared-recipes' });
     await app.register(householdEventsRoutes, { prefix: '/api/household-events' });
+    await app.register(userSettingsRoutes, { prefix: '/api/user-settings' });
     // ingredient-conversions Route entfernt
 
 // ============================================

@@ -778,6 +778,35 @@ function migrateDatabase() {
     db.exec("ALTER TABLE recipe_blocks ADD COLUMN household_id INTEGER REFERENCES households(id) ON DELETE SET NULL");
     console.log('  ↳ Migration: recipe_blocks.household_id hinzugefügt');
   }
+
+  // ============================================
+  // User-Settings Tabelle (Key-Value pro User)
+  // ============================================
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS user_settings (
+      user_id INTEGER NOT NULL,
+      household_id INTEGER,
+      key TEXT NOT NULL,
+      value TEXT,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (user_id, key),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    )
+  `);
+
+  // Spalte 'dedup_note' in shopping_list_items hinzufügen (KI-Deduplizierungs-Info)
+  const sliColsDedup = db.prepare("PRAGMA table_info(shopping_list_items)").all().map(c => c.name);
+  if (!sliColsDedup.includes('dedup_note')) {
+    db.exec("ALTER TABLE shopping_list_items ADD COLUMN dedup_note TEXT");
+    console.log('  ↳ Migration: shopping_list_items.dedup_note hinzugefügt');
+  }
+
+  // Spalte 'ai_review_issues' in shopping_lists hinzufügen (JSON mit KI-Review-Ergebnissen)
+  const slColsReview = db.prepare("PRAGMA table_info(shopping_lists)").all().map(c => c.name);
+  if (!slColsReview.includes('ai_review_issues')) {
+    db.exec("ALTER TABLE shopping_lists ADD COLUMN ai_review_issues TEXT");
+    console.log('  ↳ Migration: shopping_lists.ai_review_issues hinzugefügt');
+  }
 }
 
 /**

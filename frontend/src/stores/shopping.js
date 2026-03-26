@@ -22,6 +22,15 @@ export const useShoppingStore = defineStore('shopping', () => {
   const pantryCheck = ref(null);
   const pantryCheckLoading = ref(false);
 
+  // KI-Review
+  const aiReviewIssues = ref([]);
+  const aiReviewAutoResolved = ref([]);
+  const aiReviewLoading = ref(false);
+
+  // User-Settings (serverseitig)
+  const userSettings = ref({});
+  const userSettingsLoaded = ref(false);
+
   // REWE-Matching Fortschritt
   const reweProgress = ref(null); // null = kein Matching aktiv
 
@@ -56,6 +65,11 @@ export const useShoppingStore = defineStore('shopping', () => {
       await fetchActiveList();
       // Vorratscheck zurücksetzen (wird beim nächsten Aufklappen neu geladen)
       pantryCheck.value = null;
+      // AI-Review Ergebnisse übernehmen (wenn Auto-Review aktiv war)
+      if (data.aiReview) {
+        aiReviewIssues.value = data.aiReview.issues || [];
+        aiReviewAutoResolved.value = data.aiReview.autoResolved || [];
+      }
       return data;
     } finally {
       loading.value = false;
@@ -69,6 +83,14 @@ export const useShoppingStore = defineStore('shopping', () => {
       currentList.value = data.list;
       items.value = data.items || [];
       lastFetched.value = Date.now();
+      // AI-Review Issues aus der Liste laden (falls vorhanden)
+      if (data.list?.ai_review_issues) {
+        try {
+          aiReviewIssues.value = JSON.parse(data.list.ai_review_issues);
+        } catch { aiReviewIssues.value = []; }
+      } else {
+        aiReviewIssues.value = [];
+      }
       return data;
     } catch (err) {
       // Bei Netzwerkfehler: gecachte Daten behalten
@@ -309,6 +331,101 @@ export const useShoppingStore = defineStore('shopping', () => {
     return data;
   }
 
+  // ============================================
+  // KI-Review
+  // ============================================
+
+  /** User-Settings vom Server laden */
+  async function fetchUserSettings() {
+    try {
+      const data = await api.get('/user-settings');
+      userSettings.value = data.settings || {};
+      userSettingsLoaded.value = true;
+    } catch {
+      userSettings.value = {};
+    }
+    return userSettings.value;
+  }
+
+  /** Einzelnes User-Setting speichern */
+  async function saveUserSetting(key, value) {
+    await api.put(`/user-settings/${key}`, { value });
+    userSettings.value = { ...userSettings.value, [key]: value };
+  }
+
+  /** KI-Review manuell starten */
+  async function fetchAIReview() {
+    if (!currentList.value?.id) return;
+    aiReviewLoading.value = true;
+    try {
+      const data = await api.post('/shopping/ai-review', { listId: currentList.value.id });
+      aiReviewIssues.value = data.issues || [];
+      aiReviewAutoResolved.value = data.autoResolved || [];
+      // Auto-resolved Items lokal abhaken
+      for (const resolved of aiReviewAutoResolved.value) {
+        if (resolved.item_id) {
+          const item = items.value.find(i => i.id === resolved.item_id);
+          if (item) item.is_checked = 1;
+        }
+      }
+      return data;
+    } finally {
+      aiReviewLoading.value = false;
+    }
+  }
+
+  /** Einzelnes AI-Issue verwerfen (lokal) */
+  function dismissIssue(issueIndex) {
+    aiReviewIssues.value = aiReviewIssues.value.filter((_, i) => i !== issueIndex);
+  }
+
+  /** Alle AI-Issues verwerfen und serverseitig löschen */
+  async function dismissAllIssues() {
+    if (currentList.value?.id) {
+      try {
+        await api.del(`/shopping/ai-review?listId=${currentList.value.id}`);
+      } catch { /* ignore */ }
+    }
+    aiReviewIssues.value = [];
+    aiReviewAutoResolved.value = [];
+  }
+
+  /** Vorschlag eines AI-Issues anwenden */
+  async function applyIssueSuggestion(issue, issueIndex) {
+    try {
+      if (issue.suggestion?.action === 'remove' && issue.item_id) {
+        await deleteItem(issue.item_id);
+      } else if (issue.suggestion?.action === 'check' && issue.item_id) {
+        const item = items.value.find(i => i.id === issue.item_id);
+        if (item && !item.is_checked) {
+          await toggleItem(issue.item_id);
+        }
+      } else if (issue.suggestion?.action === 'add') {
+        await addItem({
+          ingredient_name: issue.suggestion.ingredient_name || issue.ingredient,
+          amount: issue.suggestion.amount || null,
+          unit: issue.suggestion.unit || null,
+        });
+      } else if (issue.suggestion?.action === 'update_amount' && issue.item_id) {
+        // Menge aktualisieren – derzeit kein spezieller Endpoint, Item löschen + neu anlegen
+        const item = items.value.find(i => i.id === issue.item_id);
+        if (item) {
+          await deleteItem(issue.item_id);
+          await addItem({
+            ingredient_name: item.ingredient_name,
+            amount: issue.suggestion.amount,
+            unit: issue.suggestion.unit || item.unit,
+          });
+        }
+      }
+      // Issue nach Anwendung entfernen
+      dismissIssue(issueIndex);
+    } catch (err) {
+      console.error('[Shopping] Fehler beim Anwenden des KI-Vorschlags:', err);
+      throw err;
+    }
+  }
+
   /** REWE-Produkte für eine Zutat suchen (für Produkt-Picker) */
   async function searchReweProducts(query) {
     return await api.get(`/rewe/search-ingredient?q=${encodeURIComponent(query)}`);
@@ -483,8 +600,11 @@ export const useShoppingStore = defineStore('shopping', () => {
     openItemsCount, estimatedTotal, reweLinkedItems,
     // Vorratscheck
     pantryCheck, pantryCheckLoading,
+    // KI-Review
+    aiReviewIssues, aiReviewAutoResolved, aiReviewLoading, userSettings, userSettingsLoaded,
     generateList, fetchActiveList, fetchListHistory, loadList, reactivateList, toggleItem, matchWithRewe, completePurchase, addItem, deleteItem, moveToPantry,
     fetchPantryCheck, moveFromPantryToList,
+    fetchAIReview, dismissIssue, dismissAllIssues, applyIssueSuggestion, fetchUserSettings, saveUserSetting,
     searchReweProducts, setReweProduct, updateReweQuantity, fetchPreferences, deletePreference, updatePreference, clearAllPreferences,
     // Bring!
     bringStatus, bringLists, bringSending, bringImporting,

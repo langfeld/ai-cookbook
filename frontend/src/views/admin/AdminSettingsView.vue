@@ -158,6 +158,28 @@
                 ></span>
               </button>
             </div>
+
+            <!-- Einkaufslisten-Check: Instant-Modus -->
+            <div class="flex justify-between items-center pt-2 border-stone-200 dark:border-stone-700 border-t">
+              <div>
+                <p class="font-medium text-stone-700 dark:text-stone-200 text-sm">Einkaufslisten-Check: Instant-Modus</p>
+                <p class="mt-0.5 text-stone-400 dark:text-stone-500 text-xs">Nutzt Instant-Modus (ohne Thinking) für den KI-Einkaufslisten-Check — schneller, aber evtl. weniger genau</p>
+              </div>
+              <button
+                @click="toggleSetting('ai_shopping_review_instant')"
+                :class="[
+                  'relative inline-flex h-6 w-11 shrink-0 rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out cursor-pointer',
+                  settingsMap.ai_shopping_review_instant === 'true' ? 'bg-primary-600' : 'bg-stone-300 dark:bg-stone-600'
+                ]"
+              >
+                <span
+                  :class="[
+                    'pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out',
+                    settingsMap.ai_shopping_review_instant === 'true' ? 'translate-x-5' : 'translate-x-0'
+                  ]"
+                ></span>
+              </button>
+            </div>
           </div>
 
           <!-- OpenAI -->

@@ -263,6 +263,21 @@
           <span v-else>🏪</span>
           REWE abgleichen
         </button>
+        <!-- KI-Check -->
+        <button
+          v-if="shoppingStore.activeList"
+          @click="runAIReview"
+          :disabled="shoppingStore.aiReviewLoading || !isOnline"
+          :title="!isOnline ? 'Internetverbindung erforderlich' : 'Einkaufsliste mit KI überprüfen'"
+          class="relative flex justify-center items-center gap-2 bg-violet-500 hover:bg-violet-600 disabled:opacity-50 px-4 py-2 rounded-xl w-full sm:w-auto font-medium text-white text-sm transition-colors"
+        >
+          <Loader2 v-if="shoppingStore.aiReviewLoading" class="w-4 h-4 animate-spin" />
+          <Bot v-else class="w-4 h-4" />
+          KI-Check
+          <span v-if="shoppingStore.aiReviewIssues.length" class="absolute -top-1.5 -right-1.5 flex justify-center items-center bg-red-500 rounded-full w-5 h-5 text-white text-xs">
+            {{ shoppingStore.aiReviewIssues.length }}
+          </span>
+        </button>
       </div>
     </div>
 
@@ -574,6 +589,37 @@
                     <Package class="w-3 h-3" />
                     {{ item.pantry_note }}
                   </div>
+                  <!-- Dedup-Hinweis (KI hat Artikel zusammengeführt) -->
+                  <div v-if="item.dedup_note" class="flex items-center gap-1 mt-0.5 text-blue-600 dark:text-blue-400 text-xs">
+                    <Merge class="w-3 h-3" />
+                    {{ item.dedup_note }}
+                  </div>
+                  <!-- KI-Review Inline-Hinweise -->
+                  <template v-for="(issue, issueIdx) in getIssuesForItem(item.id)" :key="'ai-' + issueIdx">
+                    <div
+                      class="flex items-start gap-1.5 mt-1 px-2 py-1 rounded-lg text-xs"
+                      :class="aiIssueClasses(issue.type)"
+                    >
+                      <component :is="aiIssueIcon(issue.type)" class="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                      <div class="flex-1 min-w-0">
+                        <p>{{ issue.message }}</p>
+                        <div v-if="issue.suggestion" class="flex gap-2 mt-1">
+                          <button
+                            @click.stop="applyAISuggestion(issue, issueIdx)"
+                            class="font-medium underline underline-offset-2 hover:no-underline"
+                          >
+                            {{ issue.suggestion.label || 'Anwenden' }}
+                          </button>
+                          <button
+                            @click.stop="shoppingStore.dismissIssue(getGlobalIssueIndex(item.id, issueIdx))"
+                            class="text-stone-400 hover:text-stone-600 dark:hover:text-stone-300"
+                          >
+                            Verwerfen
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </template>
                 </div>
 
                 <!-- Aktionen (immer sichtbar, größere Touch-Targets) -->
@@ -705,6 +751,56 @@
         </div>
       </div>
 
+      <!-- KI-Review: Globale Hinweise (nicht einem Item zugeordnet) -->
+      <Transition name="slide">
+        <div v-if="globalAIIssues.length > 0" class="space-y-2">
+          <div class="flex justify-between items-center">
+            <h3 class="flex items-center gap-2 font-medium text-stone-700 dark:text-stone-300 text-sm">
+              <Bot class="w-4 h-4 text-violet-500" />
+              KI-Hinweise
+            </h3>
+            <button
+              @click="shoppingStore.dismissAllIssues()"
+              class="text-stone-400 hover:text-stone-600 dark:hover:text-stone-300 text-xs"
+            >
+              Alle verwerfen
+            </button>
+          </div>
+          <div v-for="(issue, idx) in globalAIIssues" :key="'global-ai-' + idx"
+            class="flex items-start gap-2 px-3 py-2 rounded-xl text-sm"
+            :class="aiIssueClasses(issue.type)"
+          >
+            <component :is="aiIssueIcon(issue.type)" class="w-4 h-4 shrink-0 mt-0.5" />
+            <div class="flex-1 min-w-0">
+              <p>{{ issue.message }}</p>
+              <p v-if="issue.ingredient" class="mt-0.5 font-medium">{{ issue.ingredient }}</p>
+              <div v-if="issue.suggestion" class="flex gap-2 mt-1">
+                <button
+                  @click="applyAISuggestion(issue, issue._globalIdx)"
+                  class="font-medium underline underline-offset-2 hover:no-underline"
+                >
+                  {{ issue.suggestion.label || 'Anwenden' }}
+                </button>
+                <button
+                  @click="shoppingStore.dismissIssue(issue._globalIdx)"
+                  class="text-stone-400 hover:text-stone-600 dark:hover:text-stone-300"
+                >
+                  Verwerfen
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </Transition>
+
+      <!-- KI-Review: Auto-resolved Info -->
+      <Transition name="slide">
+        <div v-if="shoppingStore.aiReviewAutoResolved.length > 0" class="flex items-start gap-2 bg-emerald-50 dark:bg-emerald-900/20 px-3 py-2 border border-emerald-200 dark:border-emerald-800/40 rounded-xl text-sm text-emerald-700 dark:text-emerald-300">
+          <CheckCircle class="w-4 h-4 shrink-0 mt-0.5" />
+          <p>{{ shoppingStore.aiReviewAutoResolved.length }} Artikel automatisch abgehakt (Vorrat ausreichend)</p>
+        </div>
+      </Transition>
+
       <!-- Einkauf abschließen -->
       <div class="flex sm:flex-row flex-col justify-between items-center gap-3 mt-8 pt-6 border-stone-200 dark:border-stone-800 border-t">
         <div class="text-stone-500 dark:text-stone-400 text-sm">
@@ -800,6 +896,17 @@
                     ]"
                   >
                     🥕 Zutaten
+                  </button>
+                  <button
+                    @click="settingsTab = 'ai'"
+                    :class="[
+                      'px-4 py-2 text-sm font-medium rounded-t-lg border border-b-0 transition-colors',
+                      settingsTab === 'ai'
+                        ? 'bg-white dark:bg-stone-900 border-stone-200 dark:border-stone-700 text-violet-600 dark:text-violet-400'
+                        : 'bg-stone-50 dark:bg-stone-800 border-transparent text-stone-500 dark:text-stone-400 hover:text-stone-700 dark:hover:text-stone-300'
+                    ]"
+                  >
+                    🤖 KI
                   </button>
                 </div>
               </div>
@@ -1185,6 +1292,64 @@
                           Freigeben
                         </button>
                       </div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- ========== KI Tab ========== -->
+                <div v-if="settingsTab === 'ai'" class="space-y-6 p-5">
+                  <div>
+                    <h3 class="flex items-center gap-2 mb-4 font-medium text-stone-700 dark:text-stone-300 text-sm">
+                      <Bot class="w-4 h-4 text-violet-500" />
+                      KI-Überprüfung
+                    </h3>
+
+                    <!-- Auto-Review beim Generieren -->
+                    <label class="group flex items-center gap-3 cursor-pointer select-none mb-5">
+                      <div class="relative">
+                        <input
+                          type="checkbox"
+                          :checked="shoppingStore.userSettings.shopping_auto_ai_review === '1'"
+                          @change="toggleUserSetting('shopping_auto_ai_review')"
+                          class="sr-only peer"
+                        />
+                        <div class="bg-stone-200 dark:bg-stone-600 peer-checked:bg-violet-500 rounded-full w-9 h-5 transition-colors" />
+                        <div class="top-0.5 left-0.5 absolute bg-white shadow-sm rounded-full w-4 h-4 transition-transform peer-checked:translate-x-4" />
+                      </div>
+                      <div>
+                        <p class="font-medium text-stone-700 dark:text-stone-200 text-sm">Automatischer KI-Check</p>
+                        <p class="text-stone-400 dark:text-stone-500 text-xs">Beim Generieren der Einkaufsliste automatisch KI-Review durchführen</p>
+                      </div>
+                    </label>
+
+                    <!-- Smart Dedup -->
+                    <label class="group flex items-center gap-3 cursor-pointer select-none mb-5">
+                      <div class="relative">
+                        <input
+                          type="checkbox"
+                          :checked="shoppingStore.userSettings.shopping_smart_dedup === '1'"
+                          @change="toggleUserSetting('shopping_smart_dedup')"
+                          class="sr-only peer"
+                        />
+                        <div class="bg-stone-200 dark:bg-stone-600 peer-checked:bg-violet-500 rounded-full w-9 h-5 transition-colors" />
+                        <div class="top-0.5 left-0.5 absolute bg-white shadow-sm rounded-full w-4 h-4 transition-transform peer-checked:translate-x-4" />
+                      </div>
+                      <div>
+                        <p class="font-medium text-stone-700 dark:text-stone-200 text-sm">Intelligente Duplikat-Erkennung</p>
+                        <p class="text-stone-400 dark:text-stone-500 text-xs">KI erkennt und vereint ähnliche Zutaten (z.B. Tomaten/Cherry-Tomaten, Singular/Plural)</p>
+                      </div>
+                    </label>
+
+                    <div class="border-stone-200 dark:border-stone-700 border-t"></div>
+
+                    <!-- Info -->
+                    <div class="flex items-start gap-2 mt-4 text-stone-400 dark:text-stone-500 text-xs">
+                      <Info class="w-4 h-4 shrink-0 mt-0.5" />
+                      <p>
+                        Der KI-Check prüft: fehlende Zutaten, Mengenlogik (z.B. 4 Tortillas ≠ 4 Packungen),
+                        Vorrats-Abdeckung, Plausibilität, Duplikate, REWE-Produkt-Zuordnung und fehlende REWE-Artikel.
+                        Du kannst den Check auch jederzeit manuell über den „KI-Check"-Button starten.
+                      </p>
                     </div>
                   </div>
                 </div>
@@ -2042,7 +2207,7 @@ import { useApi } from '@/composables/useApi.js';
 import { useHouseholdStore } from '@/stores/household.js';
 import { useAuthStore } from '@/stores/auth.js';
 import { apiRaw } from '@/composables/useApi.js';
-import { ListPlus, Check, ShoppingBag, Plus, Minus, Package, BookOpen, BookX, ExternalLink, ShoppingCart, X, ArrowRightLeft, Search, Tag, Trash2, Star, Heart, Archive, Send, Link2, Unlink, ClipboardCopy, LogIn, LogOut, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Loader2, Terminal, Download, Settings, RefreshCw, Merge, ArrowRight, History, RotateCcw, Ban, MapPin, PenLine, Upload, AlertTriangle, Copy, Eye, EyeOff, CheckSquare, Square, ClipboardCheck, CalendarDays, Lock } from 'lucide-vue-next';
+import { ListPlus, Check, ShoppingBag, Plus, Minus, Package, BookOpen, BookX, ExternalLink, ShoppingCart, X, ArrowRightLeft, Search, Tag, Trash2, Star, Heart, Archive, Send, Link2, Unlink, ClipboardCopy, LogIn, LogOut, ChevronDown, ChevronUp, ChevronLeft, ChevronRight, Loader2, Terminal, Download, Settings, RefreshCw, Merge, ArrowRight, History, RotateCcw, Ban, MapPin, PenLine, Upload, AlertTriangle, Copy, Eye, EyeOff, CheckSquare, Square, ClipboardCheck, CalendarDays, Lock, Bot, Sparkles, Info, AlertCircle, CheckCircle } from 'lucide-vue-next';
 import ConfirmDialog from '@/components/ui/ConfirmDialog.vue';
 import UnitInput from '@/components/ui/UnitInput.vue';
 
@@ -3066,6 +3231,7 @@ async function selectProduct(product) {
 onMounted(async () => {
   await shoppingStore.fetchActiveList();
   shoppingStore.fetchBringStatus();
+  shoppingStore.fetchUserSettings();
   aliasStore.fetchAliases();
   aliasStore.fetchBlockedIngredients();
   // Verlauf immer laden (für History-Button)
@@ -3103,6 +3269,110 @@ function closeMatchReason() {
 // ============================================
 // Einstellungen (zentrales Modal)
 // ============================================
+
+// ---- KI-Review Helpers ----
+
+/** KI-Review manuell starten */
+async function runAIReview() {
+  try {
+    await shoppingStore.fetchAIReview();
+    if (shoppingStore.aiReviewIssues.length === 0 && shoppingStore.aiReviewAutoResolved.length === 0) {
+      showSuccess('Alles in Ordnung – keine Auffälligkeiten gefunden! ✨');
+    } else {
+      const count = shoppingStore.aiReviewIssues.length;
+      const autoCount = shoppingStore.aiReviewAutoResolved.length;
+      const parts = [];
+      if (count > 0) parts.push(`${count} Hinweis${count > 1 ? 'e' : ''}`);
+      if (autoCount > 0) parts.push(`${autoCount} auto-erledigt`);
+      showSuccess(`KI-Check abgeschlossen: ${parts.join(', ')}`);
+    }
+  } catch (err) {
+    showError('KI-Check fehlgeschlagen: ' + (err.message || 'Unbekannter Fehler'));
+  }
+}
+
+/** Issues für ein bestimmtes Item filtern */
+function getIssuesForItem(itemId) {
+  return shoppingStore.aiReviewIssues.filter(i => i.item_id === itemId);
+}
+
+/** Globale Issues (nicht einem Item zugeordnet) */
+const globalAIIssues = computed(() => {
+  return shoppingStore.aiReviewIssues
+    .map((issue, idx) => ({ ...issue, _globalIdx: idx }))
+    .filter(i => !i.item_id);
+});
+
+/** Globalen Index eines Item-Issues finden */
+function getGlobalIssueIndex(itemId, localIdx) {
+  let count = 0;
+  for (let i = 0; i < shoppingStore.aiReviewIssues.length; i++) {
+    if (shoppingStore.aiReviewIssues[i].item_id === itemId) {
+      if (count === localIdx) return i;
+      count++;
+    }
+  }
+  return -1;
+}
+
+/** CSS-Klassen je Issue-Typ */
+function aiIssueClasses(type) {
+  switch (type) {
+    case 'rewe_missing':
+    case 'rewe_mismatch':
+      return 'bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-800/40';
+    case 'missing_ingredient':
+      return 'bg-orange-50 dark:bg-orange-900/20 text-orange-700 dark:text-orange-300 border border-orange-200 dark:border-orange-800/40';
+    case 'quantity_logic':
+    case 'plausibility':
+    case 'duplicate':
+      return 'bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800/40';
+    case 'pantry_covered':
+      return 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/40';
+    default:
+      return 'bg-stone-50 dark:bg-stone-800 text-stone-700 dark:text-stone-300 border border-stone-200 dark:border-stone-700';
+  }
+}
+
+/** Icon je Issue-Typ */
+function aiIssueIcon(type) {
+  switch (type) {
+    case 'rewe_missing':
+    case 'rewe_mismatch':
+      return AlertCircle;
+    case 'missing_ingredient':
+      return AlertTriangle;
+    case 'quantity_logic':
+    case 'plausibility':
+    case 'duplicate':
+      return AlertTriangle;
+    case 'pantry_covered':
+      return CheckCircle;
+    default:
+      return Info;
+  }
+}
+
+/** AI-Vorschlag anwenden */
+async function applyAISuggestion(issue, issueIndex) {
+  try {
+    await shoppingStore.applyIssueSuggestion(issue, issueIndex);
+    showSuccess('Vorschlag angewendet');
+  } catch (err) {
+    showError('Fehler beim Anwenden: ' + (err.message || 'Unbekannter Fehler'));
+  }
+}
+
+/** User-Setting toggeln */
+async function toggleUserSetting(key) {
+  const currentVal = shoppingStore.userSettings[key];
+  const newVal = currentVal === '1' ? '0' : '1';
+  try {
+    await shoppingStore.saveUserSetting(key, newVal);
+  } catch (err) {
+    showError('Einstellung konnte nicht gespeichert werden');
+  }
+}
 
 function openSettings(tab = 'rewe') {
   settingsTab.value = tab;

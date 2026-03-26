@@ -14,6 +14,7 @@ import db, { householdWhereClause } from '../config/database.js';
 import { normalizeUnit, scaleIngredient, convertToBaseUnit, unitsCompatible, comparePantryAmount } from '../utils/helpers.js';
 import { parsePackageSize } from './rewe-api.js';
 import { getAIProvider } from './ai/provider.js';
+import { getSetting } from '../config/settings.js';
 
 /**
  * KI-gestützte Aggregation der Einkaufsliste.
@@ -113,13 +114,134 @@ Regeln:
 }
 
 /**
+ * KI-gestützte intelligente Deduplizierung.
+ * Erkennt semantische Duplikate (Plural/Singular, Synonyme, umgestellte Wörter)
+ * und führt sie zusammen. Ersetzt die Standard-Aggregation wenn aktiviert.
+ * Fallback: aiAggregateItems() bei KI-Fehler.
+ */
+async function aiSmartDeduplicateItems(itemsList) {
+  // Schritt 1: Identische Zutaten+Einheiten einfach addieren (wie in aiAggregateItems)
+  const simpleMap = new Map();
+  for (const item of itemsList) {
+    const key = `${item.name.toLowerCase()}_${(item.unit || '').toLowerCase()}`;
+    if (simpleMap.has(key)) {
+      const existing = simpleMap.get(key);
+      existing.amount = (existing.amount || 0) + (item.amount || 0);
+      existing.recipes.push(...item.recipes);
+      for (const id of item.recipeIds) {
+        if (!existing.recipeIds.includes(id)) existing.recipeIds.push(id);
+      }
+    } else {
+      simpleMap.set(key, { ...item, recipes: [...item.recipes], recipeIds: [...item.recipeIds] });
+    }
+  }
+
+  const preAggregated = [...simpleMap.values()];
+
+  // Weniger als 2 Items → nichts zu deduplizieren
+  if (preAggregated.length < 2) {
+    return preAggregated;
+  }
+
+  // Schritt 2: Alle Items an die KI zur semantischen Deduplizierung schicken
+  try {
+    const ai = getAIProvider({ simple: true });
+
+    const prompt = `Du bist ein Experte für Einkaufslisten-Optimierung. Fasse diese Einkaufslisten-Einträge intelligent zusammen.
+
+## Aufgabe
+1. Erkenne semantisch identische Zutaten und führe sie zusammen:
+   - Plural/Singular: "Tomate" = "Tomaten"
+   - Wortreihenfolge: "rote Paprika" = "Paprika rot"
+   - Synonyme: "Sahne" = "Schlagsahne" (wenn im Kochkontext gleich)
+   - Schreibvarianten: "Frühlingszwiebel" = "Lauchzwiebel"
+2. Zutaten mit verschiedenen Einheiten zu EINEM Eintrag zusammenfassen
+3. Die natürlichste Einkaufseinheit wählen:
+   - Zählbare Zutaten (Zwiebel, Tomate, Paprika, Ei) → Stückzahl (unit: "")
+   - Gewichtsware (Fleisch, Käse, Mehl) → g oder kg
+   - Flüssigkeiten → ml oder l
+
+## Eingabe
+${JSON.stringify(preAggregated.map(i => ({ name: i.name, amount: i.amount, unit: i.unit })), null, 2)}
+
+## Antwortformat
+Antworte als JSON-Array:
+[{
+  "name": "Tomate",
+  "amount": 5,
+  "unit": "",
+  "mergedFrom": ["Tomate", "Tomaten"],
+  "mergeReason": "Plural/Singular desselben Produkts"
+}]
+
+## Regeln
+- Jede Zutat nur EINMAL in der Ausgabe
+- "mergedFrom" enthält alle originalen Namen die zusammengeführt wurden (auch wenn es nur einer ist)
+- "mergeReason" nur setzen wenn tatsächlich zusammengeführt wurde, sonst null
+- Bei Unsicherheit ob zwei Zutaten wirklich dasselbe sind: NICHT zusammenführen
+- Mengen sinnvoll umrechnen (z.B. 150g Zwiebel ≈ 1-2 Zwiebeln → 2 Zwiebeln)
+- Bei Unsicherheit lieber aufrunden
+- "name" muss exakt einem der Eingabe-Namen entsprechen (bevorzuge den gebräuchlicheren)
+- Verschiedene Zutaten die ähnlich klingen NICHT zusammenführen (z.B. "Lauch" ≠ "Knoblauch")`;
+
+    const merged = await ai.chatJSON(prompt, { temperature: 0.1, maxTokens: 4096 });
+
+    if (!Array.isArray(merged)) {
+      console.warn('⚠️ KI-Smart-Dedup: Unerwartetes Format, nutze Standard-Aggregation');
+      return aiAggregateItems(itemsList);
+    }
+
+    // KI-Ergebnis mit Rezept-Referenzen und Metadaten anreichern
+    const result = [];
+    for (const aiItem of merged) {
+      const mergedNames = (aiItem.mergedFrom || [aiItem.name]).map(n => n.toLowerCase());
+
+      // Alle Originaleinträge finden die zusammengeführt wurden
+      const originals = preAggregated.filter(i => mergedNames.includes(i.name.toLowerCase()));
+      if (originals.length === 0) {
+        // Fallback: Name direkt suchen
+        const fallback = preAggregated.find(i => i.name.toLowerCase() === aiItem.name?.toLowerCase());
+        if (fallback) originals.push(fallback);
+      }
+
+      const allRecipes = originals.flatMap(o => o.recipes);
+      const allRecipeIds = [...new Set(originals.flatMap(o => o.recipeIds))];
+      const isOptional = originals.length > 0 ? originals.every(o => o.isOptional) : false;
+
+      // Dedup-Note generieren (nur wenn tatsächlich zusammengeführt)
+      let dedupNote = null;
+      if (aiItem.mergeReason && originals.length > 1) {
+        const parts = originals.map(o => `${o.name} (${o.amount || '?'} ${o.unit || 'Stk'})`);
+        dedupNote = `Zusammengeführt: ${parts.join(' + ')} — ${aiItem.mergeReason}`;
+      }
+
+      result.push({
+        name: aiItem.name || originals[0]?.name || 'Unbekannt',
+        amount: aiItem.amount,
+        unit: aiItem.unit || '',
+        recipes: allRecipes,
+        recipeIds: allRecipeIds,
+        isOptional,
+        dedupNote,
+      });
+    }
+
+    console.log(`🧠 KI-Smart-Dedup: ${preAggregated.length} → ${result.length} Einträge`);
+    return result;
+  } catch (err) {
+    console.warn('⚠️ KI-Smart-Dedup fehlgeschlagen, nutze Standard-Aggregation:', err.message);
+    return aiAggregateItems(itemsList);
+  }
+}
+
+/**
  * Generiert eine Einkaufsliste aus einem Wochenplan
  * @param {number} userId - Benutzer-ID
  * @param {number} mealPlanId - Wochenplan-ID
  * @returns {Promise<object>} - Einkaufsliste mit zusammengefassten Zutaten
  */
 export async function generateShoppingList(userId, householdId, mealPlanId, options = {}) {
-  const { excludePastDays = false } = options;
+  const { excludePastDays = false, smartDedup = false } = options;
 
   // --- 1. Alle Rezepte und Portionen aus dem Wochenplan laden ---
   const entries = db.prepare(`
@@ -204,7 +326,10 @@ export async function generateShoppingList(userId, householdId, mealPlanId, opti
   }
 
   // --- 2b. KI-gestützte Aggregation ---
-  const aggregated = await aiAggregateItems(rawItems);
+  // Smart-Dedup: Semantische Duplikaterkennung (ersetzt Standard-Aggregation wenn aktiviert)
+  const aggregated = smartDedup
+    ? await aiSmartDeduplicateItems(rawItems)
+    : await aiAggregateItems(rawItems);
 
   // --- 3. Vorräte abziehen ---
   const pantryWhere = householdWhereClause(userId, householdId);
@@ -374,8 +499,8 @@ export function saveShoppingList(userId, householdId, mealPlanId, items, name = 
   );
   const insertItem = db.prepare(`
     INSERT INTO shopping_list_items
-    (shopping_list_id, ingredient_name, amount, unit, recipe_id, pantry_deducted, recipe_ids, pantry_note)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    (shopping_list_id, ingredient_name, amount, unit, recipe_id, pantry_deducted, recipe_ids, pantry_note, dedup_note)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   // Alte aktive Listen deaktivieren
@@ -392,7 +517,7 @@ export function saveShoppingList(userId, householdId, mealPlanId, items, name = 
         insertItem.run(
           listId, item.name, item.amount, item.unit, null,
           item.pantryDeducted, JSON.stringify(item.recipeIds || []),
-          item.pantryNote || null
+          item.pantryNote || null, item.dedupNote || null
         );
       }
     }
