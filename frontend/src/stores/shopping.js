@@ -387,11 +387,18 @@ export const useShoppingStore = defineStore('shopping', () => {
       const data = await api.post('/shopping/ai-review', { listId: currentList.value.id });
       aiReviewIssues.value = data.issues || [];
       aiReviewAutoResolved.value = data.autoResolved || [];
-      // Auto-resolved Items lokal abhaken
-      for (const resolved of aiReviewAutoResolved.value) {
-        if (resolved.item_id) {
-          const item = items.value.find(i => i.id === resolved.item_id);
-          if (item) item.is_checked = 1;
+      // Prüfen ob auto-resolved Aktionen Items verändert haben (merge/adjust/remove)
+      const hasAutoChanges = aiReviewAutoResolved.value.length > 0;
+      if (hasAutoChanges) {
+        // Liste neu laden um gelöschte/gemergte/angepasste Items zu synchronisieren
+        await fetchActiveList();
+      } else {
+        // Nur lokale Updates für pantry_covered (abhaken)
+        for (const resolved of aiReviewAutoResolved.value) {
+          if (resolved.item_id) {
+            const item = items.value.find(i => i.id === resolved.item_id);
+            if (item) item.is_checked = 1;
+          }
         }
       }
       return data;

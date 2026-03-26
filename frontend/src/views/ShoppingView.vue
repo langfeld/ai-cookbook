@@ -613,39 +613,6 @@
                     <Merge class="w-3 h-3" />
                     {{ item.dedup_note }}
                   </div>
-                  <!-- KI-Review Inline-Hinweise -->
-                  <template v-for="(issue, issueIdx) in getIssuesForItem(item.id)" :key="'ai-' + issueIdx">
-                    <div
-                      class="flex items-start gap-1.5 mt-1 px-2 py-1 rounded-lg text-xs"
-                      :class="aiIssueClasses(issue.type)"
-                    >
-                      <component :is="aiIssueIcon(issue.type)" class="mt-0.5 w-3.5 h-3.5 shrink-0" />
-                      <div class="flex-1 min-w-0">
-                        <p>{{ issue.message }}</p>
-                        <p v-if="issue.recipe_id && issue.recipe_title" class="mt-0.5">
-                          <router-link
-                            :to="`/recipes/${issue.recipe_id}`"
-                            @click.stop
-                            class="font-medium underline underline-offset-2 hover:no-underline"
-                          >{{ issue.recipe_title }}</router-link>
-                        </p>
-                        <div v-if="issue.suggestion" class="flex gap-2 mt-1">
-                          <button
-                            @click.stop="applyAISuggestion(issue, getGlobalIssueIndex(item.id, issueIdx))"
-                            class="font-medium underline underline-offset-2 hover:no-underline"
-                          >
-                            {{ issue.suggestion.label || 'Anwenden' }}
-                          </button>
-                          <button
-                            @click.stop="shoppingStore.dismissIssue(getGlobalIssueIndex(item.id, issueIdx))"
-                            class="text-stone-400 hover:text-stone-600 dark:hover:text-stone-300"
-                          >
-                            Verwerfen
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  </template>
                 </div>
 
                 <!-- Aktionen (immer sichtbar, größere Touch-Targets) -->
@@ -666,6 +633,40 @@
                   </button>
                 </div>
               </div>
+
+              <!-- KI-Review Inline-Hinweise (volle Breite unter dem Artikel) -->
+              <template v-for="(issue, issueIdx) in getIssuesForItem(item.id)" :key="'ai-' + issueIdx">
+                <div
+                  class="flex items-start gap-1.5 mx-3 -mt-1 mb-1 px-3 py-1.5 rounded-lg text-xs"
+                  :class="aiIssueClasses(issue.type)"
+                >
+                  <component :is="aiIssueIcon(issue.type)" class="mt-0.5 w-3.5 h-3.5 shrink-0" />
+                  <div class="flex-1 min-w-0">
+                    <p>{{ issue.message }}</p>
+                    <p v-if="issue.recipe_id && issue.recipe_title" class="mt-0.5">
+                      <router-link
+                        :to="`/recipes/${issue.recipe_id}`"
+                        @click.stop
+                        class="font-medium underline underline-offset-2 hover:no-underline"
+                      >{{ issue.recipe_title }}</router-link>
+                    </p>
+                    <div v-if="issue.suggestion" class="flex gap-2 mt-1">
+                      <button
+                        @click.stop="applyAISuggestion(issue, getGlobalIssueIndex(item.id, issueIdx))"
+                        class="font-medium underline underline-offset-2 hover:no-underline"
+                      >
+                        {{ issue.suggestion.label || 'Anwenden' }}
+                      </button>
+                      <button
+                        @click.stop="shoppingStore.dismissIssue(getGlobalIssueIndex(item.id, issueIdx))"
+                        class="text-stone-400 hover:text-stone-600 dark:hover:text-stone-300"
+                      >
+                        Verwerfen
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </template>
 
               <!-- Inline-Mengen-Editor -->
               <Transition name="slide">
@@ -878,7 +879,7 @@
       <Transition name="slide">
         <div v-if="shoppingStore.aiReviewAutoResolved.length > 0" class="flex items-start gap-2 bg-emerald-50 dark:bg-emerald-900/20 px-3 py-2 border border-emerald-200 dark:border-emerald-800/40 rounded-xl text-emerald-700 dark:text-emerald-300 text-sm">
           <CheckCircle class="mt-0.5 w-4 h-4 shrink-0" />
-          <p>{{ shoppingStore.aiReviewAutoResolved.length }} Artikel automatisch abgehakt (Vorrat ausreichend)</p>
+          <p>{{ autoResolvedSummary }}</p>
         </div>
       </Transition>
 
@@ -1436,6 +1437,42 @@
                       <div>
                         <p class="font-medium text-stone-700 dark:text-stone-200 text-sm">KI-Check nach REWE-Abgleich</p>
                         <p class="text-stone-400 dark:text-stone-500 text-xs">Nach dem REWE-Produktabgleich automatisch einen KI-Check durchführen</p>
+                      </div>
+                    </label>
+
+                    <!-- Auto-Merge -->
+                    <label class="group flex items-center gap-3 mb-5 cursor-pointer select-none">
+                      <div class="relative">
+                        <input
+                          type="checkbox"
+                          :checked="shoppingStore.userSettings.shopping_auto_ai_merge === '1'"
+                          @change="toggleUserSetting('shopping_auto_ai_merge')"
+                          class="sr-only peer"
+                        />
+                        <div class="bg-stone-200 dark:bg-stone-600 peer-checked:bg-violet-500 rounded-full w-9 h-5 transition-colors" />
+                        <div class="top-0.5 left-0.5 absolute bg-white shadow-sm rounded-full w-4 h-4 transition-transform peer-checked:translate-x-4" />
+                      </div>
+                      <div>
+                        <p class="font-medium text-stone-700 dark:text-stone-200 text-sm">Automatisch zusammenführen</p>
+                        <p class="text-stone-400 dark:text-stone-500 text-xs">Erkannte Duplikate automatisch zusammenführen (z.B. 2× Halloumi → 1 Eintrag mit Gesamtmenge)</p>
+                      </div>
+                    </label>
+
+                    <!-- Auto-Adjust -->
+                    <label class="group flex items-center gap-3 mb-5 cursor-pointer select-none">
+                      <div class="relative">
+                        <input
+                          type="checkbox"
+                          :checked="shoppingStore.userSettings.shopping_auto_ai_adjust === '1'"
+                          @change="toggleUserSetting('shopping_auto_ai_adjust')"
+                          class="sr-only peer"
+                        />
+                        <div class="bg-stone-200 dark:bg-stone-600 peer-checked:bg-violet-500 rounded-full w-9 h-5 transition-colors" />
+                        <div class="top-0.5 left-0.5 absolute bg-white shadow-sm rounded-full w-4 h-4 transition-transform peer-checked:translate-x-4" />
+                      </div>
+                      <div>
+                        <p class="font-medium text-stone-700 dark:text-stone-200 text-sm">Automatisch Menge anpassen</p>
+                        <p class="text-stone-400 dark:text-stone-500 text-xs">Mengenvorschläge der KI automatisch übernehmen (z.B. 4 Stk Tortillas statt 4 Pkg)</p>
                       </div>
                     </label>
 
@@ -3478,6 +3515,20 @@ const globalAIIssues = computed(() => {
   return shoppingStore.aiReviewIssues
     .map((issue, idx) => ({ ...issue, _globalIdx: idx }))
     .filter(i => !i.item_id);
+});
+
+/** Zusammenfassung der Auto-Resolved-Aktionen */
+const autoResolvedSummary = computed(() => {
+  const resolved = shoppingStore.aiReviewAutoResolved;
+  if (!resolved.length) return '';
+  const pantry = resolved.filter(r => r.type === 'pantry_covered').length;
+  const merged = resolved.filter(r => r.type === 'duplicate').length;
+  const adjusted = resolved.filter(r => r.suggestion?.action === 'adjust').length;
+  const parts = [];
+  if (pantry) parts.push(`${pantry} abgehakt (Vorrat)`);
+  if (merged) parts.push(`${merged} zusammengeführt`);
+  if (adjusted) parts.push(`${adjusted} Menge angepasst`);
+  return `${resolved.length} Artikel automatisch verarbeitet: ${parts.join(', ')}`;
 });
 
 /** Globalen Index eines Item-Issues finden */

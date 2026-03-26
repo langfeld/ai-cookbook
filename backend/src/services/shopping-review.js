@@ -115,6 +115,15 @@ export async function reviewShoppingList(userId, householdId, listId) {
     `SELECT ingredient_name FROM blocked_ingredients WHERE ${blockedWhere.clause}`
   ).all(...blockedWhere.params);
 
+  // User-Settings laden (für Auto-Merge/Auto-Adjust)
+  const userSettingsRows = db.prepare(
+    "SELECT key, value FROM user_settings WHERE user_id = ? AND key IN ('shopping_auto_ai_merge', 'shopping_auto_ai_adjust')"
+  ).all(userId);
+  const userSettings = {};
+  for (const row of userSettingsRows) {
+    userSettings[row.key] = row.value;
+  }
+
   // --- 2. Kontext für KI aufbauen ---
 
   // Alias-Lookup aufbauen: alias_name (lowercase) → canonical_name, canonical_name (lowercase) → canonical_name
@@ -237,6 +246,12 @@ Prüfe die Einkaufsliste auf folgende Probleme und antworte als JSON:
    - NIEMALS darf eine Menge die andere "abdecken" oder "absorbieren"! 1 Pkg + 200g ≠ 1 Pkg!${hasReweMatching ? `
 
 6. **rewe_mismatch**: REWE-Produkte die nicht zur Zutat passen. Beispiel: "Bohnen" zugeordnet zu "Bohnenaufstrich" ist falsch. Prüfe ob der REWE-Produktname (rewe_product.name) das richtige Produkt für die Zutat ist.
+   WICHTIG bei REWE-Mengenvergleich:
+   - Die REWE-Bestellmenge (Stückzahl) wird SEPARAT vom Benutzer verwaltet. Melde NIEMALS einen Mengen-Mismatch wenn das Produkt grundsätzlich das richtige Lebensmittel ist! Es ist NICHT deine Aufgabe zu prüfen ob genug bestellt wird.
+   - ml und g sind bei Konserven/Dosen/Flüssigkeiten praktisch austauschbar (400g Dose ≈ 400ml). Melde KEINEN Fehler nur wegen ml vs g Unterschied.
+   - Beispiel: 800ml stückige Tomaten + REWE-Produkt "400g Dose stückige Tomaten" = KORREKT. Produkt ist richtig, Menge regelt der User über die Stückzahl. KEIN rewe_mismatch!
+   - Beispiel: 1kg Mehl + REWE-Produkt "500g Mehl" = KORREKT. Produkt ist richtig, User bestellt 2. KEIN rewe_mismatch!
+   - NUR melden wenn das Produkt INHALTLICH falsch ist (z.B. "Bohnen" → "Bohnenaufstrich", "frische Chilis" → "getrocknete Chili-Mischung").
 
 7. **rewe_missing**: Zutaten ohne REWE-Produktzuordnung (rewe_product ist null), die aber als Rezept-Zutat relevant wären (source="recipe"). Manuelle Items (source="manual") ignorieren.` : ''}
 
@@ -383,12 +398,45 @@ Regeln:
         }
       }
 
+      // --- User-Settings für Auto-Resolve laden ---
+      const autoMerge = userSettings.shopping_auto_ai_merge === '1' || userSettings.shopping_auto_ai_merge === 'true';
+      const autoAdjust = userSettings.shopping_auto_ai_adjust === '1' || userSettings.shopping_auto_ai_adjust === 'true';
+
       // Auto-Resolve: pantry_covered mit hoher Konfidenz → Item als erledigt markieren
       if (issue.type === 'pantry_covered' && issue.confidence >= 0.9 && issue.suggestion?.action === 'remove' && issue.item_id) {
         db.prepare(
           'UPDATE shopping_list_items SET is_checked = 1 WHERE id = ? AND shopping_list_id = ?'
         ).run(issue.item_id, listId);
         autoResolved.push({ ...issue, autoResolved: true });
+      // Auto-Resolve: Duplikate automatisch zusammenführen
+      } else if (autoMerge && issue.type === 'duplicate' && issue.suggestion?.action === 'merge' && issue.item_id && issue.merge_target_id && issue.merged_amount != null) {
+        try {
+          // Ziel-Item aktualisieren
+          db.prepare(
+            'UPDATE shopping_list_items SET amount = ?, unit = ?, ingredient_name = COALESCE(?, ingredient_name) WHERE id = ? AND shopping_list_id = ?'
+          ).run(issue.merged_amount, issue.merged_unit || null, issue.merged_name || null, issue.merge_target_id, listId);
+          // Quell-Item löschen
+          db.prepare(
+            'DELETE FROM shopping_list_items WHERE id = ? AND shopping_list_id = ?'
+          ).run(issue.item_id, listId);
+          console.log(`🔍 KI-Review: Auto-Merge ${issue.item_id} → ${issue.merge_target_id} (${issue.merged_amount} ${issue.merged_unit})`);
+          autoResolved.push({ ...issue, autoResolved: true });
+        } catch (mergeErr) {
+          console.warn('⚠️ Auto-Merge fehlgeschlagen:', mergeErr.message);
+          manualIssues.push(issue);
+        }
+      // Auto-Resolve: Mengen automatisch anpassen
+      } else if (autoAdjust && issue.suggestion?.action === 'adjust' && issue.item_id && issue.suggestion.amount != null) {
+        try {
+          db.prepare(
+            'UPDATE shopping_list_items SET amount = ?, unit = COALESCE(?, unit) WHERE id = ? AND shopping_list_id = ?'
+          ).run(issue.suggestion.amount, issue.suggestion.unit || null, issue.item_id, listId);
+          console.log(`🔍 KI-Review: Auto-Adjust Item ${issue.item_id} → ${issue.suggestion.amount} ${issue.suggestion.unit || ''}`);
+          autoResolved.push({ ...issue, autoResolved: true });
+        } catch (adjustErr) {
+          console.warn('⚠️ Auto-Adjust fehlgeschlagen:', adjustErr.message);
+          manualIssues.push(issue);
+        }
       } else {
         manualIssues.push(issue);
       }
