@@ -25,6 +25,29 @@ Teilmengen entnehmen — z. B. „150 g von 500 g Mehl verbrauchen".
 - Überschüsse aus **abgeschlossenen Einkäufen** werden automatisch erfasst
 - Einzelne Artikel können aus der Einkaufsliste direkt **in den Vorratsschrank verschoben** werden
 
+## KI-Vorratsabzug beim Kochen
+
+Beim Kochen (Kochmodus oder Wochenplan) werden verwendete Zutaten **KI-gestützt** aus dem Vorratsschrank abgezogen:
+
+- **Semantisches Matching** — die KI erkennt Synonyme und Varianten (z. B. „Sahne" im Vorrat passt zu „Schlagsahne" im Rezept)
+- **Einheiten-Konvertierung** — unterschiedliche Einheiten werden intelligent umgerechnet (ml ↔ l, g ↔ kg)
+- **Teilmengen-Erkennung** — „2 Knoblauchzehen" werden korrekt von „1 Knolle Knoblauch" abgezogen
+- **Undo-Funktion** — der letzte KI-Vorratsabzug kann rückgängig gemacht werden (pro Rezept/Wochenplan-Eintrag)
+- **Fallback** — wenn kein KI-Provider konfiguriert ist, wird der bisherige regelbasierte Abzug verwendet
+- Aktivierbar über **Admin-Einstellungen → KI-Vorratsabzug**
+
+## KI-Vorrats-Transfer (Einkaufsliste → Vorratsschrank)
+
+Beim Verschieben eines Artikels aus der Einkaufsliste in den Vorratsschrank analysiert die KI den Produktnamen:
+
+- **Namens-Normalisierung** — Marken, Prozentangaben, Verpackungshinweise werden entfernt (z. B. „Bio-Vollmilch 3.5%" → „Vollmilch")
+- **Vorhandene Vorräte erkennen** — die KI findet semantisch passende Einträge im Vorratsschrank und ergänzt die Menge (z. B. „Barilla Penne Rigate" wird zu „Penne" hinzugefügt)
+- **Intelligente Kategorie-Zuweisung** — neue Artikel erhalten eine passende Kategorie (z. B. „Emmentaler gerieben" → Milchprodukte) statt der Standard-Kategorie „Sonstiges"
+- **Einheiten-Konvertierung** — Mengen werden in die Einheit des bestehenden Vorratseintrags umgerechnet
+- **Non-Match-Schutz** — ähnlich klingende, aber verschiedene Zutaten werden korrekt als neue Einträge angelegt (z. B. „Tomatenmark" ≠ „Tomaten")
+- **Fallback** — bei deaktivierter KI oder Fehler wird der bisherige direkte Transfer verwendet
+- Aktivierbar über **Admin-Einstellungen → KI-Vorrats-Transfer**
+
 ## Rezept-Integration
 
 - **Vorratsmengen** werden direkt in der Rezept-Detailansicht angezeigt

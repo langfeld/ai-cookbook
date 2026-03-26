@@ -13,8 +13,27 @@ Eine KI-gestützte Rezeptverwaltung mit intelligentem Wochenplaner, Kochmodus, E
 
 ---
 
+## 🤖 KI-Features
+
+Zauberjournal nutzt KI durchgängig im gesamten Workflow — vom Import über die Planung bis zum Vorratsmanagement:
+
+| Feature | Beschreibung |
+|---------|-------------|
+| **KI-Rezeptimport** | Foto, Text oder URL → strukturiertes Rezept mit Zutaten, Schritten, Kategorien und Nährwerten |
+| **KI-Überarbeitung** | Bestehende Rezepte per Freitext-Anweisung umschreiben lassen (Überschreiben oder Kopie) |
+| **KI-Einkaufslisten-Check** | Automatische Prüfung auf fehlende Zutaten, Duplikate, Mengenlogik, Plausibilität und REWE-Zuordnungsfehler |
+| **Intelligente Duplikat-Erkennung** | Synonyme, Singular/Plural, Schreibvarianten und Wortreihenfolge beim Generieren erkennen und zusammenführen |
+| **KI-Vorratsabzug** | Beim Kochen erkennt die KI semantisch, welche Vorräte abgezogen werden — auch bei abweichenden Namen oder Einheiten |
+| **KI-Vorrats-Transfer** | Beim Verschieben aus der Einkaufsliste normalisiert die KI Produktnamen, erkennt vorhandene Vorräte und weist Kategorien zu |
+| **Nährwertschätzung** | Kalorien, Eiweiß, Kohlenhydrate und Fett pro Portion — automatisch geschätzt, manuell editierbar |
+| **Wochenplan-Reasoning** | Optionale KI-Begründung, warum welches Rezept an welchem Tag eingeplant wurde |
+
+Alle KI-Features sind **optional** und einzeln über Admin-Toggles aktivierbar. Zwischen **Thinking-** (gründlicher) und **Instant-Modus** (schneller) umschaltbar. Unterstützte Provider: Kimi, OpenAI, Anthropic, Ollama.
+
+---
+
 <p align="center">
-  <strong>KI-Rezeptimport</strong> · <strong>Nährwertschätzung</strong> · <strong>Wochenplaner</strong> · <strong>Einkaufsliste</strong> · <strong>REWE & Bring!</strong> · <strong>Vorratsschrank</strong> · <strong>Kochmodus</strong> · <strong>Offline-Modus</strong> · <strong>Haushalt-Sharing</strong> · <strong>Backup & Export</strong>
+  <strong>KI-Rezeptimport</strong> · <strong>KI-Einkaufslisten-Check</strong> · <strong>KI-Vorratsabzug</strong> · <strong>KI-Vorrats-Transfer</strong> · <strong>Nährwertschätzung</strong> · <strong>Wochenplaner</strong> · <strong>Einkaufsliste</strong> · <strong>REWE & Bring!</strong> · <strong>Vorratsschrank</strong> · <strong>Kochmodus</strong> · <strong>Offline-Modus</strong> · <strong>Haushalt-Sharing</strong> · <strong>Backup & Export</strong>
 </p>
 
 <p align="center">

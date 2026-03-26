@@ -30,6 +30,19 @@ Das `kimi-k2.5`-Modell unterstützt zwei Modi über den `thinking`-Parameter:
 
 Das **schnelle Modell** (`KIMI_SIMPLE_MODEL`) nutzt automatisch den Instant-Modus (Thinking deaktiviert) — konfigurierbar im Admin-Panel unter *KI-Konfiguration → Schnelles Modell*.
 
+### Instant-Modus pro Feature
+
+Jedes KI-Feature kann einzeln zwischen Thinking- und Instant-Modus umgeschaltet werden:
+
+| Feature | Admin-Toggle | Standard |
+|---------|-------------|----------|
+| **Rezept-Import** | Rezept-Import: Instant-Modus | Aus (Thinking) |
+| **Einkaufslisten-Check** | Einkaufslisten-Check: Instant-Modus | Aus (Thinking) |
+| **KI-Vorratsabzug** | KI-Vorratsabzug: Instant-Modus | An (Instant) |
+| **KI-Vorrats-Transfer** | KI-Vorrats-Transfer: Instant-Modus | An (Instant) |
+
+**Instant-Modus** ist schneller und günstiger, **Thinking-Modus** liefert gründlichere Ergebnisse. Für einfache strukturierte Aufgaben (Vorratsabzug, Vorrats-Transfer) ist Instant in der Regel ausreichend.
+
 ## OpenAI
 
 ```bash

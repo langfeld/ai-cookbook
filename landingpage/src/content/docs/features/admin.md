@@ -24,6 +24,8 @@ description: Dashboard, Benutzerverwaltung, Systemeinstellungen und Datenverwalt
 - **KI-Anbieter** wählen (inkl. schnelles Modell für einfache Aufgaben)
 - **Rezept-Import: Instant-Modus** — schnelleres KI-Parsing ohne Thinking
 - **Einkaufslisten-Check: Instant-Modus** — schnellerer KI-Review ohne Thinking
+- **KI-Vorratsabzug** — KI-gestützter Vorratsabzug beim Kochen (ein/aus + Instant-Modus)
+- **KI-Vorrats-Transfer** — KI-gestützter Transfer aus Einkaufsliste in den Vorratsschrank (ein/aus + Instant-Modus)
 - **Upload-Größe** konfigurieren
 - **REWE-Integration** ein-/ausschalten
 - **Max. Haushaltsmitglieder** konfigurieren (Standard: 10)
